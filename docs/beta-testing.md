@@ -45,6 +45,7 @@ Please try at least one of each and tell us how it went:
 - Stages not yet run for real: specifier, reviewer, hardener, QA, promotion, docs, rollout, retrospective, and the change map on a large change.
 - The MySQL QA plugin has been dry-run only; the clone itself has not been run by Sentinel.
 - Codex, Gemini, Cursor and `agy` flags are unverified.
+- Stage isolation depends on each tool's subagent feature. Claude Code is tested; Antigravity's `invoke_subagent` and the others are not yet confirmed in a Sentinel run. Check `sentinel stats` after a run for inline stages.
 - The self-test covers the mechanics (config, prompts, locks, boundary check, scrubber, release check), not the quality of what an agent writes.
 - Upgrade both parts: `uv tool upgrade sentinel` and `npx skills@latest update`.
 - There is no Windows support and no installer yet.

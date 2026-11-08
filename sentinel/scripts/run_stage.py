@@ -34,7 +34,7 @@ DEFAULT_RUNNERS = {
     "claude": {"command": "claude", "prompt_flag": "-p", "add_dir_flag": "--add-dir"},
     "codex": {"command": "codex exec"},
     "gemini": {"command": "gemini", "prompt_flag": "-p"},
-    "agy": {"command": "agy", "prompt_flag": "-p", "model_flag": "--model", "resume_flag": "--conversation", "add_dir_flag": "--add-dir", "output": "json_response", "args": ["--output-format", "json"], "unsafe_args": ["--dangerously-skip-permissions"]},
+    "agy": {"command": "agy", "prompt_flag": "-p", "model_flag": "--model", "resume_flag": "--conversation", "add_dir_flag": "--add-dir", "output": "json_response", "args": ["--output-format", "json", "--mode", "accept-edits"], "unsafe_args": ["--dangerously-skip-permissions"]},
 }
 
 

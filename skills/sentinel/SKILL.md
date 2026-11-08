@@ -34,11 +34,14 @@ Run `sentinel doctor`. If it reports a problem:
 `sentinel stage render --stage S [--repo ID]` prints the complete instructions for that stage in this project: its rules, the repo's commands, the team's guidelines, and the paths to read and write. Run every stage this way:
 
 1. Write a short brief to `.sentinel/runs/<slug>/<repo>-<stage>-brief.md`: what to do, the files involved, any findings to fix, and the previous result file.
-2. If your tool can start subagents or fresh sessions, start one with the rendered instructions and the brief, so the stage works in a clean context. Prefer this for the coder, reviewer and QA.
-3. If it cannot, do the stage yourself. Read the rendered instructions, take on that role completely, stay inside the stage's write boundary, write the stage's result file, then go back to being the orchestrator. Re-read inputs from the files, not from memory. When you play the reviewer, review as if someone else wrote the code, and write nothing.
-4. Verify the result yourself before recording it: re-run the failing repro, the tests, a failing QA step. Never accept a stage's own report on trust.
+2. Run the stage in its own fresh context. Do not do it yourself in this conversation: a stage's result is only worth trusting when it came from a clean context, and the reviewer must never review code that its own context wrote. Use the first of these that your tool offers:
+   - **A subagent.** Start one with the rendered instructions and the brief as its task. In Claude Code use the Agent tool with a general-purpose agent. In Antigravity call `invoke_subagent` with the built-in `self` subagent (a clean clone of you with the same tools; workspace `inherit`). In other tools use their subagent, delegate or task feature. Independent stages, such as the cleaners of different repos, may run in parallel.
+   - **A fresh headless session of the same tool.** Run `sentinel stage run --stage S [--repo ID] --slug <slug> --brief <file> --runner <claude|agy|codex|gemini>`. It also checks every repo afterwards: exit 3 means the stage wrote outside its repo, committed, or touched the Sentinel config (show the listed files to the requester and revert nothing without their agreement); exit 1 means the tool failed (retry once, then try the other option and say so).
+   - **Inline, only if neither exists.** Tell the requester at once that this stage runs in the same context. For the reviewer and for QA, stop and ask the requester how to proceed instead of reviewing or testing your own work.
+3. Record how the stage ran, so the report is honest: `sentinel run update <slug> --stage S --session S=subagent` (or `headless` or `inline`).
+4. Verify the result yourself before recording it as done: re-run the failing repro, the tests, a failing QA step. Never accept a stage's own report on trust.
 
-Optional routing: if `sentinel.config.yaml` has a `routing` section, a stage routed to another tool runs with `sentinel stage run --stage S [--repo ID] --slug <slug> --brief <file>`. That runs the other tool headless and then checks every repo. Exit 3 means the stage wrote outside its repo, committed, or touched the Sentinel config: show the listed files to the requester and revert nothing without their agreement. Exit 1 means the tool failed (quota, timeout): retry once, then do the stage another way and say so. Tools without sessions cannot be resumed; send a finding back as a new brief that quotes it and names the previous result file.
+Optional routing: if `sentinel.config.yaml` has a `routing` section, a stage routed to another tool always runs with `sentinel stage run`. Tools without sessions cannot be resumed; send a finding back as a new brief that quotes it and names the previous result file.
 
 ## Phase 0: triage
 
@@ -89,4 +92,4 @@ At a cap, or with any open blocker, failing QA step, regression, or failed relea
 - Keep every handoff concrete: file paths, exact route and field names, finding locations, QA step numbers.
 - The active rules in the config (`rules`) are already inside each rendered stage; enforce them in your own output too.
 - Never commit or push yourself unless the requester asked for it.
-- Final report: what was built, the tier and any escalation, what each stage found and fixed, QA and regression results, the release-check result, open minor findings, and the paths to the rollout notes, PR draft and proposed invariants.
+- Final report: what was built, the tier and any escalation, how each stage ran (subagent, headless or inline; flag every inline stage), what each stage found and fixed, QA and regression results, the release-check result, open minor findings, and the paths to the rollout notes, PR draft and proposed invariants.

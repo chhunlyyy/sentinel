@@ -404,12 +404,15 @@ def cmd_stats(args):
     states = [json.loads(p.read_text()) for p in sorted(runs_dir.glob("*/state.json"))]
     tiers, escalated, rounds = {}, 0, {"review": [], "qa": [], "release_check": []}
     stage_tokens, stage_seconds, outcomes = {}, {}, {}
+    isolation = {"subagent": 0, "headless": 0, "inline": 0, "other": 0}
     for state in states:
         tiers[state["tier"]] = tiers.get(state["tier"], 0) + 1
         if state["tier"] != state.get("initial_tier", state["tier"]):
             escalated += 1
         for key in rounds:
             rounds[key].append(state["rounds"].get(key, 0))
+        for how in (state.get("sessions") or {}).values():
+            isolation[how if how in isolation else "other"] += 1
         outcome = state.get("outcome", "open")
         outcomes[outcome] = outcomes.get(outcome, 0) + 1
         metrics = runs_dir / state["slug"] / "metrics.json"
@@ -420,7 +423,7 @@ def cmd_stats(args):
     average = lambda values: round(sum(values) / len(values), 2) if values else 0
     print(json.dumps({
         "runs": len(states), "by_tier": tiers, "escalated_runs": escalated, "outcomes": outcomes,
-        "avg_rounds": {k: average(v) for k, v in rounds.items()},
+        "avg_rounds": {k: average(v) for k, v in rounds.items()}, "stage_isolation": isolation,
         "tokens_by_stage": stage_tokens, "seconds_by_stage": stage_seconds,
     }, indent=2))
 

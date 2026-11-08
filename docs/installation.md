@@ -67,7 +67,7 @@ Useful options:
 | `-l` | list the skills without installing |
 | `-y` | do not ask for confirmation |
 
-**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b1 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
+**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b2 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
 
 What you get:
 
@@ -81,6 +81,19 @@ What you get:
 | `/sentinel-change-map` | builds the HTML map of what a run changed |
 
 How each tool shows a skill differs. Some list it as a slash command; others load it automatically when your request matches its description. If a tool shows no slash command, just ask: "run sentinel on: <task>".
+
+### How stages run in each tool
+
+Sentinel runs every stage in its own clean context, so the reviewer never reviews code its own context wrote. The skill tells the agent how, per tool:
+
+| Tool | How a stage is isolated | Source |
+|---|---|---|
+| Claude Code | the Agent tool with a general-purpose agent | tested in this project |
+| Antigravity CLI | `invoke_subagent` with the built-in `self` subagent (a clean clone of the calling agent with the same tools) | Antigravity's documentation; not yet confirmed in a Sentinel run |
+| Codex, Cursor, OpenCode and others | the tool's own subagent or task feature, if it has one | not verified |
+| any tool | a fresh headless session: `sentinel stage run --runner <claude\|agy\|codex\|gemini>` | tested with a stand-in runner and a real `claude` and `agy` call |
+
+If a tool offers none of these, the agent has to run a stage inline, must say so, and may not review or test its own work. After a run, `sentinel stats` shows how many stages ran as subagents, headless, or inline, and the final report names every inline stage. If you see inline stages and expected subagents, update the skills (`npx skills@latest update`): versions before 0.1.0b2 let the agent skip subagents too easily.
 
 ## 4. Set up the project
 
@@ -139,6 +152,7 @@ Your `sentinel.config.yaml` and `.sentinel/` folder are not touched; delete them
 | `sentinel doctor` says the shared repo is missing or not cloned | `sentinel shared set <url>` (or `sentinel sync pull` if the URL is already in the config). |
 | `npx skills add` cannot read the repo | If it is private, it uses your git credentials; check `git ls-remote https://github.com/chhunlyyy/sentinel.git` works for you. |
 | The skills and the engine disagree after an upgrade | Upgrade both: `uv tool upgrade sentinel` and `npx skills@latest update`. |
+| `sentinel stats` shows stages ran inline, or the run reported "no subagents invoked" | Old skill text. Run `npx skills@latest update`, then start the run again. |
 | A tool runs old per-project agents instead of the skills | Delete the generated `.claude/agents/` files from the legacy `sync-adapters`. |
 
 ## What has and has not been tested

@@ -128,7 +128,7 @@ def main():
                 frontmatter_bad.append(folder.name)
             if "/home/" in text or "Desktop/" in text or "{{" in text:
                 path_bad.append(folder.name)
-            if any(word in text for word in ("AskUserQuestion", "SendMessage", "subagent_type", "Agent tool", "headroom")):
+            if any(word in text for word in ("AskUserQuestion", "SendMessage", "subagent_type", "headroom")):
                 tool_bad.append(folder.name)
             for first, second in re.findall(r"`sentinel ([a-z][a-z-]*)(?: ([a-z][a-z-]*))?", text):
                 key = (first, second if first in ("run", "sync", "spec", "metrics", "shared", "stage", "change-map") else "")
@@ -144,6 +144,10 @@ def main():
         check("no skill depends on one tool's private mechanics", not tool_bad, ", ".join(tool_bad))
         check("every sentinel command a skill mentions exists", not command_bad, "; ".join(command_bad))
         check("the pipeline contract ships with the main skill", (skills_dir() / "sentinel" / "pipeline.md").exists())
+        main_skill = (skills_dir() / "sentinel" / "SKILL.md").read_text()
+        check("the main skill makes isolated stages the rule and names how each tool does it", all(w in main_skill for w in ("invoke_subagent", "Agent tool", "sentinel stage run", "--runner", "--session S=subagent", "Inline, only if neither exists")), "")
+        from run_stage import DEFAULT_RUNNERS
+        check("the built-in agy runner can edit headlessly without the dangerous flag", "accept-edits" in DEFAULT_RUNNERS["agy"]["args"] and not DEFAULT_RUNNERS["agy"].get("unsafe_skip_permissions"), str(DEFAULT_RUNNERS["agy"]))
         code, out = run(CLI + ["--dir", str(ws), "doctor"])
         check("a config without routing or runners passes doctor", "runner" not in out or code == 0, out[-200:])
 
@@ -199,6 +203,14 @@ def main():
         check("resume points at the next stage", code == 0 and json.loads(out)["next"] == "coder", out[-150:])
         code, out = run(CLI + ["--dir", str(ws), "run", "update", "demo", "--tier", "1"])
         check("a tier can only be raised", code != 0)
+        run(CLI + ["--dir", str(ws), "run", "update", "demo", "--session", "reviewer=inline"])
+        run(CLI + ["--dir", str(ws), "run", "update", "demo", "--session", "coder=subagent"])
+        code, out = run(CLI + ["--dir", str(ws), "stats"])
+        try:
+            isolation = json.loads(out)["stage_isolation"]
+        except Exception:
+            isolation = {}
+        check("stats shows how many stages ran inline, headless or as subagents", code == 0 and isolation.get("inline") == 1 and isolation.get("subagent") == 1, str(isolation))
         ws2 = tmp / "ws2"
         ws2.mkdir()
         git_repo(ws2 / "backend", "build.gradle")

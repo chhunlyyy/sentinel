@@ -156,7 +156,7 @@ runners:
     model_flag: --model
     resume_flag: --conversation
     output: json_response
-    args: [--output-format, json]
+    args: [--output-format, json, --mode, accept-edits]
     unsafe_skip_permissions: false
     unsafe_args: [--dangerously-skip-permissions]
 ```
