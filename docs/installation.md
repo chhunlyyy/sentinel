@@ -44,7 +44,7 @@ Use your tool's agent name. Repeat `-a` for several tools, or leave it off to ch
 
 | Tool | `-a` name | Where the skills end up |
 |---|---|---|
-| Claude Code | `claude-code` | `.claude/skills/` (linked to `.agents/skills/`) |
+| Claude Code | `claude-code` | `.claude/skills/` |
 | Antigravity CLI | `antigravity-cli` | `.agents/skills/` |
 | Codex | `codex` | `.agents/skills/` |
 | Cursor | `cursor` | `.agents/skills/` |
@@ -52,10 +52,10 @@ Use your tool's agent name. Repeat `-a` for several tools, or leave it off to ch
 | Amp | `amp` | `.agents/skills/` |
 | Pi | `pi` | `.agents/skills/` |
 | Gemini CLI | `gemini-cli` | `.agents/skills/` |
-| Devin | `devin` | `.devin/skills/` (linked to `.agents/skills/`) |
-| Windsurf | `windsurf` | `.windsurf/skills/` (linked to `.agents/skills/`) |
+| Devin | `devin` | `.devin/skills/` |
+| Windsurf | `windsurf` | `.windsurf/skills/` |
 
-The installer keeps one real copy in `.agents/skills/` and links the tools that look in their own folder. Other agents are supported too: `npx skills@latest add --help` lists them.
+Tools in the `.agents/skills/` group read that folder directly. Claude Code, Devin and Windsurf use their own folder: with only one of them selected, the skills are copied there; when you select them together with a tool from the shared group, `.agents/skills/` holds the one copy and they get links to it (add `--copy` for real copies). Other agents are supported too: `npx skills@latest add --help` lists them.
 
 Useful options:
 
@@ -67,7 +67,7 @@ Useful options:
 | `-l` | list the skills without installing |
 | `-y` | do not ask for confirmation |
 
-**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag: `npx skills@latest add chhunlyyy/sentinel@<tag>`.
+**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b1 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
 
 What you get:
 

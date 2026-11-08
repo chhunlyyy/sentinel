@@ -60,11 +60,11 @@ sentinel sync pull
 npx skills@latest add chhunlyyy/sentinel -a claude-code
 ```
 
-Use the agent name of your tool: `claude-code`, `antigravity-cli`, `codex`, `cursor`, `opencode`, `devin`, `windsurf`, `amp`, `pi`, and more. Repeat `-a` for several tools, or leave `-a` off to pick from a list. The skills go into the project (`.agents/skills/`, linked into `.claude/skills/` and the like), so commit them and your teammates get them with the repo. Add `-g` to install only for yourself.
+Use the agent name of your tool: `claude-code`, `antigravity-cli`, `codex`, `cursor`, `opencode`, `devin`, `windsurf`, `amp`, `pi`, and more. Repeat `-a` for several tools, or leave `-a` off to pick from a list. The skills go into the project (your tool's skills folder, such as `.claude/skills/` or `.agents/skills/`), so commit them and your teammates get them with the repo. Add `-g` to install only for yourself.
 
 You get `/sentinel`, `/sentinel-setup`, `/sentinel-resume`, `/sentinel-status`, `/sentinel-sync` and `/sentinel-change-map`. Nothing project-specific is generated: when a stage runs, the skill asks `sentinel stage render` for that stage's instructions, built from your config, rules and guidelines. Update later with `npx skills@latest update`.
 
-The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add `@<tag>` after the repo name.
+The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add the tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b1 --skill '*' -a <agent>`.
 
 ### Legacy: generated agent files
 
