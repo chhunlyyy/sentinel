@@ -15,7 +15,7 @@ Sentinel runs AI agents with write access to your repos, starts your services, a
 
 | Content | Where | Shared? |
 |---|---|---|
-| Specs, invariants, regression tests | shared repo | yes, by pull request |
+| Specs, invariants, regression tests | shared repo | yes, merged straight into its main branch |
 | Run records (briefs, decisions, results, change map) | `.sentinel/runs/` | no (git-ignored) |
 | Logs, QA output, uploads, node_modules | `.sentinel/cache/` | no (git-ignored) |
 | Generated prompts | `.sentinel/generated/` | no (git-ignored) |
@@ -41,12 +41,12 @@ It does not find secrets that have no recognizable shape, names, phone numbers, 
 
 ## Agent permissions
 
-- Skills run with your agent's full permissions. Installing Sentinel's skills lets the agent run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. They are plain markdown in `skills/`; read them before installing, and pin a release tag (`npx skills@latest add chhunlyyy/sentinel@v0.1.0b3 --skill '*' -a <agent>`) so an update cannot change them without you noticing.
+- Skills run with your agent's full permissions. Installing Sentinel's skills lets the agent run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. They are plain markdown in `skills/`; read them before installing, and pin a release tag (`npx skills@latest add chhunlyyy/sentinel@v0.1.0b4 --skill '*' -a <agent>`) so an update cannot change them without you noticing.
 
 - Agents can run shell commands in your repos. Stages that do not need to write source (reviewer, rollout, retrospective) are told not to, and the runner checks afterwards that no repo changed.
 - The runner's boundary check detects, after the fact, writes outside the stage's repo, commits, branch changes, and edits to the Sentinel config. It does not prevent them and does not undo them. It does not watch the workspace root or files outside the repos.
 - Some tools can skip their own permission prompts (`unsafe_skip_permissions`). It is off by default. Turn it on per runner only for unattended runs inside a disposable environment (a container or a throwaway checkout), never on a machine that holds production credentials.
-- Sentinel never commits or pushes by itself. `sync push` needs `--yes` or `--auto`, creates a branch, and never force-pushes. With `state.auto_sync_push: true` (the default) `/sentinel` publishes a passing run's specs and regression tests to the shared repo without asking; the scrub check still gates it and the content lands on a branch for pull request review. Set it to `false` to approve every push yourself. Stages are told not to commit when `agents_never_run_git` is on; the boundary check reports it when they do anyway.
+- Sentinel never commits or pushes by itself. `sync push` needs `--yes` or `--auto`, merges into the shared repo's main branch and never force-pushes. With `state.auto_sync_push: true` (the default) `/sentinel` publishes a passing run's specs and regression tests there without asking, with no pull request and no human review. Only the scrub check gates it, and it is a safety net, not a guarantee. Merge conflicts are resolved by the agent. Set `auto_sync_push` to `false` to approve every push yourself, and restrict who can write to the shared repo. Stages are told not to commit when `agents_never_run_git` is on; the boundary check reports it when they do anyway.
 
 ## Dependencies
 

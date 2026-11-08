@@ -64,7 +64,7 @@ Use the agent name of your tool: `claude-code`, `antigravity-cli`, `codex`, `cur
 
 You get `/sentinel`, `/sentinel-setup`, `/sentinel-resume`, `/sentinel-status`, `/sentinel-sync` and `/sentinel-change-map`. Nothing project-specific is generated: when a stage runs, the skill asks `sentinel stage render` for that stage's instructions, built from your config, rules and guidelines. Update later with `npx skills@latest update`.
 
-The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add the tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b3 --skill '*' -a <agent>`.
+The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add the tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b4 --skill '*' -a <agent>`.
 
 ### Legacy: generated agent files
 
@@ -84,7 +84,7 @@ If a session stops or hits a usage limit, `sentinel resume <slug>` shows the nex
 ## 7. Finish
 
 - `sentinel scrub` clears tokens, emails, credentials, and home paths from runs and cache.
-- `sentinel sync push <slug> --auto` (by default; with `state.auto_sync_push: false`, `--yes` after you approve) pushes a `sentinel/<slug>` branch of the new specs, regression tests, and proposed invariants to the shared repo for review. It refuses if the scrub check fails.
+- `sentinel sync push <slug> --auto` (by default; with `state.auto_sync_push: false`, `--yes` after you approve) merges the new specs, regression tests, and proposed invariants into the shared repo's main branch, with no pull request. If the merge conflicts, the agent resolves it and runs `sentinel sync push <slug> --continue`. It refuses if the scrub check fails.
 - `sentinel run finish <slug>` closes the run and releases the lock.
 - `sentinel stats` shows tier mix, escalations, average rounds, and cost per stage.
 - `sentinel clean` prunes old runs and cache. `sentinel clean --db` also drops the throwaway QA schemas.

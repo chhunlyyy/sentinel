@@ -272,6 +272,26 @@ def main():
         code, out = run(CLI + ["--dir", str(ws), "run", "finish", "demo"])
         locks = run(["git", "ls-remote", str(remote)])[1]
         check("run finish releases the lock", code == 0 and "refs/sentinel/locks/demo" not in locks, locks[-200:])
+        print("direct push and conflicts")
+        for w in (ws, ws2):
+            write_config(w, lambda c: c["state"].update({"auto_sync_push": True}))
+            run(CLI + ["--dir", str(w), "sync", "pull"])
+        (ws / ".sentinel/shared/specs").mkdir(parents=True, exist_ok=True)
+        (ws2 / ".sentinel/shared/specs").mkdir(parents=True, exist_ok=True)
+        (ws / ".sentinel/shared/specs/shared-note.md").write_text("from ws\n")
+        code, out = run(CLI + ["--dir", str(ws), "sync", "push", "p1", "--auto"])
+        check("sync push --auto merges straight into main", code == 0 and "pushed to main" in out, out[-200:])
+        check("no pull request branch is created", "refs/heads/sentinel/" not in run(["git", "ls-remote", str(remote)])[1])
+        (ws2 / ".sentinel/shared/specs/shared-note.md").write_text("from ws2\n")
+        code, out = run(CLI + ["--dir", str(ws2), "sync", "push", "p2", "--auto"])
+        check("a conflicting push exits 4 and lists the file", code == 4 and "specs/shared-note.md" in out, out[-200:])
+        code, out = run(CLI + ["--dir", str(ws2), "sync", "push", "p2", "--continue"])
+        check("continue refuses while markers remain", code != 0 and "not resolved" in out, out[-200:])
+        (ws2 / ".sentinel/shared/specs/shared-note.md").write_text("from ws\nfrom ws2\n")
+        code, out = run(CLI + ["--dir", str(ws2), "sync", "push", "p2", "--continue"])
+        check("continue pushes after the agent resolves the conflict", code == 0 and "pushed to main" in out, out[-200:])
+        run(CLI + ["--dir", str(ws), "sync", "pull"])
+        check("the other workspace sees the merged file", (ws / ".sentinel/shared/specs/shared-note.md").read_text() == "from ws\nfrom ws2\n")
 
         print("release check and scrubber")
         rc = CLI + ["--dir", str(ws), "release-check", "--quick", "--repo", "frontend"]

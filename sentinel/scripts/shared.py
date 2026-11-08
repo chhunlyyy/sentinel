@@ -68,6 +68,8 @@ class Shared:
     def pull(self):
         if not self.url:
             sys.exit("state.shared_repo is empty; set it in sentinel.config.yaml")
+        if self.is_clone() and self.merging():
+            sys.exit("a merge is in progress in the shared repo; resolve it and run `sentinel sync push <slug> --continue`")
         if not self.is_clone():
             self.dir.parent.mkdir(parents=True, exist_ok=True)
             if self.dir.exists() and any(self.dir.iterdir()):
@@ -130,15 +132,79 @@ class Shared:
             for path, found in problems.items():
                 print(f"{path}: {', '.join(found)}")
             sys.exit("scrub check failed; nothing pushed")
-        branch = f"sentinel/{slug}"
-        git(self.dir, "checkout", "-B", branch)
-        git(self.dir, "add", "-A", "--", ".", ":(exclude)locks")
-        if not git(self.dir, "status", "--porcelain").stdout.strip():
+        self.require_ref_branch()
+        if self.merging():
+            sys.exit("a merge is in progress in the shared repo; resolve the conflicts, then run `sentinel sync push <slug> --continue`")
+        git(self.dir, "checkout", self.ref)
+        self.commit_all(slug)
+        if not self.ahead():
             print("nothing to push")
             return
-        git(self.dir, "commit", "-m", f"sentinel: {slug}")
-        git(self.dir, "push", "-u", "origin", branch)
-        print(f"pushed branch {branch}; open a pull request into {self.ref}")
+        self.integrate()
+
+    def require_ref_branch(self):
+        if git(self.dir, "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{self.ref}", check=False).returncode != 0:
+            sys.exit(f"state.shared_ref {self.ref} is not a branch on the shared remote; push needs a branch")
+
+    def merging(self):
+        return git(self.dir, "rev-parse", "--verify", "--quiet", "MERGE_HEAD", check=False).returncode == 0
+
+    def ahead(self):
+        out = git(self.dir, "rev-list", "--count", f"origin/{self.ref}..HEAD").stdout.strip()
+        return int(out or 0) > 0
+
+    def commit_all(self, slug):
+        git(self.dir, "add", "-A", "--", ".", ":(exclude)locks")
+        if git(self.dir, "status", "--porcelain").stdout.strip():
+            git(self.dir, "commit", "-m", f"sentinel: {slug}")
+
+    def conflicted(self):
+        return [f for f in git(self.dir, "diff", "--name-only", "--diff-filter=U").stdout.split("\n") if f]
+
+    def integrate(self):
+        for _ in range(3):
+            git(self.dir, "fetch", "origin", self.ref)
+            merge = git(self.dir, "merge", "--no-edit", f"origin/{self.ref}", check=False)
+            if merge.returncode != 0:
+                files = self.conflicted()
+                if not files:
+                    sys.exit(merge.stderr.strip() or merge.stdout.strip())
+                print("merge conflict in the shared repo. Resolve each file in .sentinel/shared, keeping the intent of both sides, then run `sentinel sync push <slug> --continue`:")
+                for name in files:
+                    print(f"  {name}")
+                sys.exit(4)
+            if git(self.dir, "push", "origin", f"HEAD:{self.ref}", check=False).returncode == 0:
+                print(f"pushed to {self.ref}")
+                return
+        sys.exit("could not push to the shared repo after 3 attempts; run again")
+
+    def continue_push(self, slug, scrubber_check):
+        if not self.merging():
+            sys.exit("no merge in progress; run `sentinel sync push <slug> --auto`")
+        markers = ""
+        for path in self.dir.rglob("*"):
+            if ".git" in path.parts or not path.is_file():
+                continue
+            try:
+                body = path.read_text()
+            except (UnicodeDecodeError, OSError):
+                continue
+            if any(line.startswith(("<<<<<<< ", ">>>>>>> ")) for line in body.splitlines()):
+                markers += f"{path.relative_to(self.dir)}\n"
+        if markers:
+            sys.exit("conflicts are not resolved yet, markers remain in: " + ", ".join(sorted(set(markers.split()))))
+        git(self.dir, "add", "-A", "--", ".", ":(exclude)locks")
+        left = self.conflicted()
+        if left:
+            sys.exit("conflicts are not resolved yet: " + ", ".join(left))
+        problems = scrubber_check()
+        if problems:
+            for path, found in problems.items():
+                print(f"{path}: {', '.join(found)}")
+            sys.exit("scrub check failed; nothing pushed")
+        git(self.dir, "add", "-A", "--", ".", ":(exclude)locks")
+        git(self.dir, "commit", "--no-edit")
+        self.integrate()
 
     def lock_ref(self, slug):
         return f"{LOCK_REF}/{slug}"

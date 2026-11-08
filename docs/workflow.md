@@ -50,7 +50,7 @@ Stages run inside whatever tool you work in, each in its own clean context. For 
 
 **18. Retrospective (tier 4).** Proposes new project-wide rules when this run exposed a defect that could recur. It writes `proposed-invariants.md` and never edits `invariants.md` directly; the proposals go to the shared repo for the team to review.
 
-**19. Scrub and sync.** `sentinel scrub` removes tokens, emails, credentials and machine paths from the run records, and `sentinel scrub --check` must pass. With `state.auto_sync_push` on (the default) `sentinel sync push <slug> --auto` runs by itself; with it off you approve first and it runs with `--yes`. It pushes a `sentinel/<slug>` branch to the shared repo with the new specs, regression tests and proposed invariants for pull-request review. It never force-pushes and refuses if the scrub check fails.
+**19. Scrub and sync.** `sentinel scrub` removes tokens, emails, credentials and machine paths from the run records, and `sentinel scrub --check` must pass. With `state.auto_sync_push` on (the default) `sentinel sync push <slug> --auto` runs by itself; with it off you approve first and it runs with `--yes`. It commits the new specs, regression tests and proposed invariants straight to the shared repo's main branch, with no pull request and no human step, after merging anything teammates pushed meanwhile. If the merge conflicts, `sync push` exits 4 and lists the files; the agent resolves them keeping both sides and runs `sentinel sync push <slug> --continue`. It never force-pushes and refuses if the scrub check fails.
 
 **20. Finish.** `sentinel run finish <slug>` closes the run and releases the lock. Metrics (tokens and time per stage, rounds used, estimated versus final tier) are in `metrics.json`, and `sentinel stats` adds them up. The orchestrator gives you a final report: what was built, what each stage found and fixed, QA and regression results, the release-check result, open minor findings, and the paths to the change map, PR draft and rollout notes.
 
@@ -87,6 +87,6 @@ Stages run inside whatever tool you work in, each in its own clean context. For 
 
 | What | Where | Shared? |
 |---|---|---|
-| Invariants, guidelines, specs, regression suite | `.sentinel/shared/` (a clone of the team's shared repo) | yes, by pull request |
+| Invariants, guidelines, specs, regression suite | `.sentinel/shared/` (a clone of the team's shared repo) | yes, merged straight into the shared repo's main branch |
 | Decisions, briefs, stage results, change map, PR draft, rollout notes, metrics | `.sentinel/runs/<slug>/` | no |
 | QA logs, screenshots, uploads | `.sentinel/cache/` | no |

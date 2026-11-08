@@ -14,7 +14,7 @@ You promote accepted behavior into the shared regression suite so it stays curre
 4. Scrub tokens and personal data from fixtures.
 5. Register the spec: `sentinel spec set <slug> --status implemented --tests <file>,<file>` (file names under `regression/`). Never edit `specs/index.md` or `specs/index.json` by hand; the command keeps both in sync. Add `--pr <url>` once a PR exists.
 6. Run the promoted files once from the shared location to prove they pass there.
-7. Do not push. The sync step handles pushing a branch for review.
+7. Do not push. The sync step handles publishing to the shared repo.
 
 ## Report
 

@@ -1,112 +1,116 @@
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent.parent / "docs" / "images"
-FONT = "font-family=\"-apple-system,Segoe UI,Helvetica,Arial,sans-serif\""
+FONT = 'font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif"'
 
 
 def esc(t):
     return t.replace("&", "&amp;").replace("<", "&lt;")
 
 
-def text(x, y, s, size=14, fill="#1f2937", weight="400", anchor="middle"):
-    return f'<text x="{x}" y="{y}" {FONT} font-size="{size}" font-weight="{weight}" fill="{fill}" text-anchor="{anchor}">{esc(s)}</text>'
+def text(x, y, s, size=14, fill="#e2e8f0", weight="400", anchor="middle", extra=""):
+    return f'<text x="{x}" y="{y}" {FONT} font-size="{size}" font-weight="{weight}" fill="{fill}" text-anchor="{anchor}" {extra}>{esc(s)}</text>'
 
 
-def box(x, y, w, h, fill, stroke, r=10, sw=1.5):
-    return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{sw}"/>'
+def rect(x, y, w, h, fill, stroke="none", r=12, sw=0, extra=""):
+    return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{sw}" {extra}/>'
 
 
-def arrow(x1, y1, x2, y2, color="#475569"):
-    return f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="2" marker-end="url(#a)"/>'
-
-
-DEFS = '<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>'
+BG = '<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#1e1b4b"/></linearGradient>'
+ARROW = '<marker id="ar" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M0,0 L12,6 L0,12 z" fill="#94a3b8"/></marker>'
 
 
 def overview():
-    w, h = 1000, 560
-    s = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" aria-label="Sentinel gives a team one agent workflow and one shared repo">', DEFS,
-         f'<rect width="{w}" height="{h}" rx="16" fill="#ffffff" stroke="#d1d5db"/>']
-    s.append(text(500, 40, "The problem Sentinel solves", 22, weight="700"))
-    s.append(text(500, 64, "AI agents help one person. A team needs one workflow and one shared memory.", 14, "#475569"))
+    w, h = 1000, 520
+    s = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" aria-label="Sentinel: one workflow and one shared repo for every AI tool">',
+         "<defs>", BG, ARROW,
+         '<linearGradient id="shield" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset="1" stop-color="#6366f1"/></linearGradient>',
+         '<linearGradient id="repo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#059669"/></linearGradient>',
+         "</defs>", rect(0, 0, w, h, "url(#bg)", r=20)]
+    s.append(text(500, 62, "One workflow. One shared memory.", 34, "#ffffff", "800"))
+    s.append(text(500, 94, "Every teammate, every AI tool, the same rigor.", 17, "#a5b4fc"))
 
-    s.append(box(30, 90, 440, 200, "#fef2f2", "#fca5a5"))
-    s.append(text(250, 118, "Without Sentinel", 16, "#991b1b", "700"))
-    items = ["Everyone writes their own agent prompts", "Different tools, different rigor per person", "Specs and tests stay on one laptop", "Regression suite goes stale", "Logs and caches pile up, secrets leak"]
-    for i, t in enumerate(items):
-        s.append(text(56, 150 + i * 28, "x  " + t, 14, "#7f1d1d", anchor="start"))
+    tools = [("Claude Code", "#fb923c"), ("Antigravity", "#38bdf8"), ("Codex", "#a78bfa"), ("Cursor", "#f472b6")]
+    for i, (name, color) in enumerate(tools):
+        y = 150 + i * 62
+        s.append(rect(50, y, 200, 48, "#1e293b", color, 24, 2))
+        s.append(f'<circle cx="78" cy="{y + 24}" r="10" fill="{color}"/>')
+        s.append(text(100, y + 30, name, 17, "#ffffff", "600", "start"))
+        s.append(f'<line x1="250" y1="{y + 24}" x2="384" y2="{205 + i * 26}" stroke="#64748b" stroke-width="2" marker-end="url(#ar)"/>')
 
-    s.append(box(530, 90, 440, 200, "#f0fdf4", "#86efac"))
-    s.append(text(750, 118, "With Sentinel", 16, "#166534", "700"))
-    items = ["One tiered workflow, sized to the task", "Same stages in Claude Code, Antigravity, Codex, Cursor", "Every stage runs in a clean context", "Specs and regression tests shared by the whole team", "Logs stay local; secrets scrubbed before sharing"]
-    for i, t in enumerate(items):
-        s.append(text(556, 150 + i * 28, "+  " + t, 14, "#14532d", anchor="start"))
+    s.append('<path d="M500 140 L612 176 L612 290 Q612 360 500 410 Q388 360 388 290 L388 176 Z" fill="url(#shield)" stroke="#c7d2fe" stroke-width="3"/>')
+    s.append(text(500, 250, "SENTINEL", 28, "#ffffff", "800"))
+    s.append(text(500, 280, "tiered agent workflow", 14, "#e0e7ff"))
+    for i, t in enumerate(["triage", "build", "review", "test", "ship"]):
+        s.append(text(500, 318 + i * 17, t, 13, "#c7d2fe"))
 
-    s.append(arrow(480, 190, 520, 190))
+    s.append('<line x1="614" y1="270" x2="738" y2="270" stroke="#94a3b8" stroke-width="3" marker-end="url(#ar)"/>')
+    s.append('<line x1="738" y1="318" x2="614" y2="318" stroke="#94a3b8" stroke-width="3" marker-end="url(#ar)"/>')
+    s.append(text(676, 258, "push", 14, "#cbd5e1", "600"))
+    s.append(text(676, 345, "pull", 14, "#cbd5e1", "600"))
 
-    s.append(text(500, 330, "How a team works together", 18, weight="700"))
-    people = [("Dev A", "Claude Code", 110), ("Dev B", "Antigravity", 290), ("Dev C", "Codex", 470), ("Dev D", "Cursor", 650)]
-    for name, tool, x in people:
-        s.append(box(x - 70 + 40, 350, 140, 56, "#eff6ff", "#93c5fd"))
-        s.append(text(x + 40, 374, name, 14, "#1e3a8a", "700"))
-        s.append(text(x + 40, 394, tool, 12, "#475569"))
-    s.append(box(150, 440, 420, 56, "#fff7ed", "#fdba74"))
-    s.append(text(360, 463, "/sentinel  tiered workflow", 15, "#9a3412", "700"))
-    s.append(text(360, 483, "triage, spec, code, review, QA, release check", 12, "#475569"))
-    for name, tool, x in people:
-        s.append(arrow(x + 40, 406, 360 + (x + 40 - 360) * 0.35, 438))
+    s.append('<path d="M760 190 L760 380 A95 24 0 0 0 950 380 L950 190 Z" fill="url(#repo)"/>')
+    s.append('<ellipse cx="855" cy="190" rx="95" ry="24" fill="#6ee7b7"/>')
+    s.append(text(855, 252, "SHARED REPO", 18, "#ffffff", "800"))
+    for i, t in enumerate(["specs", "rules (invariants)", "regression tests"]):
+        s.append(text(855, 292 + i * 26, t, 15, "#ecfdf5"))
 
-    s.append(box(720, 420, 250, 110, "#f5f3ff", "#c4b5fd", sw=2))
-    s.append(text(845, 446, "Shared repo (private git)", 14, "#5b21b6", "700"))
-    for i, t in enumerate(["specs + index", "invariants", "regression suite"]):
-        s.append(text(845, 470 + i * 20, t, 13, "#475569"))
-    s.append(arrow(572, 455, 716, 455))
-    s.append(text(644, 445, "push branch", 11, "#475569"))
-    s.append(arrow(716, 485, 572, 485))
-    s.append(text(644, 505, "pull latest", 11, "#475569"))
+    pills = [("1", "Same stages for everyone"), ("2", "Tests and specs shared"), ("3", "Logs stay on your machine")]
+    for i, (n, t) in enumerate(pills):
+        x = 70 + i * 300
+        s.append(rect(x, 448, 270, 44, "#1e293b", "#475569", 22, 1.5))
+        s.append(f'<circle cx="{x + 24}" cy="470" r="13" fill="#6366f1"/>')
+        s.append(text(x + 24, 475, n, 14, "#ffffff", "700"))
+        s.append(text(x + 46, 475, t, 15, "#e2e8f0", "500", "start"))
     s.append("</svg>")
     (OUT / "overview.svg").write_text("\n".join(s))
 
 
-COLS = ["Repro", "Spec", "Re-triage", "Code", "Clean", "Harden", "Review", "QA", "Promote", "Release check", "Docs", "Rollout", "Retro", "Sync push"]
+PHASE = {"plan": "#a78bfa", "build": "#38bdf8", "verify": "#fbbf24", "ship": "#34d399", "learn": "#f472b6"}
+COLS = [("Repro", "plan"), ("Spec", "plan"), ("Triage", "plan"), ("Code", "build"), ("Clean", "build"), ("Harden", "build"),
+        ("Review", "verify"), ("QA", "verify"), ("Promote", "ship"), ("Check", "ship"), ("Docs", "ship"), ("Rollout", "ship"), ("Sync", "ship"), ("Retro", "learn")]
 TIERS = [
-    ("Tier 1", "typo, copy, one-line fix", {"Code"}),
-    ("Tier 2", "small change or bug fix", {"Repro", "Code", "Release check"}),
-    ("Tier 3", "normal feature", {"Spec", "Re-triage", "Code", "Clean", "Review", "QA", "Promote", "Release check", "Docs", "Sync push"}),
-    ("Tier 4", "risky: auth, schema, security", set(COLS)),
+    ("1", "Tiny", "typo, copy", {"Code"}),
+    ("2", "Small", "bug fix", {"Repro", "Code", "Check"}),
+    ("3", "Normal", "feature", {"Spec", "Triage", "Code", "Clean", "Review", "QA", "Promote", "Check", "Docs", "Sync"}),
+    ("4", "Risky", "auth, schema", {c for c, _ in COLS}),
 ]
-NOTES = {("Tier 2", "Repro"): "bugs", ("Tier 3", "QA"): "targeted", ("Tier 4", "QA"): "full"}
-SHARED = {"Spec", "Promote", "Sync push"}
 
 
 def workflow():
-    left, cw, top = 200, 55, 150
-    w, h = left + cw * len(COLS) + 30, 480
-    s = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" aria-label="Sentinel stages by tier">', DEFS,
-         f'<rect width="{w}" height="{h}" rx="16" fill="#ffffff" stroke="#d1d5db"/>']
-    s.append(text(w / 2, 38, "The workflow: stages grow with the size and risk of the task", 20, weight="700"))
-    s.append(text(w / 2, 60, "Size and risk pick the tier. A reviewer blocker raises the tier automatically.", 13, "#475569"))
-    for i, c in enumerate(COLS):
-        x = left + i * cw + cw / 2
-        s.append(f'<text transform="translate({x},{top - 8}) rotate(-45)" {FONT} font-size="12" font-weight="600" fill="#1f2937">{esc(c)}</text>')
-    for r, (tier, desc, stages) in enumerate(TIERS):
-        y = top + r * 62
-        s.append(text(24, y + 26, tier, 15, weight="700", anchor="start"))
-        s.append(text(24, y + 44, desc, 11, "#475569", anchor="start"))
-        for i, c in enumerate(COLS):
-            x = left + i * cw + 4
+    left, cw, gap, top = 170, 62, 8, 150
+    w = left + (cw + gap) * len(COLS) + 20
+    h = 470
+    s = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" aria-label="Bigger and riskier tasks run more stages">',
+         "<defs>", BG, "</defs>", rect(0, 0, w, h, "url(#bg)", r=20)]
+    s.append(text(w / 2, 52, "The bigger the risk, the longer the chain", 30, "#ffffff", "800"))
+    s.append(text(w / 2, 82, "Sentinel picks the tier from the size and risk of your task. A reviewer blocker raises it.", 15, "#a5b4fc"))
+    lx = 170
+    for name, color in (("Plan", PHASE["plan"]), ("Build", PHASE["build"]), ("Verify", PHASE["verify"]), ("Ship", PHASE["ship"]), ("Learn", PHASE["learn"])):
+        s.append(f'<circle cx="{lx}" cy="116" r="7" fill="{color}"/>')
+        s.append(text(lx + 14, 121, name, 14, "#e2e8f0", "600", "start"))
+        lx += 110
+    s.append(text(w - 20, 121, "Sync = push to the shared repo", 13, "#94a3b8", anchor="end"))
+
+    names = [c for c, _ in COLS]
+    for r, (num, label, desc, stages) in enumerate(TIERS):
+        y = top + r * 66
+        s.append(rect(18, y, w - 36, 54, "#111827", "#334155", 14, 1))
+        s.append(f'<circle cx="46" cy="{y + 27}" r="16" fill="#6366f1"/>')
+        s.append(text(46, y + 33, num, 17, "#ffffff", "800"))
+        s.append(text(74, y + 24, label, 18, "#ffffff", "700", "start"))
+        s.append(text(74, y + 42, desc, 12, "#94a3b8", anchor="start"))
+        included = [i for i, c in enumerate(names) if c in stages]
+        for a, b in zip(included, included[1:]):
+            x1 = left + a * (cw + gap) + cw
+            x2 = left + b * (cw + gap)
+            s.append(f'<line x1="{x1}" y1="{y + 27}" x2="{x2}" y2="{y + 27}" stroke="#64748b" stroke-width="2"/>')
+        for i, (c, ph) in enumerate(COLS):
             if c in stages:
-                fill, stroke = ("#ede9fe", "#7c3aed") if c in SHARED else ("#dbeafe", "#2563eb")
-                s.append(box(x, y + 8, cw - 8, 40, fill, stroke, 8))
-                s.append(text(x + (cw - 8) / 2, y + 33, NOTES.get((tier, c), "\u2713"), 11, "#1f2937"))
-            else:
-                s.append(box(x, y + 8, cw - 8, 40, "#f9fafb", "#e5e7eb", 8, 1))
-    ly = top + 4 * 62 + 14
-    s.append(box(left, ly, 18, 14, "#dbeafe", "#2563eb", 4))
-    s.append(text(left + 26, ly + 12, "runs in your repos, each stage in a clean context", 12, "#475569", anchor="start"))
-    s.append(box(left + 380, ly, 18, 14, "#ede9fe", "#7c3aed", 4))
-    s.append(text(left + 406, ly + 12, "reads or writes the shared repo", 12, "#475569", anchor="start"))
-    s.append(text(24, ly + 40, "Every stage is also its own skill, for example /sentinel-review or /sentinel-release-check.", 12, "#475569", anchor="start"))
+                x = left + i * (cw + gap)
+                s.append(rect(x, y + 11, cw, 32, PHASE[ph], r=16))
+                s.append(text(x + cw / 2, y + 32, c, 13, "#0f172a", "800"))
+    s.append(text(w / 2, h - 28, "Every stage is also its own command, for example /sentinel-review.", 14, "#cbd5e1", "500"))
     s.append("</svg>")
     (OUT / "workflow.svg").write_text("\n".join(s))
 
