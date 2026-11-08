@@ -8,7 +8,9 @@ This is what happens, in order, when you ask your agent to run Sentinel on a tas
 2. **Create the team's shared repo**: an empty private git repository. It holds the project's invariants, specs and regression suite, so every teammate sees the same ones.
 3. **`sentinel init`** in your workspace. It asks for the shared repo URL (required), the project shape and each repo's stack, then writes `sentinel.config.yaml`, clones the shared repo into `.sentinel/shared/`, and fills an empty one with starter files (committed locally; you publish them once).
 4. **`sentinel doctor`** checks the config, the tools it needs, and that the shared repo is cloned.
-5. **`sentinel sync-adapters --tool <your tool>`** generates the agents and skills for your AI tool.
+5. **`npx skills@latest add chhunlyyy/sentinel -a <agent>`** installs the Sentinel skills (`/sentinel` and the others) into your AI tool.
+
+Stages run inside whatever tool you work in. For each stage the orchestrator runs `sentinel stage render --stage <name>`, which prints that stage's full instructions for this project (your rules, the repo's commands, the team's guidelines, the paths to read and write). If your tool can start subagents, the orchestrator starts one with those instructions so the stage works in a clean context; if not, it plays the role itself, one stage at a time, and re-reads its inputs from files. Either way the orchestrator checks the result itself before moving on.
 
 ## Every run
 

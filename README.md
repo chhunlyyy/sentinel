@@ -23,7 +23,7 @@ Tier 4  Specifier > Re-triage > Coder > Cleaner > Hardener > Reviewer > Full QA 
 
 The tier depends only on the size and risk of the task (repos touched, files changed, schema change, auth change, security surface). Any single high-risk factor raises the whole run. A reviewer blocker in tier 2 or 3 raises the tier automatically.
 
-For what each step does, who runs it, what it writes and when it stops, read [the workflow guide](docs/workflow.md). The stage-by-stage contract is in [sentinel/core/pipeline.md](sentinel/core/pipeline.md).
+For what each step does, who runs it, what it writes and when it stops, read [the workflow guide](docs/workflow.md). The stage-by-stage contract is in [skills/sentinel/pipeline.md](skills/sentinel/pipeline.md).
 
 ## Project shapes
 
@@ -41,45 +41,55 @@ Each repo has its own stack profile (`flutter`, `spring-gradle`, `nextjs`, `node
 ## Requirements
 
 - Python 3.10 or newer and [uv](https://docs.astral.sh/uv/) (or pipx). `uv` can fetch a suitable Python for you.
+- Node (for `npx`), only to install the skills.
 - git
-- At least one AI agent CLI, if you want stages to run unattended
-- `mysql` and `mysqldump`, only if you use the MySQL QA data plugin
-- Node, only if your stack or QA driver needs it
+- An AI coding tool: Claude Code, Antigravity, Codex, Cursor, OpenCode, Devin, Windsurf, Amp, Pi, or any other tool the [skills installer](https://github.com/vercel-labs/skills) supports.
+- `mysql` and `mysqldump`, only if you use the MySQL QA data plugin.
 
 ## Install
 
+Two parts, each installed once. The engine is the `sentinel` command; the skills are what your AI tool shows as `/sentinel`.
+
 ```bash
+# 1. the engine
 uv tool install git+https://github.com/chhunlyyy/sentinel
-sentinel --version
+
+# 2. the skills, for your AI tool (leave -a off to choose from a list)
+npx skills@latest add chhunlyyy/sentinel -a claude-code
 ```
 
-No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same way, or use `pip install` inside a virtual environment. Upgrade with `uv tool upgrade sentinel` (or `pipx upgrade sentinel`). To pin a release, add `@<tag>` to the URL. After an upgrade, run `sentinel sync-adapters` again in each project so the generated agents and skills match the new version.
+Agent names for `-a` include `claude-code`, `antigravity-cli`, `codex`, `cursor`, `opencode`, `devin`, `windsurf`, `amp` and `pi`. Skills run with your agent's full permissions, so read what you install; Sentinel's are plain markdown in [skills/](skills/).
 
-## Quickstart
+The [installation guide](docs/installation.md) covers prerequisites, where each tool's skills end up, verifying the install, rolling it out to a team, upgrading, uninstalling and troubleshooting.
 
-See [docs/quickstart.md](docs/quickstart.md). In short:
+## Use it
 
-```bash
-cd my-workspace
-sentinel init
-sentinel doctor
-sentinel sync-adapters --tool claude
-```
+Type the command in your tool, or just ask for it in words (tools that do not have slash commands for skills load the skill from its description):
 
-`sentinel init` asks for the URL of your team's private shared repo and will not continue without one: that is where your team's rules, specs and regression suite live. Then ask your agent to run Sentinel on a task.
+| Command | What it does |
+|---|---|
+| `/sentinel <task>` | Runs a feature or bug fix through the pipeline at the right tier |
+| `/sentinel-setup` | Connects the team's shared repo, picks the project shape, writes the config |
+| `/sentinel-resume` | Continues a run that a usage limit or a closed session interrupted |
+| `/sentinel-status` | Shows setup health, open runs and cost statistics |
+| `/sentinel-sync` | Publishes a finished run's specs and regression tests to the shared repo, after approval |
+| `/sentinel-change-map` | Builds the HTML map of everything a run changed |
+
+First time in a project, start with `/sentinel-setup` (or run `sentinel init` yourself). It asks for the URL of your team's private shared repo and will not continue without one: that is where your team's rules, specs and regression suite live. Details are in [docs/quickstart.md](docs/quickstart.md).
 
 ## Documentation
 
+- [Installation](docs/installation.md)
 - [Quickstart](docs/quickstart.md)
 - [Workflow, step by step](docs/workflow.md)
 - [Configuration reference](docs/config.md)
 - [Security notes](docs/security.md)
 - [Beta testing guide](docs/beta-testing.md)
-- [Pipeline contract](sentinel/core/pipeline.md)
+- [Pipeline contract](skills/sentinel/pipeline.md)
 
 ## Status
 
-Internal beta, version 0.1.0b0. It has run end to end on one project (Tier 2 bug fix on a Spring Boot and Next.js workspace) and passes its own self-test (`sentinel selftest`, dozens of checks on a throwaway workspace). The specifier, reviewer, hardener, QA, promotion, docs, rollout and retrospective stages have not run for real yet, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
+Internal beta, version 0.1.0b1. It has run end to end on one project (Tier 2 bug fix on a Spring Boot and Next.js workspace) and passes its own self-test (`sentinel selftest`, dozens of checks on a throwaway workspace). The specifier, reviewer, hardener, QA, promotion, docs, rollout and retrospective stages have not run for real yet, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
 
 ## License
 

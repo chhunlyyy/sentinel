@@ -16,29 +16,6 @@ qa:
   db_clone: none
   fixtures: sanitized
 
-routing:
-  specifier: { runner: claude }
-  coder: { runner: claude }
-  cleaner: { runner: claude, model: haiku }
-  hardener: { runner: claude, model: sonnet }
-  reviewer: { runner: claude }
-  qa: { runner: claude, model: sonnet }
-
-runners:
-  claude: { command: claude, prompt_flag: -p, add_dir_flag: --add-dir, supports_subagents: true }
-  codex: { command: "codex exec" }
-  gemini: { command: gemini, prompt_flag: -p }
-  agy:
-    command: agy
-    prompt_flag: -p
-    model_flag: --model
-    resume_flag: --conversation
-    add_dir_flag: --add-dir
-    output: json_response
-    args: [--output-format, json]
-    unsafe_skip_permissions: false
-    unsafe_args: [--dangerously-skip-permissions]
-
 rules:
   no_code_comments: false
   no_em_dashes: false

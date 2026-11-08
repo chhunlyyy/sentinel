@@ -34,5 +34,8 @@ pattern = "(?P<version>\\S+)"
 [tool.hatch.build.targets.wheel]
 packages = ["sentinel"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills" = "sentinel/skills"
+
 [tool.hatch.build.targets.sdist]
-include = ["sentinel", "docs", "README.md", "LICENSE", "pyproject.toml"]
+include = ["sentinel", "skills", "docs", "README.md", "LICENSE", "pyproject.toml"]

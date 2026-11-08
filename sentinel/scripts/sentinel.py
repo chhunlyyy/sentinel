@@ -175,7 +175,8 @@ def cmd_init(args):
     update_gitignore(workspace, config["state"]["dir"])
     print(f"wrote {target}")
     connected = connect_shared(target, config)
-    print("next: `sentinel doctor`, then `sentinel sync-adapters --tool claude` (or your tool)" if connected else "next: fix access to the shared repo, `sentinel sync pull`, then `sentinel doctor`")
+    print("next: `sentinel doctor`" if connected else "next: fix access to the shared repo, `sentinel sync pull`, then `sentinel doctor`")
+    print("then install the Sentinel skills into your AI tool: npx skills@latest add chhunlyyy/sentinel -a <agent>   (claude-code, antigravity-cli, codex, cursor, opencode, devin, windsurf, amp, pi, ...; leave -a off to choose)")
 
 
 def load_profile_driver(name):
@@ -221,7 +222,8 @@ def cmd_doctor(args):
             if command and not shutil.which(command.split()[0]) and not command.startswith("./") and not command.startswith("npm") and not command.startswith("npx"):
                 problems.append(f"{repo['id']}: {key} command not found: {command.split()[0]}")
     for stage, route in (config.get("routing") or {}).items():
-        runner = (config.get("runners") or {}).get(route["runner"])
+        from run_stage import all_runners
+        runner = all_runners(config).get(route["runner"])
         if not runner:
             problems.append(f"routing {stage}: runner not defined: {route['runner']}")
         elif not shutil.which(runner["command"].split()[0]):
@@ -249,16 +251,12 @@ def cmd_sync_adapters(args):
         [sys.executable, str(ROOT / "adapters/claude/sync.py"), "--config", str(config_path), "--out", str(out), "--workspace", str(workspace)],
         check=True,
     )
-    skill_out = workspace / ".claude" / "skills" / "sentinel"
-    skill_out.mkdir(parents=True, exist_ok=True)
-    skill_text = (ROOT / "core" / "skill" / "SKILL.md").read_text()
-    (skill_out / "SKILL.md").write_text(skill_text)
-    (skill_out / "pipeline.md").write_text((ROOT / "core" / "pipeline.md").read_text())
-    map_out = workspace / ".claude" / "skills" / "sentinel-change-map"
-    map_out.mkdir(parents=True, exist_ok=True)
-    map_text = (ROOT / "core" / "skill" / "change-map" / "SKILL.md").read_text()
-    (map_out / "SKILL.md").write_text(map_text)
-    print(f"agents written to {out}; skills written to {skill_out} and {map_out}")
+    from paths import skills_dir
+    installed = []
+    for skill in sorted(p for p in skills_dir().iterdir() if (p / "SKILL.md").exists()):
+        shutil.copytree(skill, workspace / ".claude" / "skills" / skill.name, dirs_exist_ok=True)
+        installed.append(skill.name)
+    print(f"agents written to {out}; skills written to .claude/skills: {', '.join(installed)}")
 
 
 def state_dir_of(config_path, config):

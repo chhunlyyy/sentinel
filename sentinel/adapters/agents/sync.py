@@ -7,6 +7,9 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "scripts"))
+from paths import skills_dir  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 RENDER = ROOT / "scripts" / "render_stage.py"
 BEGIN = "<!-- sentinel:begin -->"
@@ -81,10 +84,11 @@ def main():
         else:
             (prompts / f"{stage}.md").write_text(render(config_path, stage, None, workspace))
 
-    orchestrator = (ROOT / "core" / "skill" / "SKILL.md").read_text().split("---\n", 2)[2]
-    change_map = (ROOT / "core" / "skill" / "change-map" / "SKILL.md").read_text().split("---\n", 2)[2]
+    skills = skills_dir()
+    orchestrator = (skills / "sentinel" / "SKILL.md").read_text().split("---\n", 2)[2]
+    change_map = (skills / "sentinel-change-map" / "SKILL.md").read_text().split("---\n", 2)[2]
     (generated / "orchestrator.md").write_text(orchestrator)
-    (generated / "pipeline.md").write_text((ROOT / "core" / "pipeline.md").read_text())
+    (generated / "pipeline.md").write_text((skills / "sentinel" / "pipeline.md").read_text())
     (generated / "change-map.md").write_text(change_map)
 
     rules = "\n".join(RULE_TEXT[k] for k, v in (config.get("rules") or {}).items() if v and k in RULE_TEXT) or "- none enabled"

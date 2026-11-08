@@ -113,6 +113,40 @@ def main():
         check("run new works once the shared repo is cloned", code == 0, out[-200:])
         run(CLI + ["--dir", str(uws), "run", "finish", "unblocked"])
 
+        print("skills")
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from paths import skills_dir
+        skill_folders = sorted(p for p in skills_dir().iterdir() if p.is_dir())
+        names = [p.name for p in skill_folders]
+        check("the expected skills exist", {"sentinel", "sentinel-setup", "sentinel-resume", "sentinel-status", "sentinel-sync", "sentinel-change-map"} <= set(names), ", ".join(names))
+        frontmatter_bad, path_bad, tool_bad, command_bad = [], [], [], []
+        seen = set()
+        for folder in skill_folders:
+            text = (folder / "SKILL.md").read_text()
+            m = re.match(r"---\nname: (\S+)\ndescription: (.+)\n---\n", text)
+            if not m or m.group(1) != folder.name or ": " in m.group(2):
+                frontmatter_bad.append(folder.name)
+            if "/home/" in text or "Desktop/" in text or "{{" in text:
+                path_bad.append(folder.name)
+            if any(word in text for word in ("AskUserQuestion", "SendMessage", "subagent_type", "Agent tool", "headroom")):
+                tool_bad.append(folder.name)
+            for first, second in re.findall(r"`sentinel ([a-z][a-z-]*)(?: ([a-z][a-z-]*))?", text):
+                key = (first, second if first in ("run", "sync", "spec", "metrics", "shared", "stage", "change-map") else "")
+                if key in seen:
+                    continue
+                seen.add(key)
+                args = [key[0]] + ([key[1]] if key[1] else []) + ["--help"]
+                code, out = run(CLI + ["--dir", str(ws)] + args)
+                if code != 0:
+                    command_bad.append(" ".join(args))
+        check("every skill has valid frontmatter (name matches the folder, description present)", not frontmatter_bad, ", ".join(frontmatter_bad))
+        check("no skill contains a machine path or an unrendered placeholder", not path_bad, ", ".join(path_bad))
+        check("no skill depends on one tool's private mechanics", not tool_bad, ", ".join(tool_bad))
+        check("every sentinel command a skill mentions exists", not command_bad, "; ".join(command_bad))
+        check("the pipeline contract ships with the main skill", (skills_dir() / "sentinel" / "pipeline.md").exists())
+        code, out = run(CLI + ["--dir", str(ws), "doctor"])
+        check("a config without routing or runners passes doctor", "runner" not in out or code == 0, out[-200:])
+
         print("prompts and adapters")
         shapes = {"single": 1, "fullstack": 2, "fullstack-mobile": 3}
         for shape, count in shapes.items():
@@ -189,7 +223,7 @@ def main():
         committer.write_text("#!/usr/bin/env bash\ngit commit -q --allow-empty -m sneaky\necho committed\n")
         for f in (fake, stray, committer):
             f.chmod(0o755)
-        write_config(ws, lambda c: c["runners"].update({"fake": {"command": str(fake)}, "stray": {"command": str(stray)}, "commit": {"command": str(committer)}}))
+        write_config(ws, lambda c: c.setdefault("runners", {}).update({"fake": {"command": str(fake)}, "stray": {"command": str(stray)}, "commit": {"command": str(committer)}}))
         stage_cmd = CLI + ["--dir", str(ws), "stage", "run", "--slug", "demo", "--stage", "coder", "--repo", "backend"]
         code, out = run(stage_cmd + ["--runner", "fake"])
         check("a well-behaved stage passes", code == 0 and (ws / "backend/ok.txt").exists(), out[-200:])

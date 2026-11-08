@@ -133,7 +133,9 @@ extra_checks:
 - `added_lines`: fails when an added line (in files matching `path_regex`, not matching `exclude_path_regex`) matches `pattern` and none of the `exclude_line_regex` patterns.
 - `changed_paths`: fails for each changed file matching `path_regex` that has the given `status` (`any`, `modified`, or `added`) and, if `must_match` is set, does not match it.
 
-## routing and runners
+## routing and runners (optional, advanced)
+
+You do not need these. By default the AI tool you work in runs every stage itself, as subagents where it has them or one after another where it does not. Add `routing` only to send a stage to a different tool, for example the cleaner to a cheaper model. The built-in runners `claude`, `codex`, `gemini` and `agy` are available without a `runners` section; define `runners` only to change them or add your own. The default config written by `sentinel init` has neither section.
 
 ```yaml
 routing:

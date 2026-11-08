@@ -2,12 +2,15 @@
 
 ## 1. Install
 
+Two parts, once per machine: the engine (the `sentinel` command) and the skills (what your AI tool shows as `/sentinel`).
+
 ```bash
 uv tool install git+https://github.com/chhunlyyy/sentinel
-sentinel --version
 ```
 
-No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same way, or use `pip install` inside a virtual environment. Upgrade with `uv tool upgrade sentinel` (or `pipx upgrade sentinel`). To pin a release, add `@<tag>` to the URL. After an upgrade, run `sentinel sync-adapters` again in each project so the generated agents and skills match the new version.
+No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same way. Upgrade with `uv tool upgrade sentinel`.
+
+The skills are installed in step 5, after the project is set up. The [installation guide](installation.md) has prerequisites, per-tool details and troubleshooting.
 
 ## 2. Create the team's shared repo (required, once per team)
 
@@ -51,23 +54,25 @@ sentinel sync pull
 
 `doctor` validates the config and reports missing tools, repo paths, runner CLIs, and a missing or not-yet-cloned shared repo; it fails until the shared repo is connected, and `sentinel run new` refuses to start a run in that state. `sync pull` fetches the latest version of the shared repo into `.sentinel/shared/`.
 
-## 5. Generate files for your AI tool
+## 5. Install the skills into your AI tool
 
 ```bash
-sentinel sync-adapters --tool claude
-sentinel sync-adapters --tool gemini
-sentinel sync-adapters --tool codex
-sentinel sync-adapters --tool cursor
+npx skills@latest add chhunlyyy/sentinel -a claude-code
 ```
 
-- `claude` writes agent files into `.claude/agents/` and the skills into `.claude/skills/`.
-- `agents`, `codex`, `gemini`, and `cursor` write a managed Sentinel block into `AGENTS.md` (your own text outside the block is kept), plus `GEMINI.md` or `.cursor/rules/sentinel.mdc`, and put the rendered prompts in `.sentinel/generated/`.
+Use the agent name of your tool: `claude-code`, `antigravity-cli`, `codex`, `cursor`, `opencode`, `devin`, `windsurf`, `amp`, `pi`, and more. Repeat `-a` for several tools, or leave `-a` off to pick from a list. The skills go into the project (`.agents/skills/`, linked into `.claude/skills/` and the like), so commit them and your teammates get them with the repo. Add `-g` to install only for yourself.
 
-Each teammate runs this once after cloning. The generated agents, skills and the `AGENTS.md` block call the `sentinel` command and contain no machine paths, so teammates only need `sentinel` installed. Re-run `sync-adapters` after upgrading Sentinel.
+You get `/sentinel`, `/sentinel-setup`, `/sentinel-resume`, `/sentinel-status`, `/sentinel-sync` and `/sentinel-change-map`. Nothing project-specific is generated: when a stage runs, the skill asks `sentinel stage render` for that stage's instructions, built from your config, rules and guidelines. Update later with `npx skills@latest update`.
+
+The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add `@<tag>` after the repo name.
+
+### Legacy: generated agent files
+
+`sentinel sync-adapters --tool claude|agents|codex|gemini|cursor` still writes per-project agent files (named stage agents under `.claude/agents/`, or a Sentinel block in `AGENTS.md`). Use it only if you want fixed named agents; the skills above do not need it.
 
 ## 6. Run a task
 
-Ask your agent: "Run Sentinel on: add an export button to the report page". The agent follows the orchestrator skill:
+Ask your agent: `/sentinel add an export button to the report page`. The agent follows the `sentinel` skill:
 
 1. Picks the tier and prints one line with the reason.
 2. For tier 3 and 4, interviews you about decisions and records them in `.sentinel/runs/<slug>/decisions.md`.

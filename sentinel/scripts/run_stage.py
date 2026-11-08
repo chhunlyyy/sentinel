@@ -30,10 +30,22 @@ def stage_group(stage):
     return {"cleaner": "cleaner", "hardener": "hardener", "coder": "coder", "repro": "coder"}.get(stage, stage)
 
 
+DEFAULT_RUNNERS = {
+    "claude": {"command": "claude", "prompt_flag": "-p", "add_dir_flag": "--add-dir"},
+    "codex": {"command": "codex exec"},
+    "gemini": {"command": "gemini", "prompt_flag": "-p"},
+    "agy": {"command": "agy", "prompt_flag": "-p", "model_flag": "--model", "resume_flag": "--conversation", "add_dir_flag": "--add-dir", "output": "json_response", "args": ["--output-format", "json"], "unsafe_args": ["--dangerously-skip-permissions"]},
+}
+
+
+def all_runners(config):
+    return {**DEFAULT_RUNNERS, **(config.get("runners") or {})}
+
+
 def pick_runner(config, stage, override):
     route = (config.get("routing") or {}).get(stage_group(stage)) or {}
     runner_id = override or route.get("runner", "claude")
-    runner = (config.get("runners") or {}).get(runner_id)
+    runner = all_runners(config).get(runner_id)
     if not runner:
         sys.exit(f"runner not defined in config: {runner_id}")
     return runner_id, runner, route.get("model")
