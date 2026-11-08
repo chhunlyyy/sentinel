@@ -13,7 +13,7 @@ No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same
 
 Sentinel will not run without it. Create an **empty private** git repository on your own git server (GitHub, Gitea, GitLab, and so on), for example `myteam-sentinel-shared`. Leave the README, `.gitignore` and license options off. It holds the team's project invariants, specs and regression suite, so every teammate and CI sees the same ones. Specs describe your internal systems, so keep it private and give your teammates write access.
 
-You only need its clone URL. Sentinel fills an empty repo with starter files (`README.md`, `invariants.md`, `guidelines/`, `specs/index.*`, and a CI workflow) the first time you connect. For a quick local trial with no server, a bare repo on disk works: `git init --bare ~/sentinel-shared.git`, then use that path as the URL.
+You only need its clone URL. Sentinel fills an empty repo with starter files (`README.md`, `invariants.md`, `guidelines/`, `specs/index.*`) the first time you connect. CI is optional: `sentinel shared ci` writes the workflow into `.sentinel/shared` for you to commit. On GitHub, pushing a workflow file needs a token with the `workflow` scope (classic) or the Workflows permission (fine-grained). For a quick local trial with no server, a bare repo on disk works: `git init --bare ~/sentinel-shared.git`, then use that path as the URL.
 
 ## 3. Initialize your workspace
 

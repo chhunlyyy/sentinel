@@ -116,6 +116,15 @@ def require_shared(config_path, config):
         sys.exit(f"the shared repo ({shared.url}) is not cloned yet. Run `sentinel sync pull` first.")
 
 
+def cmd_shared_ci(args):
+    from shared import Shared
+    config_path, config = load_config(args.dir)
+    require_shared(config_path, config)
+    target = Shared(config_path.parent, config).write_ci()
+    print(f"wrote {target}")
+    print("commit and push it from .sentinel/shared when you want CI. On GitHub, a personal access token needs the `workflow` scope (classic) or the Workflows permission (fine-grained) to push files under .github/workflows.")
+
+
 def cmd_shared_set(args):
     from shared import looks_like_git_url
     import re as _re
@@ -556,6 +565,8 @@ def main():
     shared_set = shared_sub.add_parser("set", help="set the team's shared repo URL and connect to it")
     shared_set.add_argument("url")
     shared_set.set_defaults(func=cmd_shared_set)
+    shared_ci = shared_sub.add_parser("ci", help="write the CI workflow for the shared repo into .sentinel/shared (optional)")
+    shared_ci.set_defaults(func=cmd_shared_ci)
 
     clean = sub.add_parser("clean")
     clean.add_argument("--db", action="store_true", help="also drop the throwaway QA schemas")

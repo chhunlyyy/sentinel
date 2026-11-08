@@ -91,6 +91,12 @@ class Shared:
         head = git(self.dir, "rev-parse", "--short", "HEAD").stdout.strip()
         print(f"shared repo at {self.ref} ({head})")
 
+    def write_ci(self):
+        target = self.dir / ".github" / "workflows" / "sentinel-shared.yml"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text((ROOT / "templates" / "ci" / "shared-repo.github.yml").read_text())
+        return target
+
     def scaffold(self):
         git(self.dir, "checkout", "-B", self.ref)
         files = {
@@ -98,7 +104,6 @@ class Shared:
             "invariants.md": (ROOT / "templates" / "invariants.md").read_text(),
             "guidelines/README.md": GUIDELINES_README,
             ".gitignore": GITIGNORE,
-            ".github/workflows/sentinel-shared.yml": (ROOT / "templates" / "ci" / "shared-repo.github.yml").read_text(),
         }
         for name, content in files.items():
             target = self.dir / name

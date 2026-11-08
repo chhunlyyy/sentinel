@@ -95,6 +95,9 @@ def main():
         committed = run(["git", "log", "--oneline"], cwd=shared_dir)[1].strip() if shared_dir.exists() else ""
         check("an empty shared repo is scaffolded with starter files", code == 0 and (shared_dir / "invariants.md").exists() and (shared_dir / "specs/index.json").exists() and bool(committed), out[-200:])
         check("the scaffold is not pushed without being asked", run(["git", "ls-remote", str(empty)])[1].strip() == "")
+        check("the scaffold contains no workflow file (pushing one needs extra token scope)", not (shared_dir / ".github").exists())
+        code, out = run(CLI + ["--dir", str(ews), "shared", "ci"])
+        check("shared ci writes the optional workflow", code == 0 and (shared_dir / ".github/workflows/sentinel-shared.yml").exists() and "sentinel shared-check" in (shared_dir / ".github/workflows/sentinel-shared.yml").read_text(), out[-160:])
         uws = tmp / "ws-unreachable"
         uws.mkdir()
         git_repo(uws / "app", "package.json")
