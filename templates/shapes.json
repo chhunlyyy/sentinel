@@ -1,0 +1,33 @@
+{
+  "single": {
+    "label": "Single project",
+    "repos": [{ "id": "app", "role": "app" }],
+    "cross_repo": { "sync_checkpoint": false, "parallel_after_sync": [] }
+  },
+  "fullstack": {
+    "label": "Fullstack (backend + frontend)",
+    "repos": [
+      { "id": "backend", "role": "backend" },
+      { "id": "frontend", "role": "frontend" }
+    ],
+    "cross_repo": { "sync_checkpoint": true, "order": ["backend", "frontend"], "parallel_after_sync": [] }
+  },
+  "fullstack-mobile": {
+    "label": "Fullstack + mobile (backend + frontend + mobile)",
+    "repos": [
+      { "id": "backend", "role": "backend" },
+      { "id": "frontend", "role": "frontend" },
+      { "id": "mobile", "role": "mobile" }
+    ],
+    "cross_repo": {
+      "sync_checkpoint": true,
+      "order": ["backend"],
+      "parallel_after_sync": ["frontend", "mobile"]
+    }
+  },
+  "custom": {
+    "label": "Custom (any number of repos and roles)",
+    "repos": [],
+    "cross_repo": { "sync_checkpoint": true, "order": [], "parallel_after_sync": [] }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "id": "spring-gradle",
+  "detect": [
+    "build.gradle",
+    "build.gradle.kts"
+  ],
+  "commands": {
+    "build": "./gradlew build -q",
+    "lint": "",
+    "typecheck": "",
+    "test": "./gradlew test",
+    "mutate": "./gradlew pitest"
+  },
+  "qa_driver": "native",
+  "mutation_note": "PIT via info.solidsoft.pitest.",
+  "lanes": [
+    {
+      "id": "tests",
+      "label": "Tests",
+      "match": [
+        "(^|/)(test|tests|__tests__|e2e|integration_test)/",
+        "\\.(test|spec)\\.[jt]sx?$",
+        "_test\\.(dart|go|py)$",
+        "(^|/)test_[^/]+\\.py$",
+        "Tests?\\.(java|kt)$"
+      ]
+    },
+    {
+      "id": "database",
+      "label": "Migrations",
+      "match": [
+        "/db/migration",
+        "\\.sql$"
+      ]
+    },
+    {
+      "id": "i18n",
+      "label": "Messages",
+      "match": [
+        "(^|/)messages[^/]*\\.properties$"
+      ]
+    },
+    {
+      "id": "api",
+      "label": "Controllers and API DTOs",
+      "match": [
+        "/controller/.*\\.(java|kt)$",
+        "/dto/(request|response)/.*\\.(java|kt)$"
+      ]
+    },
+    {
+      "id": "service",
+      "label": "Services, entities, repositories",
+      "match": [
+        "\\.(java|kt)$"
+      ]
+    },
+    {
+      "id": "config",
+      "label": "Config and other",
+      "match": [
+        ".*"
+      ]
+    }
+  ],
+  "http_server": "spring"
+}

@@ -1,0 +1,40 @@
+{
+  "id": "generic",
+  "detect": [],
+  "commands": {
+    "build": "",
+    "lint": "",
+    "typecheck": "",
+    "test": "",
+    "mutate": ""
+  },
+  "qa_driver": "none",
+  "mutation_note": "User supplies every command at init.",
+  "lanes": [
+    {
+      "id": "tests",
+      "label": "Tests",
+      "match": [
+        "(^|/)(test|tests|__tests__|e2e|integration_test)/",
+        "\\.(test|spec)\\.[jt]sx?$",
+        "_test\\.(dart|go|py)$",
+        "(^|/)test_[^/]+\\.py$",
+        "Tests?\\.(java|kt)$"
+      ]
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "match": [
+        "\\.(java|kt|dart|py|ts|tsx|js|jsx|go|rs|rb|php|swift|c|cc|cpp|cs)$"
+      ]
+    },
+    {
+      "id": "config",
+      "label": "Config and other",
+      "match": [
+        ".*"
+      ]
+    }
+  ]
+}

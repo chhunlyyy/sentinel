@@ -1,0 +1,57 @@
+{
+  "id": "python",
+  "detect": [
+    "pyproject.toml",
+    "requirements.txt"
+  ],
+  "commands": {
+    "build": "",
+    "lint": "ruff check .",
+    "typecheck": "mypy .",
+    "test": "pytest",
+    "mutate": "mutmut run"
+  },
+  "qa_driver": "native",
+  "mutation_note": "mutmut.",
+  "lanes": [
+    {
+      "id": "tests",
+      "label": "Tests",
+      "match": [
+        "(^|/)(test|tests|__tests__|e2e|integration_test)/",
+        "\\.(test|spec)\\.[jt]sx?$",
+        "_test\\.(dart|go|py)$",
+        "(^|/)test_[^/]+\\.py$",
+        "Tests?\\.(java|kt)$"
+      ]
+    },
+    {
+      "id": "api",
+      "label": "Routes and schemas",
+      "match": [
+        "(^|/)(routes|routers|api|views|schemas)/"
+      ]
+    },
+    {
+      "id": "database",
+      "label": "Migrations",
+      "match": [
+        "(^|/)(migrations|alembic)/"
+      ]
+    },
+    {
+      "id": "logic",
+      "label": "Source",
+      "match": [
+        "\\.py$"
+      ]
+    },
+    {
+      "id": "config",
+      "label": "Config and other",
+      "match": [
+        ".*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "id": "nextjs",
+  "detect": [
+    "next.config.js",
+    "next.config.mjs",
+    "next.config.ts"
+  ],
+  "commands": {
+    "build": "npm run build",
+    "lint": "npm run lint",
+    "typecheck": "npx tsc --noEmit",
+    "test": "npm test",
+    "mutate": "npx stryker run"
+  },
+  "qa_driver": "playwright",
+  "mutation_note": "Stryker (@stryker-mutator/core with the Vitest runner plugin) plus Vitest and React Testing Library, scoped to the touched files. Pin Vitest to 3.x: Vitest 5 silently breaks Stryker.",
+  "lanes": [
+    {
+      "id": "tests",
+      "label": "Tests",
+      "match": [
+        "(^|/)(test|tests|__tests__|e2e|integration_test)/",
+        "\\.(test|spec)\\.[jt]sx?$",
+        "_test\\.(dart|go|py)$",
+        "(^|/)test_[^/]+\\.py$",
+        "Tests?\\.(java|kt)$"
+      ]
+    },
+    {
+      "id": "i18n",
+      "label": "Messages",
+      "match": [
+        "^messages/"
+      ]
+    },
+    {
+      "id": "bff",
+      "label": "BFF routes",
+      "match": [
+        "^src/app/api/"
+      ]
+    },
+    {
+      "id": "client",
+      "label": "API client",
+      "match": [
+        "/services/"
+      ]
+    },
+    {
+      "id": "ui",
+      "label": "UI",
+      "match": [
+        "/components/",
+        "^src/app/",
+        "^src/components/"
+      ]
+    },
+    {
+      "id": "logic",
+      "label": "Hooks, validators, types",
+      "match": [
+        "^src/"
+      ]
+    },
+    {
+      "id": "config",
+      "label": "Config and other",
+      "match": [
+        ".*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+qa:
+  driver: playwright
+  ports: [8081, 3001]
+  fixtures: clone
+  db_clone:
+    engine: mysql
+    connection:
+      env_file: ./backend/.env
+      url_var: DB_URL
+      user_var: DB_USERNAME
+      password_var: DB_PASSWORD
+    databases:
+      - { source: legacy_db, target: legacy_db_qa, refresh: if_missing }
+      - { source: app_db, target: app_db_qa, refresh: always }
+    fresh: { target: app_db_fresh, replaces: app_db }
+    storage_dirs: [uploads]
+    boot_args:
+      - "--server.port={port}"
+      - "--spring.datasource.url={jdbc:legacy_db}"
+      - "--app.datasource.url={jdbc:app_db}"
+      - "--app.uploads.storage-dir={storage:uploads}"

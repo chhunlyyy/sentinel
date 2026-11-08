@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change map</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1d2433; --muted: #667085; --line: #d0d5dd;
+    --fe: #2563eb; --be: #059669; --both: #7c3aed; --add: #e6f4ea; --del: #fde8e8;
+    --addInk: #116329; --delInk: #9b1c1c; --focus: #f59e0b; --ghost: #98a2b3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+  header { padding: 16px 20px 12px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0 0 4px; font-size: 20px; }
+  .meta { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .overview { margin: 10px 0 0; max-width: 1100px; white-space: pre-wrap; }
+  .questions { margin: 10px 0 0; padding: 8px 12px; background: #fff7e6; border: 1px solid #f5c26b; border-radius: 8px; max-width: 1100px; }
+  .questions h2 { margin: 0 0 4px; font-size: 14px; }
+  .questions ul { margin: 0; padding-left: 18px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  .toolbar input[type=search] { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; min-width: 220px; font: inherit; }
+  .toolbar label { display: inline-flex; gap: 4px; align-items: center; color: var(--muted); }
+  .flows { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .flows button, .btn { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; font: inherit; cursor: pointer; }
+  .flows button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 460px; height: calc(100vh - 52px); }
+  #board { position: relative; overflow: auto; }
+  #lanes { position: relative; display: flex; gap: 28px; padding: 18px 20px 40px; min-width: max-content; }
+  svg#links { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+  .lane { width: 230px; flex: none; }
+  .lane h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: flex; justify-content: space-between; }
+  .lane .tag { font-weight: 600; }
+  .card { position: relative; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--fe); border-radius: 8px; padding: 7px 9px; margin-bottom: 8px; cursor: pointer; transition: opacity .15s, box-shadow .15s; }
+  .card.r1 { border-left-color: var(--be); }
+  .card.r2 { border-left-color: #7c3aed; }
+  .card.r3 { border-left-color: #dc6803; }
+  .card.ghost { border-style: dashed; border-left-style: solid; border-left-color: var(--ghost); background: #f9fafb; }
+  .card:hover { box-shadow: 0 1px 6px rgba(16,24,40,.12); }
+  .card.sel { outline: 2px solid var(--focus); }
+  .card.dim { opacity: .22; }
+  .card .nm { font-weight: 600; word-break: break-word; }
+  .card .sub { color: var(--muted); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+  .card .gist { font-size: 12px; margin-top: 3px; color: #344054; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card.sel .gist, .card:hover .gist { -webkit-line-clamp: unset; }
+  .badge { font-size: 11px; padding: 0 6px; border-radius: 999px; border: 1px solid currentColor; }
+  .st-added { color: var(--addInk); } .st-deleted { color: var(--delInk); } .st-modified { color: #b54708; }
+  .st-renamed { color: var(--both); } .st-context { color: var(--ghost); }
+  .plus { color: var(--addInk); } .minus { color: var(--delInk); }
+  .step { position: absolute; top: -9px; right: -9px; width: 22px; height: 22px; border-radius: 50%; background: var(--focus); color: #fff; font-weight: 700; font-size: 12px; display: grid; place-items: center; }
+  aside { border-left: 1px solid var(--line); background: var(--card); overflow: auto; padding: 16px 18px 40px; }
+  aside h2 { margin: 0 0 2px; font-size: 17px; word-break: break-word; }
+  aside .path { color: var(--muted); font-size: 12px; word-break: break-all; }
+  aside h4 { margin: 16px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  aside p { margin: 0 0 6px; white-space: pre-wrap; }
+  .conn { display: flex; flex-direction: column; gap: 3px; }
+  .conn a { color: var(--ink); text-decoration: none; cursor: pointer; display: flex; gap: 6px; align-items: baseline; }
+  .conn a:hover .cn { text-decoration: underline; }
+  .conn .k { font-size: 11px; color: var(--muted); min-width: 40px; }
+  .conn .lb { font-size: 11px; color: var(--muted); }
+  .hunk { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
+  .hunk .hh { background: #f2f4f7; color: var(--muted); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 8px; }
+  .hunk pre { margin: 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; }
+  .hunk pre div { padding: 0 8px; white-space: pre; }
+  .ln-add { background: var(--add); } .ln-del { background: var(--del); }
+  .empty { color: var(--muted); }
+  .flowsteps { margin: 0; padding-left: 20px; }
+  .flowsteps li { margin-bottom: 6px; cursor: pointer; }
+  .flowsteps li b { display: block; }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); align-items: center; }
+  .sw { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1>
+  <div class="meta" id="meta"></div>
+  <p class="overview" id="overview"></p>
+  <div class="questions" id="questions" hidden><h2>Open questions</h2><ul></ul></div>
+</header>
+<div class="toolbar">
+  <input type="search" id="search" placeholder="Filter files by name, path or note">
+  <span id="repoFilters"></span>
+  <label><input type="checkbox" id="fTests"> tests</label>
+  <label><input type="checkbox" id="fGhost" checked> unchanged context</label>
+  <label><input type="checkbox" id="fAll"> all links</label>
+  <span class="legend">
+    <span><span class="sw" style="border-color:#475467"></span>uses</span>
+    <span><span class="sw" style="border-color:#dc6803;border-top-style:dashed"></span>HTTP</span>
+    <span><span class="sw" style="border-color:#7c3aed;border-top-style:dotted"></span>i18n / table</span>
+  </span>
+  <div class="flows" id="flows"></div>
+</div>
+<main>
+  <div id="board"><div id="lanes"><svg id="links"></svg></div></div>
+  <aside id="panel"></aside>
+</main>
+<script>
+const DATA = /*__DATA__*/null;
+const $ = (s) => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const kid of kids) if (kid != null) n.append(kid);
+  return n;
+};
+const nodes = new Map(DATA.nodes.map((n) => [n.id, n]));
+const out = new Map(), inc = new Map();
+for (const e of DATA.edges) {
+  if (!nodes.has(e.from) || !nodes.has(e.to)) continue;
+  (out.get(e.from) || out.set(e.from, []).get(e.from)).push(e);
+  (inc.get(e.to) || inc.set(e.to, []).get(e.to)).push(e);
+}
+const note = (n) => (DATA.notes.files || {})[n.id] || {};
+const labelOf = (n) => n.label || n.name;
+const testSubjects = (n) => n.subject && nodes.has(n.subject) ? [labelOf(nodes.get(n.subject))]
+  : (out.get(n.id) || []).filter((e) => e.kind === "test").slice(0, 4).map((e) => labelOf(nodes.get(e.to)));
+const autoRole = (n) => n.barrel ? "Re-exports: " + n.barrel.join(", ")
+  : n.binary ? "Binary file; no diff shown."
+  : n.lane === "tests" && testSubjects(n).length ? "Tests for " + testSubjects(n).join(", ") : "";
+const roleOf = (n) => note(n).role || autoRole(n);
+const gistOf = (n) => note(n).summary || (n.status === "context" ? (note(n).role || "Unchanged; shown because a changed file connects to it.") : roleOf(n));
+let selected = null, flow = null;
+const cards = new Map();
+
+$("#title").textContent = DATA.notes.title || "Change map";
+document.title = (DATA.notes.title || "Change map") + " - change map";
+const meta = $("#meta");
+for (const r of DATA.repos) meta.append(el("span", { text: `${r.repo}: ${r.branch} @ ${r.base}, ${r.files} files` }));
+meta.append(el("span", { text: `generated ${DATA.generated}` }));
+$("#overview").textContent = DATA.notes.overview || "";
+if ((DATA.notes.questions || []).length) {
+  const q = $("#questions"); q.hidden = false;
+  for (const t of DATA.notes.questions) q.querySelector("ul").append(el("li", { text: t }));
+}
+
+const flowsBox = $("#flows");
+for (const f of DATA.notes.flows || []) {
+  const b = el("button", { text: f.name, title: f.description || "", onclick: () => { flow = flow === f ? null : f; selected = flow ? null : selected; render(); if (flow) showFlow(flow); else showOverview(); } });
+  b.dataset.flow = f.id || f.name;
+  flowsBox.append(b);
+}
+
+const repoIndex = {};
+DATA.repos.forEach((r, i) => { repoIndex[r.repo] = i; });
+const repoBox = $("#repoFilters");
+DATA.repos.forEach((r) => {
+  const label = document.createElement("label");
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = true;
+  box.id = "repo-" + r.repo;
+  box.addEventListener("input", () => render());
+  label.append(box, " " + r.repo);
+  repoBox.append(label);
+});
+const lanesBox = $("#lanes");
+for (const lane of DATA.lanes) {
+  const members = DATA.nodes.filter((n) => n.lane === lane.id);
+  if (!members.length) continue;
+  const col = el("div", { class: "lane" }, el("h3", {}, el("span", { class: "tag", text: lane.label }), el("span", { text: String(members.length) })));
+  col.dataset.lane = lane.id;
+  members.sort((a, b) => (a.status === "context") - (b.status === "context") || a.repo.localeCompare(b.repo) || a.name.localeCompare(b.name));
+  for (const n of members) {
+    const card = el("div", { class: "card" + (repoIndex[n.repo] % 4 ? " r" + (repoIndex[n.repo] % 4) : "") + (n.status === "context" ? " ghost" : ""), title: n.id, onclick: () => select(n.id) },
+      el("div", { class: "nm", text: labelOf(n) }),
+      el("div", { class: "sub" }, el("span", { class: "badge st-" + n.status, text: n.status }),
+        n.status === "context" ? null : el("span", {}, el("span", { class: "plus", text: "+" + n.added }), " ", el("span", { class: "minus", text: "-" + n.removed }))),
+      gistOf(n) ? el("div", { class: "gist", text: gistOf(n) }) : null);
+    cards.set(n.id, card);
+    col.append(card);
+  }
+  lanesBox.append(col);
+}
+
+function visible(n) {
+  const q = $("#search").value.trim().toLowerCase();
+  const repoBoxEl = document.getElementById("repo-" + n.repo);
+  if (repoBoxEl && !repoBoxEl.checked) return false;
+  if (n.lane === "tests" && !$("#fTests").checked) return false;
+  if (n.status === "context" && !$("#fGhost").checked) return false;
+  if (q && !(n.id + " " + gistOf(n) + " " + (note(n).role || "")).toLowerCase().includes(q)) return false;
+  return true;
+}
+
+function neighbours(id) {
+  const s = new Set([id]);
+  for (const e of out.get(id) || []) s.add(e.to);
+  for (const e of inc.get(id) || []) s.add(e.from);
+  return s;
+}
+
+function render() {
+  const flowIds = flow ? flow.steps.map((s) => s.node) : null;
+  const focus = selected ? neighbours(selected) : flowIds ? new Set(flowIds) : null;
+  for (const [id, card] of cards) {
+    const n = nodes.get(id);
+    card.style.display = visible(n) || (focus && focus.has(id)) ? "" : "none";
+    card.classList.toggle("sel", id === selected);
+    card.classList.toggle("dim", !!focus && !focus.has(id));
+    card.querySelector(".step")?.remove();
+    if (flowIds) flowIds.forEach((fid, i) => { if (fid === id) card.append(el("span", { class: "step", text: String(i + 1) })); });
+  }
+  for (const b of flowsBox.children) b.classList.toggle("on", !!flow && b.dataset.flow === (flow.id || flow.name));
+  requestAnimationFrame(drawLinks);
+}
+
+const COLORS = { uses: "#475467", test: "#98a2b3", http: "#dc6803", i18n: "#7c3aed", table: "#7c3aed", flow: "#f59e0b" };
+const DASH = { http: "6 4", i18n: "2 3", table: "2 3", test: "3 3" };
+function drawLinks() {
+  const svg = $("#links");
+  svg.innerHTML = "";
+  svg.setAttribute("width", lanesBox.scrollWidth);
+  svg.setAttribute("height", lanesBox.scrollHeight);
+  const box = lanesBox.getBoundingClientRect();
+  const shown = (id) => cards.get(id) && cards.get(id).style.display !== "none";
+  let list = [];
+  if (flow) {
+    for (let i = 1; i < flow.steps.length; i++) list.push({ from: flow.steps[i - 1].node, to: flow.steps[i].node, kind: "flow" });
+  } else if (selected) {
+    list = [...(out.get(selected) || []), ...(inc.get(selected) || [])];
+  } else if ($("#fAll").checked) {
+    list = DATA.edges.filter((e) => e.kind !== "test" || $("#fTests").checked);
+  }
+  for (const e of list) {
+    if (!shown(e.from) || !shown(e.to)) continue;
+    const a = cards.get(e.from).getBoundingClientRect(), b = cards.get(e.to).getBoundingClientRect();
+    const rightward = b.left >= a.right - 2;
+    const leftward = a.left >= b.right - 2;
+    let x1, x2;
+    if (rightward) { x1 = a.right; x2 = b.left; } else if (leftward) { x1 = a.left; x2 = b.right; } else { x1 = a.right; x2 = b.right; }
+    x1 -= box.left; x2 -= box.left;
+    const y1 = a.top + a.height / 2 - box.top, y2 = b.top + b.height / 2 - box.top;
+    const bend = rightward || leftward ? Math.max(40, Math.abs(x2 - x1) / 2) : 60;
+    const c1 = x1 + (rightward ? bend : leftward ? -bend : bend), c2 = x2 + (rightward ? -bend : leftward ? bend : bend);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M${x1},${y1} C${c1},${y1} ${c2},${y2} ${x2},${y2}`);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", COLORS[e.kind] || "#475467");
+    path.setAttribute("stroke-width", e.kind === "flow" ? 3 : 1.5);
+    path.setAttribute("opacity", selected || flow ? 0.9 : 0.35);
+    if (DASH[e.kind]) path.setAttribute("stroke-dasharray", DASH[e.kind]);
+    svg.append(path);
+  }
+}
+
+function connList(title, edges, pick) {
+  if (!edges.length) return null;
+  const box = el("div", { class: "conn" });
+  for (const e of edges) {
+    const other = nodes.get(pick(e));
+    box.append(el("a", { onclick: () => select(other.id) }, el("span", { class: "k", text: e.kind }),
+      el("span", { class: "cn", text: labelOf(other) }), e.labels && e.labels.length ? el("span", { class: "lb", text: e.labels.join(", ") }) : null));
+  }
+  return [el("h4", { text: title }), box];
+}
+
+function hunkView(h) {
+  const pre = el("pre");
+  for (const [kind, text] of h.lines) pre.append(el("div", { class: kind === "add" ? "ln-add" : kind === "del" ? "ln-del" : "", text: (kind === "add" ? "+" : kind === "del" ? "-" : " ") + text }));
+  return el("div", { class: "hunk" }, el("div", { class: "hh", text: h.header }), pre);
+}
+
+function select(id) {
+  selected = selected === id ? null : id;
+  flow = null;
+  render();
+  if (!selected) return showOverview();
+  const n = nodes.get(id), nt = note(n);
+  const panel = $("#panel");
+  panel.innerHTML = "";
+  panel.append(el("h2", { text: labelOf(n) }), el("div", { class: "path", text: `${n.repo} / ${n.path}` }),
+    el("div", { class: "sub", style: "margin-top:6px" }, el("span", { class: "badge st-" + n.status, text: n.status }),
+      el("span", { text: (DATA.lanes.find((l) => l.id === n.lane) || {}).label || n.lane }),
+      n.status === "context" ? null : el("span", {}, el("span", { class: "plus", text: "+" + n.added }), " ", el("span", { class: "minus", text: "-" + n.removed }))));
+  if (n.renamed_from) panel.append(el("p", { class: "empty", text: "Renamed from " + n.renamed_from }));
+  if (roleOf(n)) panel.append(el("h4", { text: "What this file does" }), el("p", { text: roleOf(n) }));
+  panel.append(el("h4", { text: "What changed" }), el("p", { class: nt.summary ? "" : "empty", text: nt.summary || (n.status === "context" ? "Nothing; this file is unchanged." : "No note written.") }));
+  const uses = connList("Uses", out.get(id) || [], (e) => e.to);
+  const usedBy = connList("Used by", inc.get(id) || [], (e) => e.from);
+  for (const part of [uses, usedBy]) if (part) panel.append(...part);
+  if (n.hunks.length) {
+    const keyIdx = [...new Set(nt.key_hunks && nt.key_hunks.length ? nt.key_hunks : [0, 1])]
+      .filter((i) => Number.isInteger(i) && i >= 0 && i < n.hunks.length).sort((a, b) => a - b);
+    panel.append(el("h4", { text: "Key changes" }));
+    for (const i of keyIdx) panel.append(hunkView(n.hunks[i]));
+    const rest = n.hunks.filter((_, i) => !keyIdx.includes(i));
+    if (rest.length) {
+      const more = el("div", { hidden: "" });
+      for (const h of rest) more.append(hunkView(h));
+      const btn = el("button", { class: "btn", text: `Show the other ${rest.length} change block(s)`, onclick: () => { more.hidden = !more.hidden; btn.textContent = more.hidden ? `Show the other ${rest.length} change block(s)` : "Hide them"; } });
+      panel.append(btn, more);
+    }
+    if (n.truncated) panel.append(el("p", { class: "empty", text: "Diff cut off here; see git for the rest." }));
+  }
+}
+
+function showFlow(f) {
+  const panel = $("#panel");
+  panel.innerHTML = "";
+  panel.append(el("h2", { text: f.name }), f.description ? el("p", { text: f.description }) : null, el("h4", { text: "Steps" }));
+  const ol = el("ol", { class: "flowsteps" });
+  for (const s of f.steps) {
+    const n = nodes.get(s.node);
+    if (!n) continue;
+    ol.append(el("li", { onclick: () => select(n.id) }, el("b", { text: labelOf(n) }), s.note ? el("span", { text: s.note }) : null));
+  }
+  panel.append(ol);
+  const first = f.steps.map((s) => cards.get(s.node)).find(Boolean);
+  if (first) first.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+}
+
+function showOverview() {
+  const panel = $("#panel");
+  panel.innerHTML = "";
+  const changed = DATA.nodes.filter((n) => n.status !== "context");
+  const sum = (k) => changed.reduce((t, n) => t + n[k], 0);
+  panel.append(el("h2", { text: "How to read this map" }),
+    el("p", { text: "Columns follow a request from the screen (left) to the database (right). Click a file to see what it does, what changed, and its links. Pick a flow above to walk one feature end to end." }),
+    el("h4", { text: "Totals" }),
+    el("p", { text: `${changed.length} changed files, +${sum("added")} -${sum("removed")} lines, ${DATA.edges.length} links.` }));
+  const byLane = DATA.lanes.map((l) => [l.label, changed.filter((n) => n.lane === l.id).length]).filter(([, c]) => c);
+  panel.append(el("h4", { text: "Files per column" }), el("p", { text: byLane.map(([l, c]) => `${l}: ${c}`).join("\n") }));
+  const missing = changed.filter((n) => n.lane !== "tests" && !n.barrel && !n.binary && !note(n).summary);
+  if (missing.length) panel.append(el("h4", { text: "Files without a note" }), el("p", { class: "empty", text: missing.map((n) => n.id).join("\n") }));
+}
+
+for (const id of ["#search", "#fTests", "#fGhost", "#fAll"]) $(id).addEventListener("input", render);
+window.addEventListener("resize", () => requestAnimationFrame(drawLinks));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { selected = null; flow = null; render(); showOverview(); } });
+render();
+showOverview();
+</script>
+</body>
+</html>

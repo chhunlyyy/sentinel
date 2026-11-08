@@ -1,0 +1,1 @@
+- No comments: the increment must add no code comments of any kind, in production code, tests, or migrations. Only tool directives are allowed. Every added comment is a major finding for the owning repo.

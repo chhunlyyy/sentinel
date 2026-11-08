@@ -1,0 +1,61 @@
+version: 1
+shape: fullstack
+
+repos:
+  - id: backend
+    path: ./backend
+    role: backend
+    profile: spring-gradle
+  - id: frontend
+    path: ./frontend
+    role: frontend
+    profile: nextjs
+
+qa:
+  driver: playwright
+  db_clone: none
+  fixtures: sanitized
+
+routing:
+  specifier: { runner: claude }
+  coder: { runner: claude }
+  cleaner: { runner: claude, model: haiku }
+  hardener: { runner: claude, model: sonnet }
+  reviewer: { runner: claude }
+  qa: { runner: claude, model: sonnet }
+
+runners:
+  claude: { command: claude, prompt_flag: -p, add_dir_flag: --add-dir, supports_subagents: true }
+  codex: { command: "codex exec" }
+  gemini: { command: gemini, prompt_flag: -p }
+  agy:
+    command: agy
+    prompt_flag: -p
+    model_flag: --model
+    resume_flag: --conversation
+    add_dir_flag: --add-dir
+    output: json_response
+    args: [--output-format, json]
+    unsafe_skip_permissions: false
+    unsafe_args: [--dangerously-skip-permissions]
+
+rules:
+  no_code_comments: false
+  no_em_dashes: false
+  no_coauthor_trailer: false
+  agents_never_run_git: false
+  no_permanent_frontend_tests: false
+
+limits:
+  review_rounds: 2
+  qa_rounds: 3
+  release_check_rounds: 3
+
+state:
+  dir: .sentinel
+  retention: { runs: 20, logs_days: 14 }
+  shared_repo: ""
+  shared_ref: main
+
+tracker:
+  kind: none

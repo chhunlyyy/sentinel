@@ -1,0 +1,66 @@
+{
+  "id": "flutter",
+  "detect": [
+    "pubspec.yaml"
+  ],
+  "commands": {
+    "build": "flutter build apk --debug",
+    "lint": "flutter analyze",
+    "typecheck": "dart analyze",
+    "test": "flutter test",
+    "mutate": ""
+  },
+  "qa_driver": "emulator",
+  "mutation_note": "No mature Dart mutation tool. Hardener falls back to an assertion-strength review of changed tests.",
+  "lanes": [
+    {
+      "id": "tests",
+      "label": "Tests",
+      "match": [
+        "(^|/)(test|tests|__tests__|e2e|integration_test)/",
+        "\\.(test|spec)\\.[jt]sx?$",
+        "_test\\.(dart|go|py)$",
+        "(^|/)test_[^/]+\\.py$",
+        "Tests?\\.(java|kt)$"
+      ]
+    },
+    {
+      "id": "ui",
+      "label": "Screens and widgets",
+      "match": [
+        "^lib/.*/(screens|pages|widgets|views|ui)/",
+        "^lib/(screens|pages|widgets|views|ui)/"
+      ]
+    },
+    {
+      "id": "state",
+      "label": "State and logic",
+      "match": [
+        "^lib/.*/(bloc|cubit|providers?|controllers?|state|viewmodels?)/",
+        "^lib/(bloc|cubit|providers?|controllers?|state|viewmodels?)/"
+      ]
+    },
+    {
+      "id": "data",
+      "label": "Data and API clients",
+      "match": [
+        "^lib/.*/(data|repositories|services|api|models)/",
+        "^lib/(data|repositories|services|api|models)/"
+      ]
+    },
+    {
+      "id": "source",
+      "label": "Other source",
+      "match": [
+        "^lib/"
+      ]
+    },
+    {
+      "id": "config",
+      "label": "Config and other",
+      "match": [
+        ".*"
+      ]
+    }
+  ]
+}

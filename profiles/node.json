@@ -1,0 +1,52 @@
+{
+  "id": "node",
+  "detect": [
+    "package.json"
+  ],
+  "commands": {
+    "build": "npm run build",
+    "lint": "npm run lint",
+    "typecheck": "npx tsc --noEmit",
+    "test": "npm test",
+    "mutate": "npx stryker run"
+  },
+  "qa_driver": "native",
+  "mutation_note": "Stryker.",
+  "lanes": [
+    {
+      "id": "tests",
+      "label": "Tests",
+      "match": [
+        "(^|/)(test|tests|__tests__|e2e|integration_test)/",
+        "\\.(test|spec)\\.[jt]sx?$",
+        "_test\\.(dart|go|py)$",
+        "(^|/)test_[^/]+\\.py$",
+        "Tests?\\.(java|kt)$"
+      ]
+    },
+    {
+      "id": "ui",
+      "label": "UI",
+      "match": [
+        "/components/",
+        "/pages/",
+        "/views/"
+      ]
+    },
+    {
+      "id": "logic",
+      "label": "Source",
+      "match": [
+        "^src/",
+        "^lib/"
+      ]
+    },
+    {
+      "id": "config",
+      "label": "Config and other",
+      "match": [
+        ".*"
+      ]
+    }
+  ]
+}
