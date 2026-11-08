@@ -61,7 +61,7 @@ def main():
         run(["git", "push", "-q", "origin", "main"], cwd=seed)
 
         print("init and config")
-        code, out = run(CLI + ["--dir", str(ws), "init", "--shape", "fullstack", "--non-interactive"])
+        code, out = run(CLI + ["--dir", str(ws), "init", "--shape", "fullstack", "--non-interactive", "--shared-repo", str(remote)])
         check("init writes sentinel.config.yaml", code == 0 and (ws / "sentinel.config.yaml").exists(), out[-200:])
         config = yaml.safe_load((ws / "sentinel.config.yaml").read_text())
         profiles = [r["profile"] for r in config["repos"]]
@@ -77,6 +77,39 @@ def main():
         problems = [l for l in out.splitlines() if l.startswith("- ") and "runner CLI not installed" not in l and "command not found" not in l]
         check("doctor reports no config problems", not problems, "; ".join(problems))
 
+        print("shared repo is required")
+        bare = tmp / "no-shared"
+        bare.mkdir()
+        git_repo(bare / "app", "package.json")
+        code, out = run(CLI + ["--dir", str(bare), "init", "--shape", "single", "--non-interactive"])
+        check("init refuses to run without a shared repo", code != 0 and "shared repo is required" in out and not (bare / "sentinel.config.yaml").exists(), out[-160:])
+        code, out = run(CLI + ["--dir", str(bare), "init", "--shape", "single", "--non-interactive", "--shared-repo", "not a url"])
+        check("init rejects a value that is not a git URL", code != 0 and not (bare / "sentinel.config.yaml").exists(), out[-160:])
+        empty = tmp / "empty.git"
+        run(["git", "init", "-q", "--bare", "-b", "main", str(empty)])
+        ews = tmp / "ws-empty"
+        ews.mkdir()
+        git_repo(ews / "app", "package.json")
+        code, out = run(CLI + ["--dir", str(ews), "init", "--shape", "single", "--non-interactive", "--shared-repo", str(empty)])
+        shared_dir = ews / ".sentinel/shared"
+        committed = run(["git", "log", "--oneline"], cwd=shared_dir)[1].strip() if shared_dir.exists() else ""
+        check("an empty shared repo is scaffolded with starter files", code == 0 and (shared_dir / "invariants.md").exists() and (shared_dir / "specs/index.json").exists() and bool(committed), out[-200:])
+        check("the scaffold is not pushed without being asked", run(["git", "ls-remote", str(empty)])[1].strip() == "")
+        uws = tmp / "ws-unreachable"
+        uws.mkdir()
+        git_repo(uws / "app", "package.json")
+        code, out = run(CLI + ["--dir", str(uws), "init", "--shape", "single", "--non-interactive", "--shared-repo", str(tmp / "missing.git")])
+        check("init still saves the config when the shared repo is unreachable, with a warning", code == 0 and "could not reach" in out and (uws / "sentinel.config.yaml").exists(), out[-200:])
+        code, out = run(CLI + ["--dir", str(uws), "doctor"])
+        check("doctor fails until the shared repo is cloned", code != 0 and "not cloned" in out, out[-200:])
+        code, out = run(CLI + ["--dir", str(uws), "run", "new", "blocked", "--tier", "2"])
+        check("run new refuses until the shared repo is cloned", code != 0 and "sync pull" in out, out[-200:])
+        code, out = run(CLI + ["--dir", str(uws), "shared", "set", str(remote)])
+        check("shared set connects the workspace", code == 0 and (uws / ".sentinel/shared/.git").exists(), out[-200:])
+        code, out = run(CLI + ["--dir", str(uws), "run", "new", "unblocked", "--tier", "2"])
+        check("run new works once the shared repo is cloned", code == 0, out[-200:])
+        run(CLI + ["--dir", str(uws), "run", "finish", "unblocked"])
+
         print("prompts and adapters")
         shapes = {"single": 1, "fullstack": 2, "fullstack-mobile": 3}
         for shape, count in shapes.items():
@@ -88,7 +121,7 @@ def main():
             ids = {"single": ["app"], "fullstack": ["backend", "frontend"], "fullstack-mobile": ["backend", "frontend", "mobile"]}[shape]
             for i, rid in enumerate(ids):
                 sets += ["--set", f"{rid}.path=./r{i}"]
-            run(CLI + ["--dir", str(sws), "init", "--shape", shape, "--non-interactive"] + sets)
+            run(CLI + ["--dir", str(sws), "init", "--shape", shape, "--non-interactive", "--shared-repo", str(remote)] + sets)
             bad = []
             for stage in (ROOT / "core" / "stages").glob("*.md"):
                 meta = yaml.safe_load(stage.read_text().split("---\n")[1])
@@ -133,7 +166,7 @@ def main():
         ws2.mkdir()
         git_repo(ws2 / "backend", "build.gradle")
         git_repo(ws2 / "frontend", "next.config.ts")
-        run(CLI + ["--dir", str(ws2), "init", "--shape", "fullstack", "--non-interactive"])
+        run(CLI + ["--dir", str(ws2), "init", "--shape", "fullstack", "--non-interactive", "--shared-repo", str(remote)])
         write_config(ws2, lambda c: c["state"].update({"shared_repo": str(remote)}))
         run(CLI + ["--dir", str(ws2), "sync", "pull"])
         code, _ = run(CLI + ["--dir", str(ws), "run", "new", "lockdemo", "--tier", "2"])

@@ -73,6 +73,67 @@ def build_repos(shape, workspace, interactive, overrides):
     return repos
 
 
+SHARED_HELP = """
+Sentinel keeps what your team shares (project rules, specs, the regression suite) in a private
+git repository that your team owns. Create an empty private repository on your git server
+(GitHub, Gitea, GitLab, ...) and paste its clone URL. For a quick local trial you can use a
+bare repo on disk: git init --bare ~/sentinel-shared.git
+"""
+
+
+def ask_shared_url():
+    from shared import looks_like_git_url
+    print(SHARED_HELP)
+    while True:
+        url = input("shared repo URL: ").strip()
+        if looks_like_git_url(url):
+            return url
+        print("that does not look like a git URL (https://..., git@host:..., ssh://..., or a path)")
+
+
+def connect_shared(config_path, config):
+    from shared import Shared, verify_remote
+    shared = Shared(config_path.parent, config)
+    ok, detail, _ = verify_remote(shared.url)
+    if not ok:
+        print(f"warning: could not reach {shared.url}: {detail}")
+        print("the config was saved; get access to the repo, then run `sentinel sync pull`")
+        return False
+    try:
+        shared.pull()
+    except SystemExit as failure:
+        print(f"warning: could not set up the shared repo: {failure}")
+        return False
+    return True
+
+
+def require_shared(config_path, config):
+    from shared import Shared
+    shared = Shared(config_path.parent, config)
+    if not shared.url:
+        sys.exit("state.shared_repo is required. Ask your team for the URL of its private shared repo and run `sentinel shared set <url>`.")
+    if not shared.is_clone():
+        sys.exit(f"the shared repo ({shared.url}) is not cloned yet. Run `sentinel sync pull` first.")
+
+
+def cmd_shared_set(args):
+    from shared import looks_like_git_url
+    import re as _re
+    config_path, config = load_config(args.dir)
+    if not looks_like_git_url(args.url):
+        sys.exit("that does not look like a git URL (https://..., git@host:..., ssh://..., or a path)")
+    text = config_path.read_text()
+    if _re.search(r"^\s*shared_repo:", text, _re.M):
+        text = _re.sub(r"^(\s*shared_repo:\s*).*$", lambda m: f'{m.group(1)}"{args.url}"', text, count=1, flags=_re.M)
+    else:
+        config.setdefault("state", {})["shared_repo"] = args.url
+        text = yaml.safe_dump(config, sort_keys=False)
+    config_path.write_text(text)
+    config_path, config = load_config(args.dir)
+    connect_shared(config_path, config)
+    print(f"state.shared_repo set to {args.url}")
+
+
 def cmd_init(args):
     workspace = Path(args.dir).resolve()
     target = workspace / CONFIG_NAME
@@ -81,24 +142,31 @@ def cmd_init(args):
     shapes = load_json("templates/shapes.json")
     interactive = not args.non_interactive
     shape = args.shape or ask("project shape (single, fullstack, fullstack-mobile, custom)", "fullstack", list(shapes))
+    from shared import looks_like_git_url
+    shared_url = (args.shared_repo or "").strip()
+    if not shared_url and interactive:
+        shared_url = ask_shared_url()
+    if not shared_url:
+        sys.exit("a shared repo is required: pass --shared-repo <url> (an empty private git repository your team owns)")
+    if not looks_like_git_url(shared_url):
+        sys.exit(f"--shared-repo does not look like a git URL: {shared_url}")
     overrides = dict(item.split("=", 1) for item in (args.set or []))
     repos = build_repos(shape, workspace, interactive, overrides)
     config = yaml.safe_load((ROOT / "templates" / CONFIG_NAME).read_text())
     config["shape"] = shape
     config["repos"] = repos
+    config["state"]["shared_repo"] = shared_url
     profiles = {r["profile"] for r in repos}
     drivers = {load_profile_driver(p) for p in profiles}
     config["qa"] = {"driver": "playwright" if "playwright" in drivers else sorted(drivers - {"none"})[0] if drivers - {"none"} else "none", "db_clone": "none", "fixtures": "sanitized"}
     target.write_text(yaml.safe_dump(config, sort_keys=False))
     state_dir = workspace / config["state"]["dir"]
-    for sub in ("runs", "cache", "shared"):
+    for sub in ("runs", "cache"):
         (state_dir / sub).mkdir(parents=True, exist_ok=True)
-    invariants = state_dir / "shared" / "invariants.md"
-    if not invariants.exists():
-        shutil.copy(ROOT / "templates" / "invariants.md", invariants)
     update_gitignore(workspace, config["state"]["dir"])
     print(f"wrote {target}")
-    print("next: edit shared_repo in the config, then `sentinel doctor` and `sentinel sync-adapters --tool claude`")
+    connected = connect_shared(target, config)
+    print("next: `sentinel doctor`, then `sentinel sync-adapters --tool claude` (or your tool)" if connected else "next: fix access to the shared repo, `sentinel sync pull`, then `sentinel doctor`")
 
 
 def load_profile_driver(name):
@@ -149,8 +217,11 @@ def cmd_doctor(args):
             problems.append(f"routing {stage}: runner not defined: {route['runner']}")
         elif not shutil.which(runner["command"].split()[0]):
             problems.append(f"runner CLI not installed: {runner['command'].split()[0]} (stage {stage})")
-    if not (config.get("state") or {}).get("shared_repo"):
-        problems.append("state.shared_repo is empty: regression suite and specs will stay local")
+    shared_url = (config.get("state") or {}).get("shared_repo")
+    if not shared_url:
+        problems.append("state.shared_repo is required: ask your team for the URL of its private shared repo and run `sentinel shared set <url>`")
+    elif not (state_dir_of(config_path, config) / "shared" / ".git").exists():
+        problems.append(f"the shared repo ({shared_url}) is not cloned: run `sentinel sync pull`")
     if problems:
         print("\n".join(f"- {p}" for p in problems))
         sys.exit(1)
@@ -199,6 +270,7 @@ def cmd_run_new(args):
     directory = run_dir(config_path, config, args.slug)
     if (directory / "state.json").exists():
         sys.exit(f"run {args.slug} already exists; use `sentinel resume {args.slug}`")
+    require_shared(config_path, config)
     from shared import Shared
     Shared(config_path.parent, config).acquire(args.slug, getpass.getuser())
     directory.mkdir(parents=True, exist_ok=True)
@@ -416,6 +488,7 @@ def main():
     init.add_argument("--non-interactive", action="store_true")
     init.add_argument("--force", action="store_true")
     init.add_argument("--set", action="append", help="id.path=..., id.profile=..., count=N")
+    init.add_argument("--shared-repo", help="clone URL of your team's private shared repo (required; asked for when omitted in interactive mode)")
     init.set_defaults(func=cmd_init)
 
     sub.add_parser("doctor").set_defaults(func=cmd_doctor)
@@ -477,6 +550,12 @@ def main():
     resume = sub.add_parser("resume")
     resume.add_argument("slug")
     resume.set_defaults(func=cmd_resume)
+
+    shared_cmd = sub.add_parser("shared")
+    shared_sub = shared_cmd.add_subparsers(dest="shared_cmd", required=True)
+    shared_set = shared_sub.add_parser("set", help="set the team's shared repo URL and connect to it")
+    shared_set.add_argument("url")
+    shared_set.set_defaults(func=cmd_shared_set)
 
     clean = sub.add_parser("clean")
     clean.add_argument("--db", action="store_true", help="also drop the throwaway QA schemas")

@@ -19,6 +19,14 @@ You are the orchestrator. The pipeline contract is `pipeline.md`; this file is h
 - Run a stage in one of two ways, per `routing` in the config: spawn a subagent whose name is `<role>-<stage>` (or `<stage>-agent`) when the runner supports subagents, or run `sentinel stage run --stage S [--repo ID] --slug <slug> --brief <file>` with a brief file. Write the brief to `.sentinel/runs/<slug>/<repo>-<stage>-brief.md` first. The runner snapshots every repo before the stage and exits 3 if the stage wrote outside its repo, committed, or touched the sentinel config; show the requester the listed files and revert only files the stage created, only after they agree. Exit 1 means the runner failed (quota, timeout, error): retry once, then fall back to a runner that works and tell the requester. A runner that is not the orchestrator's own is never trusted on its report: re-run the stage's key check yourself.
 - Runners without sessions cannot be resumed. To send a finding back to a coder, re-run the stage with a new brief that quotes the finding and names the previous result file. Runners with a `resume_flag` accept `--resume <session_id>` instead.
 
+## Setup check (every time, before anything else)
+
+Run `sentinel doctor`. If it reports a problem:
+
+- No `sentinel.config.yaml`: run `sentinel init` and answer its questions together with the requester.
+- The shared repo is missing or not cloned: stop here. Ask the requester for the clone URL of their team's private shared repo (an empty private git repository their team owns; for a quick local trial, a bare repo on disk works). Then run `sentinel shared set <url>`. If that repo was empty, Sentinel commits starter files locally; tell the requester to publish them once with the command it prints. Do not triage or start a run until `sentinel doctor` no longer reports the shared repo.
+- Any other problem: show it to the requester. Continue only if it is a runner this task does not use.
+
 ## Phase 0: triage
 
 1. Read the request. Quick scan of the code it touches (grep, glob; no stage spawn).

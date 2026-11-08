@@ -18,7 +18,7 @@ AGENTS_BLOCK = """{begin}
 
 This project uses Sentinel, a tiered build pipeline (triage, spec, code, clean, harden, review, QA, promotion, release check). Config: `sentinel.config.yaml`.
 
-To implement a feature or fix a bug through Sentinel:
+To implement a feature or fix a bug through Sentinel, first run `sentinel doctor`. If it says the shared repo is missing, stop and ask the requester for the clone URL of their team's private shared repo, then run `sentinel shared set <url>`.
 
 1. Install the `sentinel` command (`uv tool install sentinel` from its repository, or `pipx install`), and run `sentinel sync-adapters --tool agents` once after cloning (it fills `.sentinel/generated/`).
 2. Read `.sentinel/generated/orchestrator.md` and follow it. It tells you how to pick the effort tier and run each stage.

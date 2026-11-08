@@ -11,9 +11,10 @@ Version 0.1.0b0. Thank you for testing. This is an internal beta: it works end t
    sentinel selftest
    ```
 
-   Expected last line: `28 passed, 0 failed`. If anything fails, stop and report it (section 5) before testing further.
-3. In a **copy or a throwaway branch** of your project: `sentinel init`, `sentinel doctor`, then `sentinel sync-adapters --tool <your tool>`.
-4. Ask your agent: "Run Sentinel on: <a small task>".
+   Expected last line: `<N> passed, 0 failed`. If anything fails, stop and report it (section 5) before testing further.
+3. Create an empty private git repo for the team (or use a throwaway local one: `git init --bare ~/sentinel-shared.git`). Sentinel requires it and will not run a task without it.
+4. In a **copy or a throwaway branch** of your project: `sentinel init` (it asks for that repo's URL), `sentinel doctor`, then `sentinel sync-adapters --tool <your tool>`.
+5. Ask your agent: "Run Sentinel on: <a small task>".
 
 ## 2. What to test
 

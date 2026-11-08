@@ -378,12 +378,16 @@
           }
         },
         "shared_repo": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
         },
         "shared_ref": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "shared_repo"
+      ]
     },
     "tracker": {
       "type": "object",

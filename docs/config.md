@@ -198,7 +198,8 @@ state:
 
 - `dir`: local state folder. Contains `runs/`, `cache/`, `shared/` (a clone of the shared repo), and `generated/`.
 - `retention`: `sentinel clean` keeps the newest `runs` run folders and deletes cache files older than `logs_days`.
-- `shared_repo` and `shared_ref`: the team repo and the branch, tag, or commit to use. Pin a tag or commit for reproducible runs.
+- `shared_repo` (**required**): clone URL of the team's private shared repo. `sentinel init` asks for it and `sentinel shared set <url>` changes it. `sentinel doctor` fails and `sentinel run new` refuses while it is missing or not cloned.
+- `shared_ref`: the branch, tag, or commit to use. Pin a tag or commit for reproducible runs.
 
 ## tracker
 

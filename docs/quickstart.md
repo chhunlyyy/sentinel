@@ -9,11 +9,11 @@ sentinel --version
 
 No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same way, or use `pip install` inside a virtual environment. Upgrade with `uv tool upgrade sentinel` (or `pipx upgrade sentinel`). To pin a release, add `@<tag>` to the URL. After an upgrade, run `sentinel sync-adapters` again in each project so the generated agents and skills match the new version.
 
-## 2. Create a shared repo (once per team)
+## 2. Create the team's shared repo (required, once per team)
 
-Create an empty private git repository for the team, for example `myteam-sentinel-shared`. It will hold the specs, project invariants, and the regression suite. Copy `templates/ci/shared-repo.github.yml` to `.github/workflows/sentinel-shared.yml` in that repo and set the repo variables `SENTINEL_URL` (where to clone Sentinel from) and `REGRESSION_COMMAND` (how to run your regression suite).
+Sentinel will not run without it. Create an **empty private** git repository on your own git server (GitHub, Gitea, GitLab, and so on), for example `myteam-sentinel-shared`. Leave the README, `.gitignore` and license options off. It holds the team's project invariants, specs and regression suite, so every teammate and CI sees the same ones. Specs describe your internal systems, so keep it private and give your teammates write access.
 
-Specs describe your internal systems, so keep this repo private.
+You only need its clone URL. Sentinel fills an empty repo with starter files (`README.md`, `invariants.md`, `guidelines/`, `specs/index.*`, and a CI workflow) the first time you connect. For a quick local trial with no server, a bare repo on disk works: `git init --bare ~/sentinel-shared.git`, then use that path as the URL.
 
 ## 3. Initialize your workspace
 
@@ -26,18 +26,18 @@ sentinel init
 
 `init` asks for:
 
-1. The project shape: single, fullstack, fullstack-mobile, or custom.
-2. For each repo: its path and its stack profile (auto-detected from files such as `pubspec.yaml`, `package.json`, `build.gradle`).
+1. **The shared repo URL** (required; it will not continue without one). It checks the repo is reachable and clones it into `.sentinel/shared/`. If the repo was empty, it commits the starter files locally and prints the one command that publishes them: `git -C .sentinel/shared push -u origin main`. Run that once.
+2. The project shape: single, fullstack, fullstack-mobile, or custom.
+3. For each repo: its path and its stack profile (auto-detected from files such as `pubspec.yaml`, `package.json`, `build.gradle`).
 
-It writes `sentinel.config.yaml`, creates `.sentinel/`, and adds the state folders to `.gitignore`. For unattended setup:
+It writes `sentinel.config.yaml`, creates `.sentinel/`, and adds the state folders to `.gitignore`. If the repo is not reachable yet (no access, VPN off), the config is still saved with a warning; once you have access run `sentinel sync pull`. A teammate joining an existing setup runs `sentinel init` with the same URL, or `sentinel shared set <url>` in a workspace that already has a config. For unattended setup:
 
 ```bash
-sentinel init --shape fullstack --non-interactive --set backend.path=./api --set frontend.path=./web
+sentinel init --shape fullstack --non-interactive --shared-repo <url> --set backend.path=./api --set frontend.path=./web
 ```
 
 Then open `sentinel.config.yaml` and:
 
-- set `state.shared_repo` to the shared repo URL,
 - set `routing` and `runners` for the AI tools your team uses (see [config.md](config.md)),
 - turn on the `rules` you want (all default to off),
 - set `qa` for how to start your services and which driver to use.
@@ -49,7 +49,7 @@ sentinel doctor
 sentinel sync pull
 ```
 
-`doctor` validates the config and reports missing tools, repo paths, runner CLIs, and an empty `shared_repo`. `sync pull` clones the shared repo into `.sentinel/shared/`.
+`doctor` validates the config and reports missing tools, repo paths, runner CLIs, and a missing or not-yet-cloned shared repo; it fails until the shared repo is connected, and `sentinel run new` refuses to start a run in that state. `sync pull` fetches the latest version of the shared repo into `.sentinel/shared/`.
 
 ## 5. Generate files for your AI tool
 
