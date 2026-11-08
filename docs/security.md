@@ -41,7 +41,7 @@ It does not find secrets that have no recognizable shape, names, phone numbers, 
 
 ## Agent permissions
 
-- Skills run with your agent's full permissions. Installing Sentinel's skills lets the agent run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. They are plain markdown in `skills/`; read them before installing, and pin a release tag (`npx skills@latest add chhunlyyy/sentinel@v0.1.0b2 --skill '*' -a <agent>`) so an update cannot change them without you noticing.
+- Skills run with your agent's full permissions. Installing Sentinel's skills lets the agent run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. They are plain markdown in `skills/`; read them before installing, and pin a release tag (`npx skills@latest add chhunlyyy/sentinel@v0.1.0b3 --skill '*' -a <agent>`) so an update cannot change them without you noticing.
 
 - Agents can run shell commands in your repos. Stages that do not need to write source (reviewer, rollout, retrospective) are told not to, and the runner checks afterwards that no repo changed.
 - The runner's boundary check detects, after the fact, writes outside the stage's repo, commits, branch changes, and edits to the Sentinel config. It does not prevent them and does not undo them. It does not watch the workspace root or files outside the repos.

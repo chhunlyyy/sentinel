@@ -107,6 +107,12 @@ def main():
         check("doctor fails until the shared repo is cloned", code != 0 and "not cloned" in out, out[-200:])
         code, out = run(CLI + ["--dir", str(uws), "run", "new", "blocked", "--tier", "2"])
         check("run new refuses until the shared repo is cloned", code != 0 and "sync pull" in out, out[-200:])
+        code, out = run(CLI + ["--dir", str(uws), "run", "new", "solo", "--adhoc"])
+        check("an adhoc run needs no shared repo and no tier", code == 0 and (uws / ".sentinel/runs/solo/state.json").exists(), out[-200:])
+        code, out = run(CLI + ["--dir", str(uws), "stage", "render", "--stage", "reviewer", "--slug", "solo"])
+        check("stage render fills in the run slug", code == 0 and ".sentinel/runs/solo" in out and "<slug>" not in out, out[-200:])
+        code, out = run(CLI + ["--dir", str(uws), "run", "finish", "solo", "--outcome", "passed"])
+        check("finishing an adhoc run releases no lock", code == 0 and "lock released" not in out, out[-200:])
         code, out = run(CLI + ["--dir", str(uws), "shared", "set", str(remote)])
         check("shared set connects the workspace", code == 0 and (uws / ".sentinel/shared/.git").exists(), out[-200:])
         code, out = run(CLI + ["--dir", str(uws), "run", "new", "unblocked", "--tier", "2"])
@@ -118,7 +124,7 @@ def main():
         from paths import skills_dir
         skill_folders = sorted(p for p in skills_dir().iterdir() if p.is_dir())
         names = [p.name for p in skill_folders]
-        check("the expected skills exist", {"sentinel", "sentinel-setup", "sentinel-resume", "sentinel-status", "sentinel-sync", "sentinel-change-map"} <= set(names), ", ".join(names))
+        check("the expected skills exist", {"sentinel", "sentinel-setup", "sentinel-resume", "sentinel-status", "sentinel-sync", "sentinel-change-map", "sentinel-repro", "sentinel-spec", "sentinel-code", "sentinel-clean", "sentinel-harden", "sentinel-review", "sentinel-qa", "sentinel-promote", "sentinel-docs", "sentinel-rollout", "sentinel-retro", "sentinel-release-check"} <= set(names), ", ".join(names))
         frontmatter_bad, path_bad, tool_bad, command_bad = [], [], [], []
         seen = set()
         for folder in skill_folders:
@@ -143,6 +149,15 @@ def main():
         check("no skill contains a machine path or an unrendered placeholder", not path_bad, ", ".join(path_bad))
         check("no skill depends on one tool's private mechanics", not tool_bad, ", ".join(tool_bad))
         check("every sentinel command a skill mentions exists", not command_bad, "; ".join(command_bad))
+        standalone_bad = []
+        for stage_file in sorted((ROOT / "core" / "stages").glob("*.md")):
+            stage_name = stage_file.stem
+            owners = [n for n in names if n != "sentinel" and f"--stage {stage_name}" in (skills_dir() / n / "SKILL.md").read_text()]
+            if len(owners) != 1:
+                standalone_bad.append(f"{stage_name}:{owners}")
+        check("every stage has exactly one standalone skill", not standalone_bad, ", ".join(standalone_bad))
+        iso_bad = [n for n in names if (skills_dir() / n / "SKILL.md").read_text().count("--adhoc") and not all(w in (skills_dir() / n / "SKILL.md").read_text() for w in ("invoke_subagent", "sentinel stage run", "--session"))]
+        check("standalone stage skills carry the isolation rule", not iso_bad, ", ".join(iso_bad))
         check("the pipeline contract ships with the main skill", (skills_dir() / "sentinel" / "pipeline.md").exists())
         main_skill = (skills_dir() / "sentinel" / "SKILL.md").read_text()
         check("the main skill makes isolated stages the rule and names how each tool does it", all(w in main_skill for w in ("invoke_subagent", "Agent tool", "sentinel stage run", "--runner", "--session S=subagent", "Inline, only if neither exists")), "")

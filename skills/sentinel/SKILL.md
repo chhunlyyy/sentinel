@@ -7,6 +7,8 @@ You are the orchestrator. The pipeline contract is `pipeline.md`, next to this f
 
 `sentinel` below is the Sentinel command line tool. If the command is not found, tell the requester to install it with `uv tool install git+https://github.com/chhunlyyy/sentinel` (or `pipx install` with the same URL) and stop. `sentinel --help` lists every command.
 
+Each stage is also installed as its own skill (`sentinel-repro`, `sentinel-spec`, `sentinel-code`, `sentinel-clean`, `sentinel-harden`, `sentinel-review`, `sentinel-qa`, `sentinel-promote`, `sentinel-docs`, `sentinel-rollout`, `sentinel-retro`, `sentinel-release-check`) so a requester can run one stage alone. If the requester wants only one stage, point them to that skill instead of starting a pipeline run.
+
 ## Commands you use
 
 - `sentinel doctor`: check the setup.

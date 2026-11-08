@@ -74,6 +74,20 @@ Type the command in your tool, or just ask for it in words (tools that do not ha
 | `/sentinel-status` | Shows setup health, open runs and cost statistics |
 | `/sentinel-sync` | Publishes a finished run's specs and regression tests to the shared repo, after approval |
 | `/sentinel-change-map` | Builds the HTML map of everything a run changed |
+| `/sentinel-repro` | Writes a failing test or exact steps for a bug, without fixing it |
+| `/sentinel-spec` | Turns a request into a spec with Gherkin scenarios and a QA procedure |
+| `/sentinel-code` | Implements a change in one repo |
+| `/sentinel-clean` | Refactors recent changes for readability |
+| `/sentinel-harden` | Runs mutation testing and plugs test gaps |
+| `/sentinel-review` | Skeptical read-only review of the current changes |
+| `/sentinel-qa` | Runs QA against the running system on throwaway data |
+| `/sentinel-promote` | Moves passing QA checks into the shared regression suite |
+| `/sentinel-release-check` | Runs the production-readiness gate |
+| `/sentinel-docs` | Updates docs and drafts the PR |
+| `/sentinel-rollout` | Collects deploy-time changes |
+| `/sentinel-retro` | Proposes new project invariants |
+
+Every stage is also its own skill, so you can run just one without `/sentinel`: for example `/sentinel-review` for a review of your uncommitted changes, or `/sentinel-release-check` before you commit. Each stage skill uses the same instructions as the full pipeline and runs in its own clean context. A standalone run needs a config but no spec, lock or shared repo.
 
 First time in a project, start with `/sentinel-setup` (or run `sentinel init` yourself). It asks for the URL of your team's private shared repo and will not continue without one: that is where your team's rules, specs and regression suite live. Details are in [docs/quickstart.md](docs/quickstart.md).
 
@@ -89,7 +103,7 @@ First time in a project, start with `/sentinel-setup` (or run `sentinel init` yo
 
 ## Status
 
-Internal beta, version 0.1.0b2. It has run end to end on one project (Tier 2 bug fix on a Spring Boot and Next.js workspace) and passes its own self-test (`sentinel selftest`, dozens of checks on a throwaway workspace). The specifier, reviewer, hardener, QA, promotion, docs, rollout and retrospective stages have not run for real yet, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
+Internal beta, version 0.1.0b3. It has run end to end on one project (Tier 2 bug fix on a Spring Boot and Next.js workspace) and passes its own self-test (`sentinel selftest`, dozens of checks on a throwaway workspace). The specifier, reviewer, hardener, QA, promotion, docs, rollout and retrospective stages have not run for real yet, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
 
 ## License
 

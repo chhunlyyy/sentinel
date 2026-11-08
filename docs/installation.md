@@ -5,7 +5,7 @@ Sentinel has two parts, installed separately:
 | Part | What it is | Installed with | Scope |
 |---|---|---|---|
 | The engine | The `sentinel` command: config, run state, stage prompts, release check, shared-repo sync | `uv tool install` (or `pipx`) | once per machine |
-| The skills | `/sentinel`, `/sentinel-setup` and four more, which your AI tool loads | `npx skills` | once per project (committed) or once per machine (`-g`) |
+| The skills | `/sentinel`, `/sentinel-setup`, one skill per stage and more, which your AI tool loads | `npx skills` | once per project (committed) or once per machine (`-g`) |
 
 Linux is the only platform tested so far.
 
@@ -67,7 +67,7 @@ Useful options:
 | `-l` | list the skills without installing |
 | `-y` | do not ask for confirmation |
 
-**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b2 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
+**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b3 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
 
 What you get:
 
@@ -79,6 +79,20 @@ What you get:
 | `/sentinel-status` | setup health, open runs, statistics |
 | `/sentinel-sync` | publishes a finished run to the shared repo, after approval |
 | `/sentinel-change-map` | builds the HTML map of what a run changed |
+| `/sentinel-repro` | Writes a failing test or exact steps for a bug, without fixing it |
+| `/sentinel-spec` | Turns a request into a spec with Gherkin scenarios and a QA procedure |
+| `/sentinel-code` | Implements a change in one repo |
+| `/sentinel-clean` | Refactors recent changes for readability |
+| `/sentinel-harden` | Runs mutation testing and plugs test gaps |
+| `/sentinel-review` | Skeptical read-only review of the current changes |
+| `/sentinel-qa` | Runs QA against the running system on throwaway data |
+| `/sentinel-promote` | Moves passing QA checks into the shared regression suite |
+| `/sentinel-release-check` | Runs the production-readiness gate |
+| `/sentinel-docs` | Updates docs and drafts the PR |
+| `/sentinel-rollout` | Collects deploy-time changes |
+| `/sentinel-retro` | Proposes new project invariants |
+
+Every stage is also its own skill, so you can run just one without `/sentinel`: for example `/sentinel-review` for a review of your uncommitted changes, or `/sentinel-release-check` before you commit. Each stage skill uses the same instructions as the full pipeline and runs in its own clean context. A standalone run needs a config but no spec, lock or shared repo.
 
 How each tool shows a skill differs. Some list it as a slash command; others load it automatically when your request matches its description. If a tool shows no slash command, just ask: "run sentinel on: <task>".
 
@@ -157,4 +171,4 @@ Your `sentinel.config.yaml` and `.sentinel/` folder are not touched; delete them
 
 ## What has and has not been tested
 
-Verified: the engine installs from a wheel and from GitHub with `uv` on Python 3.13 and 3.14, passes its self-test, and `npx skills` discovers and installs all six skills for nine agents into one `.agents/skills/` folder with the links shown above. Not verified: how each AI tool lists and runs the skills after install, and any platform other than Linux. Please report what you see; see [beta-testing.md](beta-testing.md).
+Verified: the engine installs from a wheel and from GitHub with `uv` on Python 3.13 and 3.14, passes its self-test, and `npx skills` discovers and installs all the skills for nine agents into one `.agents/skills/` folder with the links shown above. Not verified: how each AI tool lists and runs the skills after install, and any platform other than Linux. Please report what you see; see [beta-testing.md](beta-testing.md).

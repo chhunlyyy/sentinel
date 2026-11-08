@@ -277,15 +277,20 @@ def cmd_run_new(args):
     directory = run_dir(config_path, config, args.slug)
     if (directory / "state.json").exists():
         sys.exit(f"run {args.slug} already exists; use `sentinel resume {args.slug}`")
-    require_shared(config_path, config)
-    from shared import Shared
-    Shared(config_path.parent, config).acquire(args.slug, getpass.getuser())
+    tier = args.tier or 1
+    if not args.adhoc:
+        if not args.tier:
+            sys.exit("--tier is required unless --adhoc")
+        require_shared(config_path, config)
+        from shared import Shared
+        Shared(config_path.parent, config).acquire(args.slug, getpass.getuser())
     directory.mkdir(parents=True, exist_ok=True)
     state = {
         "slug": args.slug,
-        "tier": args.tier,
-        "initial_tier": args.tier,
-        "stages": TIER_STAGES[args.tier],
+        "tier": tier,
+        "initial_tier": tier,
+        "adhoc": bool(args.adhoc),
+        "stages": TIER_STAGES[tier],
         "completed": [],
         "sessions": {},
         "rounds": {"review": 0, "qa": 0, "release_check": 0},
@@ -361,6 +366,9 @@ def cmd_run_finish(args):
     state["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     state["outcome"] = args.outcome
     path.write_text(json.dumps(state, indent=2))
+    if state.get("adhoc"):
+        print(f"run {args.slug} {args.outcome}")
+        return
     Shared(config_path.parent, config).release(args.slug)
     print(f"run {args.slug} {args.outcome}; lock released")
 
@@ -512,7 +520,8 @@ def main():
     run_sub = run.add_subparsers(dest="run_cmd", required=True)
     new = run_sub.add_parser("new")
     new.add_argument("slug")
-    new.add_argument("--tier", type=int, choices=[1, 2, 3, 4], required=True)
+    new.add_argument("--tier", type=int, choices=[1, 2, 3, 4])
+    new.add_argument("--adhoc", action="store_true", help="single-stage run: no lock, no shared repo needed")
     new.set_defaults(func=cmd_run_new)
     update = run_sub.add_parser("update")
     update.add_argument("slug")

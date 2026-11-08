@@ -119,6 +119,7 @@ def main():
     parser.add_argument("--stage", required=True)
     parser.add_argument("--repo")
     parser.add_argument("--workspace", default=".")
+    parser.add_argument("--slug")
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -133,7 +134,8 @@ def main():
             sys.exit(f"unknown repo id {args.repo}")
         repo = matches[0]
     try:
-        sys.stdout.write(render(template, build_context(config, repo, args.workspace, args.stage)))
+        out = render(template, build_context(config, repo, args.workspace, args.stage))
+        sys.stdout.write(out.replace("<slug>", args.slug) if args.slug else out)
     except KeyError as missing:
         sys.exit(f"unresolved placeholder: {missing}")
 

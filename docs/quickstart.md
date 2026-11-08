@@ -64,7 +64,7 @@ Use the agent name of your tool: `claude-code`, `antigravity-cli`, `codex`, `cur
 
 You get `/sentinel`, `/sentinel-setup`, `/sentinel-resume`, `/sentinel-status`, `/sentinel-sync` and `/sentinel-change-map`. Nothing project-specific is generated: when a stage runs, the skill asks `sentinel stage render` for that stage's instructions, built from your config, rules and guidelines. Update later with `npx skills@latest update`.
 
-The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add the tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b2 --skill '*' -a <agent>`.
+The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add the tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b3 --skill '*' -a <agent>`.
 
 ### Legacy: generated agent files
 
