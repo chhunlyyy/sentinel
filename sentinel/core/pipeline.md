@@ -76,7 +76,7 @@ Shape effects, from `shape` in config:
 
 ## Run isolation
 
-Each run works on its own branch or worktree per repo. A lock file `shared/locks/<slug>` stops two people from taking the same slug. Pre-flight records baseline SHAs and baseline health (build, lint, typecheck). A broken baseline is reported and fixed as its own increment, not folded into the feature.
+The orchestrator is told to work on its own branch or worktree per repo; Sentinel does not create one. `sentinel run new` takes a lock on the slug as a git ref (`refs/sentinel/locks/<slug>`) on the shared repo, which stops two people from taking the same slug. Pre-flight records baseline SHAs and baseline health (build, lint, typecheck). A broken baseline is reported and fixed as its own increment, not folded into the feature.
 
 ## State
 
