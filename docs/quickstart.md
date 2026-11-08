@@ -3,13 +3,11 @@
 ## 1. Install
 
 ```bash
-git clone <your sentinel repo url> ~/sentinel
-export SENTINEL_HOME=~/sentinel
-export PATH="$SENTINEL_HOME/bin:$PATH"
-pip install pyyaml jsonschema
+uv tool install git+https://github.com/chhunlyyy/sentinel
+sentinel --version
 ```
 
-Add the two `export` lines to your shell profile.
+No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same way, or use `pip install` inside a virtual environment. Upgrade with `uv tool upgrade sentinel` (or `pipx upgrade sentinel`). To pin a release, add `@<tag>` to the URL. After an upgrade, run `sentinel sync-adapters` again in each project so the generated agents and skills match the new version.
 
 ## 2. Create a shared repo (once per team)
 
@@ -65,7 +63,7 @@ sentinel sync-adapters --tool cursor
 - `claude` writes agent files into `.claude/agents/` and the skills into `.claude/skills/`.
 - `agents`, `codex`, `gemini`, and `cursor` write a managed Sentinel block into `AGENTS.md` (your own text outside the block is kept), plus `GEMINI.md` or `.cursor/rules/sentinel.mdc`, and put the rendered prompts in `.sentinel/generated/`.
 
-Each teammate runs this once after cloning. The Claude adapter writes the absolute path of your Sentinel checkout into `.claude/skills/`, so do not commit those skill files; the `AGENTS.md` block and `.sentinel/generated/` use `$SENTINEL_HOME` and contain no machine paths.
+Each teammate runs this once after cloning. The generated agents, skills and the `AGENTS.md` block call the `sentinel` command and contain no machine paths, so teammates only need `sentinel` installed. Re-run `sync-adapters` after upgrading Sentinel.
 
 ## 6. Run a task
 
@@ -89,7 +87,7 @@ If a session stops or hits a usage limit, `sentinel resume <slug>` shows the nex
 ## Running a stage by hand or on another tool
 
 ```bash
-python3 "$SENTINEL_HOME/scripts/run_stage.py" --stage coder --repo backend --slug add-export --brief .sentinel/runs/add-export/backend-coder-brief.md
+sentinel stage run --stage coder --repo backend --slug add-export --brief .sentinel/runs/add-export/backend-coder-brief.md
 ```
 
 The runner is chosen from `routing` (or `--runner`). Before and after the stage it snapshots every repo and exits with code 3 if the stage wrote outside its repo, committed, or changed the Sentinel config.
@@ -100,6 +98,6 @@ The runner is chosen from `routing` (or `--runner`). Before and after the stage 
 |---|---|
 | `sentinel.config.yaml not found` | Run from inside the workspace, or pass `--dir`. |
 | `slug X is locked by another run` | A teammate or an earlier run holds it. Pick another slug, or delete a stale lock: `git push origin :refs/sentinel/locks/<slug>` from `.sentinel/shared`. |
-| `scrub check failed; nothing pushed` | `sentinel scrub --check` lists the files. Remove the data or run `python3 "$SENTINEL_HOME/scripts/scrub.py" .sentinel/shared`. |
+| `scrub check failed; nothing pushed` | `sentinel scrub --check` lists the files. Remove the data, or run `sentinel scrub --shared` to redact it. |
 | `doctor` says a runner CLI is not installed | Install it, or route that stage to another runner. |
 | Exit code 3 from `run_stage.py` | The stage broke its write boundary. Review the listed files; nothing was reverted automatically. |

@@ -7,7 +7,7 @@ description: Builds an interactive HTML change map of everything a Sentinel run 
 
 A run can touch 100+ files across several repos, and a plain diff does not show what each file does or how the pieces connect. This turns the run's changes into one self-contained HTML page opened locally. The page contains source code: keep it on the requester's machine and never publish it.
 
-- Columns come from each repo's stack profile (`lanes` in `{{sentinel_home}}/profiles/<profile>.json`). Repos with different stacks get their own columns side by side.
+- Columns come from each repo's stack profile (its `lanes` rules). Repos with different stacks get their own columns side by side.
 - Links connect files that use each other: imports, class references, HTTP calls from a client repo to a server endpoint, entity to migration table. Unchanged files a changed file connects to are shown dashed.
 - Clicking a file shows its role, what changed, its links, and key diff blocks. Flows walk a feature as numbered steps.
 
@@ -22,8 +22,8 @@ Base revisions default to HEAD, which covers all uncommitted work. If part of th
 ### 2. Collect
 
 ```bash
-python3 {{sentinel_home}}/scripts/change_map/collect_changes.py \
-  --config sentinel.config.yaml --out .sentinel/runs/<slug>/changes.json \
+sentinel change-map collect \
+  --out .sentinel/runs/<slug>/changes.json \
   [--base <repo_id>=<sha>]
 ```
 
@@ -34,7 +34,7 @@ It prints the changed files (your checklist for notes) and the unchanged context
 Read the decisions file, the spec, each stage result, and the diffs, one column at a time:
 
 ```bash
-python3 {{sentinel_home}}/scripts/change_map/dump_diffs.py .sentinel/runs/<slug>/changes.json --lane service
+sentinel change-map dump .sentinel/runs/<slug>/changes.json --lane service
 ```
 
 Block numbers it prints are the `key_hunks` indexes. Never describe a file from its name alone.
@@ -79,7 +79,7 @@ Save as `.sentinel/runs/<slug>/notes.json`:
 ### 6. Render
 
 ```bash
-python3 {{sentinel_home}}/scripts/change_map/render_map.py \
+sentinel change-map render \
   --changes .sentinel/runs/<slug>/changes.json \
   --notes .sentinel/runs/<slug>/notes.json \
   --out .sentinel/runs/<slug>/change-map.html --strict

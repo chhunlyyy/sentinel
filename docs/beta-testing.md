@@ -1,14 +1,14 @@
 # Beta testing guide
 
-Version 0.1.0-beta. Thank you for testing. This is an internal beta: it works end to end for one team on one stack, and most of it has not been exercised by anyone else yet. Your reports are the point of this phase.
+Version 0.1.0b0. Thank you for testing. This is an internal beta: it works end to end for one team on one stack, and most of it has not been exercised by anyone else yet. Your reports are the point of this phase.
 
 ## 1. Set up (10 minutes)
 
-1. Get Sentinel and point `SENTINEL_HOME` at it (see the README install section). Install `pyyaml` and `jsonschema`.
+1. Install Sentinel: `uv tool install git+https://github.com/chhunlyyy/sentinel` (see the README install section).
 2. Run the self-test. It builds a throwaway workspace in your temp folder and touches nothing else:
 
    ```bash
-   python3 "$SENTINEL_HOME/scripts/selftest.py"
+   sentinel selftest
    ```
 
    Expected last line: `28 passed, 0 failed`. If anything fails, stop and report it (section 5) before testing further.
@@ -45,7 +45,7 @@ Please try at least one of each and tell us how it went:
 - The MySQL QA plugin has been dry-run only; the clone itself has not been run by Sentinel.
 - Codex, Gemini, Cursor and `agy` flags are unverified.
 - The self-test covers the mechanics (config, prompts, locks, boundary check, scrubber, release check), not the quality of what an agent writes.
-- The generated Claude skills contain the absolute path of your Sentinel checkout. Do not commit `.claude/skills/`.
+- After upgrading Sentinel, run `sentinel sync-adapters` again; the generated agents and skills are not updated automatically.
 - There is no Windows support and no installer yet.
 
 ## 5. How to report a problem

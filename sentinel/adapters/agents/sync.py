@@ -20,10 +20,10 @@ This project uses Sentinel, a tiered build pipeline (triage, spec, code, clean, 
 
 To implement a feature or fix a bug through Sentinel:
 
-1. Make sure `SENTINEL_HOME` points at your Sentinel checkout, and run `python3 "$SENTINEL_HOME/scripts/sentinel.py" sync-adapters --tool agents` once after cloning (it fills `.sentinel/generated/`).
+1. Install the `sentinel` command (`uv tool install sentinel` from its repository, or `pipx install`), and run `sentinel sync-adapters --tool agents` once after cloning (it fills `.sentinel/generated/`).
 2. Read `.sentinel/generated/orchestrator.md` and follow it. It tells you how to pick the effort tier and run each stage.
-3. Stage prompts are in `.sentinel/generated/prompts/<name>.md`. Run a stage with `python3 "$SENTINEL_HOME/scripts/run_stage.py" --stage <stage> [--repo <id>] --slug <slug> --brief <file>`, or follow the prompt yourself when you are the only agent.
-4. Run state lives in `.sentinel/runs/<slug>/state.json`; resume with `sentinel.py resume <slug>`.
+3. Stage prompts are in `.sentinel/generated/prompts/<name>.md`. Run a stage with `sentinel stage run --stage <stage> [--repo <id>] --slug <slug> --brief <file>`, or follow the prompt yourself when you are the only agent.
+4. Run state lives in `.sentinel/runs/<slug>/state.json`; resume with `sentinel resume <slug>`.
 
 Rules from `sentinel.config.yaml` apply to everything you write:
 {rules}
@@ -43,8 +43,7 @@ def render(config_path, stage, repo, workspace):
     cmd = [sys.executable, str(RENDER), "--config", str(config_path), "--stage", stage, "--workspace", str(workspace)]
     if repo:
         cmd += ["--repo", repo]
-    env = {**os.environ, "SENTINEL_PORTABLE": "1"}
-    return subprocess.run(cmd, check=True, capture_output=True, text=True, env=env).stdout
+    return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
 
 
 def stage_meta(stage):
@@ -82,9 +81,10 @@ def main():
         else:
             (prompts / f"{stage}.md").write_text(render(config_path, stage, None, workspace))
 
-    orchestrator = (ROOT / "core" / "skill" / "SKILL.md").read_text().split("---\n", 2)[2].replace("{{sentinel_home}}", "$SENTINEL_HOME")
-    change_map = (ROOT / "core" / "skill" / "change-map" / "SKILL.md").read_text().split("---\n", 2)[2].replace("{{sentinel_home}}", "$SENTINEL_HOME")
+    orchestrator = (ROOT / "core" / "skill" / "SKILL.md").read_text().split("---\n", 2)[2]
+    change_map = (ROOT / "core" / "skill" / "change-map" / "SKILL.md").read_text().split("---\n", 2)[2]
     (generated / "orchestrator.md").write_text(orchestrator)
+    (generated / "pipeline.md").write_text((ROOT / "core" / "pipeline.md").read_text())
     (generated / "change-map.md").write_text(change_map)
 
     rules = "\n".join(RULE_TEXT[k] for k, v in (config.get("rules") or {}).items() if v and k in RULE_TEXT) or "- none enabled"

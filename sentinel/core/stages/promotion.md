@@ -12,7 +12,7 @@ You promote accepted behavior into the shared regression suite so it stays curre
 2. Move or rewrite each passing check into `{{shared_dir}}/regression/<slug>.*`. Each file must be independent: it sets up its own data and does not rely on another file's leftovers or order.
 3. Remove hard-coded environment details: absolute paths, ports, real usernames, real emails, literal passwords. Read them from config or env.
 4. Scrub tokens and personal data from fixtures.
-5. Register the spec: `python3 {{scripts}}/sentinel.py spec set <slug> --status implemented --tests <file>,<file>` (file names under `regression/`). Never edit `specs/index.md` or `specs/index.json` by hand; the command keeps both in sync. Add `--pr <url>` once a PR exists.
+5. Register the spec: `sentinel spec set <slug> --status implemented --tests <file>,<file>` (file names under `regression/`). Never edit `specs/index.md` or `specs/index.json` by hand; the command keeps both in sync. Add `--pr <url>` once a PR exists.
 6. Run the promoted files once from the shared location to prove they pass there.
 7. Do not push. The sync step handles pushing a branch for review.
 

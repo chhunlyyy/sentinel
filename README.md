@@ -40,7 +40,7 @@ Each repo has its own stack profile (`flutter`, `spring-gradle`, `nextjs`, `node
 
 ## Requirements
 
-- Python 3 with PyYAML (`pip install pyyaml`; add `jsonschema` for `sentinel doctor` schema checks)
+- Python 3.10 or newer and [uv](https://docs.astral.sh/uv/) (or pipx). `uv` can fetch a suitable Python for you.
 - git
 - At least one AI agent CLI, if you want stages to run unattended
 - `mysql` and `mysqldump`, only if you use the MySQL QA data plugin
@@ -49,10 +49,11 @@ Each repo has its own stack profile (`flutter`, `spring-gradle`, `nextjs`, `node
 ## Install
 
 ```bash
-git clone <your sentinel repo url> ~/sentinel
-export SENTINEL_HOME=~/sentinel
-export PATH="$SENTINEL_HOME/bin:$PATH"
+uv tool install git+https://github.com/chhunlyyy/sentinel
+sentinel --version
 ```
+
+No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same way, or use `pip install` inside a virtual environment. Upgrade with `uv tool upgrade sentinel` (or `pipx upgrade sentinel`). To pin a release, add `@<tag>` to the URL. After an upgrade, run `sentinel sync-adapters` again in each project so the generated agents and skills match the new version.
 
 ## Quickstart
 
@@ -77,7 +78,7 @@ Then ask your agent to run Sentinel on a task.
 
 ## Status
 
-Internal beta, version 0.1.0-beta. It has run end to end on one project (Tier 2 bug fix on a Spring Boot and Next.js workspace) and passes its own self-test (`python3 scripts/selftest.py`, 28 checks on a throwaway workspace). The specifier, reviewer, hardener, QA, promotion, docs, rollout and retrospective stages have not run for real yet, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
+Internal beta, version 0.1.0b0. It has run end to end on one project (Tier 2 bug fix on a Spring Boot and Next.js workspace) and passes its own self-test (`sentinel selftest`, 28 checks on a throwaway workspace). The specifier, reviewer, hardener, QA, promotion, docs, rollout and retrospective stages have not run for real yet, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
 
 ## License
 

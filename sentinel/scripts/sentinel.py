@@ -171,11 +171,12 @@ def cmd_sync_adapters(args):
     )
     skill_out = workspace / ".claude" / "skills" / "sentinel"
     skill_out.mkdir(parents=True, exist_ok=True)
-    skill_text = (ROOT / "core" / "skill" / "SKILL.md").read_text().replace("{{sentinel_home}}", str(ROOT))
+    skill_text = (ROOT / "core" / "skill" / "SKILL.md").read_text()
     (skill_out / "SKILL.md").write_text(skill_text)
+    (skill_out / "pipeline.md").write_text((ROOT / "core" / "pipeline.md").read_text())
     map_out = workspace / ".claude" / "skills" / "sentinel-change-map"
     map_out.mkdir(parents=True, exist_ok=True)
-    map_text = (ROOT / "core" / "skill" / "change-map" / "SKILL.md").read_text().replace("{{sentinel_home}}", str(ROOT))
+    map_text = (ROOT / "core" / "skill" / "change-map" / "SKILL.md").read_text()
     (map_out / "SKILL.md").write_text(map_text)
     print(f"agents written to {out}; skills written to {skill_out} and {map_out}")
 
@@ -269,7 +270,7 @@ def cmd_scrub(args):
         for path, found in problems.items():
             print(f"{path}: {', '.join(found)}")
         sys.exit(1 if problems else 0)
-    targets = [state_dir / "runs", state_dir / "cache"]
+    targets = [state_dir / "shared"] if args.shared else [state_dir / "runs", state_dir / "cache"]
     changed = scrub.scrub_paths([t for t in targets if t.exists()], scrubber)
     print(f"scrubbed {len(changed)} file(s)")
 
@@ -367,6 +368,43 @@ def cmd_clean(args):
     print(f"removed {len(removed)} item(s)")
 
 
+PASSTHROUGH = {
+    "release-check": {"script": "release_check.py", "config": True, "workspace": True},
+    "qa-data": {"script": "qa_data.py", "config": True},
+    "shared-check": {"script": "shared_ci.py"},
+    "selftest": {"script": "selftest.py"},
+    "stage render": {"script": "render_stage.py", "config": True, "workspace": True},
+    "stage run": {"script": "run_stage.py", "config": True},
+    "change-map collect": {"script": "change_map/collect_changes.py", "config": True},
+    "change-map dump": {"script": "change_map/dump_diffs.py"},
+    "change-map render": {"script": "change_map/render_map.py"},
+}
+
+
+def cmd_passthrough(args):
+    spec = PASSTHROUGH[args.target]
+    extra = list(args.extra)
+    prefix = []
+    if spec.get("config") and "--config" not in extra:
+        config_path = find_config(args.dir)
+        prefix += ["--config", str(config_path)]
+        if spec.get("workspace") and "--workspace" not in extra:
+            prefix += ["--workspace", str(config_path.parent)]
+    sys.exit(subprocess.call([sys.executable, str(ROOT / "scripts" / spec["script"]), *prefix, *extra]))
+
+
+def add_passthrough_commands(sub):
+    for name in ("release-check", "qa-data", "shared-check", "selftest"):
+        parser = sub.add_parser(name, add_help=False)
+        parser.set_defaults(func=cmd_passthrough, target=name, passthrough=True)
+    for group, members in (("stage", ("render", "run")), ("change-map", ("collect", "dump", "render"))):
+        group_parser = sub.add_parser(group)
+        group_sub = group_parser.add_subparsers(dest=f"{group}_cmd", required=True)
+        for member in members:
+            parser = group_sub.add_parser(member, add_help=False)
+            parser.set_defaults(func=cmd_passthrough, target=f"{group} {member}", passthrough=True)
+
+
 def main():
     parser = argparse.ArgumentParser(prog="sentinel")
     parser.add_argument("--dir", default=".")
@@ -446,9 +484,15 @@ def main():
 
     scrub_cmd = sub.add_parser("scrub")
     scrub_cmd.add_argument("--check", action="store_true", help="verify .sentinel/shared is clean; non-zero exit on findings")
+    scrub_cmd.add_argument("--shared", action="store_true", help="redact .sentinel/shared instead of runs and cache")
     scrub_cmd.set_defaults(func=cmd_scrub)
 
-    args = parser.parse_args()
+    add_passthrough_commands(sub)
+
+    args, extra = parser.parse_known_args()
+    if extra and not getattr(args, "passthrough", False):
+        parser.error("unrecognized arguments: " + " ".join(extra))
+    args.extra = extra
     args.func(args)
 
 

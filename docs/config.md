@@ -46,7 +46,7 @@ qa:
 
 - `driver`: `playwright`, `emulator`, `native`, or `none`. Tells the QA stage how to drive the system.
 - `ports`: ports QA uses, chosen so a developer's own servers keep running. The first port is available to boot arguments as `{port}`.
-- `start_commands`: how to start each service, keyed by repo id; each runs from that repo's directory. Written into the QA stage prompt. `{scripts}` expands to Sentinel's scripts folder (for example `{scripts}/qa-data boot-args qa`).
+- `start_commands`: how to start each service, keyed by repo id; each runs from that repo's directory. Written into the QA stage prompt. `{scripts}/qa-data` is accepted as an alias for `sentinel qa-data` (write `sentinel qa-data boot-args qa`).
 - `fixtures`: `sanitized` (preferred) or `clone` (copies real data; see [security.md](security.md)).
 - `db_clone`: `none`, or the MySQL plugin block below.
 
@@ -77,7 +77,7 @@ db_clone:
 - `fresh` is an empty schema for the migrate-from-zero check. `replaces` names the source whose copy it stands in for in `boot-args fresh`.
 - Safety: a target must end in one of `throwaway_suffixes` (default `_qa`, `_fresh`), and can never be a configured source. The tool refuses otherwise.
 - `boot_args` placeholders: `{port}`, `{jdbc:<source-schema>}` (the cloned or fresh schema URL), `{storage:<name>}`.
-- Commands: `scripts/qa-data prepare | fresh | drop-fresh | drop-all | boot-args <qa|fresh>`, plus `--dry-run` to print what would run. `sentinel clean --db` runs `drop-all`.
+- Commands: `sentinel qa-data prepare | fresh | drop-fresh | drop-all | boot-args <qa|fresh>`, plus `--dry-run` to print what would run. `sentinel clean --db` runs `drop-all`.
 
 ## release_checks
 
@@ -93,7 +93,7 @@ A list of check names. When omitted, the default is all of: `debug_output`, `tod
 | `test_infra` | Fails if test runners, configs, reports, or test-only dependencies remain in client repos. Active only when `rules.no_permanent_frontend_tests` is true. |
 | `commands` | Runs each repo's build, lint, typecheck, and test commands. |
 
-Run it: `python3 "$SENTINEL_HOME/scripts/release_check.py" --config sentinel.config.yaml`. It only checks repos that have uncommitted changes. Options: `--quick` skips all build, lint, typecheck and test commands; `--repo <id>` (repeatable) limits it to the repos your increment touched; `--skip build,lint` skips named commands (for example `build` while a dev server is running on that repo).
+Run it: `sentinel release-check`. It only checks repos that have uncommitted changes. Options: `--quick` skips all build, lint, typecheck and test commands; `--repo <id>` (repeatable) limits it to the repos your increment touched; `--skip build,lint` skips named commands (for example `build` while a dev server is running on that repo).
 
 ## stage_guidelines
 

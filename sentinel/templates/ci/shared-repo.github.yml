@@ -1,0 +1,17 @@
+name: sentinel-shared
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install sentinel
+        run: uv tool install "git+https://github.com/chhunlyyy/sentinel@${SENTINEL_REF:-main}"
+        env:
+          SENTINEL_REF: ${{ vars.SENTINEL_REF }}
+      - name: Shared gate
+        run: sentinel shared-check --dir . --run-command "${{ vars.REGRESSION_COMMAND }}"

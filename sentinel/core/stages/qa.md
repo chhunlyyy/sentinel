@@ -24,7 +24,7 @@ You are QA. You test the integrated system the way a human would, treating each 
 
 1. Read the spec QA procedure and the reviewer's regression-risk list.
 2. Human gate: if `qa.db_clone` is not `none`, confirm with the requester before cloning real data. Prefer `qa.fixtures: sanitized`.
-3. Prepare throwaway data. Run `{{scripts}}/qa-data prepare`.
+3. Prepare throwaway data. Run `sentinel qa-data prepare`.
 4. Migration from zero (only if the increment changes a schema): create an empty database, boot the service against it, and confirm migrations apply cleanly. Failure is a code bug.
 5. Start each repo's service, from that repo's directory, in the background with logs under `{{state_dir}}/cache/qa/logs/`. Start commands from config:
 {{qa.start_commands}}

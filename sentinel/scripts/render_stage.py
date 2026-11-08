@@ -73,13 +73,11 @@ def build_context(config, repo, workspace, stage=None):
     commands = repo_commands(repo, profile) if repo else {}
     rules_block, rules_review_block = rules_blocks(config, repo)
     others = [r["id"] for r in config["repos"] if not repo or r["id"] != repo["id"]]
-    scripts_path = "$SENTINEL_HOME/scripts" if os.environ.get("SENTINEL_PORTABLE") else str(ROOT / "scripts")
     flat = {
         "workspace": str(workspace),
         "state_dir": state_dir,
         "run_dir": f"{state_dir}/runs/<slug>",
         "shared_dir": f"{state_dir}/shared",
-        "scripts": "$SENTINEL_HOME/scripts" if os.environ.get("SENTINEL_PORTABLE") else str(ROOT / "scripts"),
         "repo_id": repo["id"] if repo else "",
         "repo_path": repo["path"] if repo else "",
         "repo_role": repo["role"] if repo else "",
@@ -92,7 +90,7 @@ def build_context(config, repo, workspace, stage=None):
         "qa.driver": qa.get("driver", "none"),
         "qa.ports": ", ".join(str(p) for p in qa.get("ports", [])) or "none configured",
         "guidelines_block": guidelines_text(config, repo, workspace, stage),
-        "qa.start_commands": "\n".join(f"- {rid}: `{cmd.replace('{scripts}', scripts_path)}`" for rid, cmd in (qa.get("start_commands") or {}).items()) or "(none configured; work out how to start each service from its README)",
+        "qa.start_commands": "\n".join(f"- {rid}: `{cmd.replace('{scripts}/qa-data', 'sentinel qa-data')}`" for rid, cmd in (qa.get("start_commands") or {}).items()) or "(none configured; work out how to start each service from its README)",
         "tracker.kind": (config.get("tracker") or {}).get("kind", "none"),
     }
     for key in ("build", "lint", "typecheck", "test", "mutate"):

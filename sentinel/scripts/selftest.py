@@ -94,7 +94,7 @@ def main():
                 meta = yaml.safe_load(stage.read_text().split("---\n")[1])
                 repos = ids if meta.get("per_repo") else [None]
                 for rid in repos:
-                    cmd = [sys.executable, str(ROOT / "scripts/render_stage.py"), "--config", str(sws / "sentinel.config.yaml"), "--stage", stage.stem, "--workspace", str(sws)]
+                    cmd = CLI + ["--dir", str(sws), "stage", "render", "--stage", stage.stem]
                     if rid:
                         cmd += ["--repo", rid]
                     c, o = run(cmd)
@@ -107,9 +107,15 @@ def main():
         agents = list((ws / ".claude" / "agents").glob("*.md"))
         ok = bool(agents) and all(re.match(r"---\nname: \S+\ndescription: .+\ntools: .+\nmodel: \S+\n---\n", a.read_text()) for a in agents)
         check("generated Claude agents have valid frontmatter", ok, f"{len(agents)} agents")
+        skill = (ws / ".claude/skills/sentinel/SKILL.md").read_text()
+        check("generated skill has no machine path or unrendered placeholder", "/home/" not in skill and "{{" not in skill and (ws / ".claude/skills/sentinel/pipeline.md").exists())
+        check("generated skill uses the sentinel command, not file paths", "sentinel stage run" in skill and "sentinel release-check" in skill and ".py" not in skill)
+        code, out = run(CLI + ["--version"])
+        check("--version prints the packaged version", code == 0 and out.strip() == (ROOT / "VERSION").read_text().strip(), out.strip())
         before = (ws / "AGENTS.md").read_text()
         run(CLI + ["--dir", str(ws), "sync-adapters", "--tool", "agents"])
         check("AGENTS.md block is idempotent", (ws / "AGENTS.md").read_text() == before)
+        check("AGENTS.md block does not depend on a checkout path", "SENTINEL_HOME" not in before and "sentinel stage run" in before)
 
         print("runs, locks and shared repo")
         code, out = run(CLI + ["--dir", str(ws), "sync", "pull"])
@@ -148,7 +154,7 @@ def main():
         for f in (fake, stray, committer):
             f.chmod(0o755)
         write_config(ws, lambda c: c["runners"].update({"fake": {"command": str(fake)}, "stray": {"command": str(stray)}, "commit": {"command": str(committer)}}))
-        stage_cmd = [sys.executable, str(ROOT / "scripts/run_stage.py"), "--config", str(ws / "sentinel.config.yaml"), "--slug", "demo", "--stage", "coder", "--repo", "backend"]
+        stage_cmd = CLI + ["--dir", str(ws), "stage", "run", "--slug", "demo", "--stage", "coder", "--repo", "backend"]
         code, out = run(stage_cmd + ["--runner", "fake"])
         check("a well-behaved stage passes", code == 0 and (ws / "backend/ok.txt").exists(), out[-200:])
         code, out = run(stage_cmd + ["--runner", "stray"])
@@ -162,7 +168,7 @@ def main():
         check("run finish releases the lock", code == 0 and "refs/sentinel/locks/demo" not in locks, locks[-200:])
 
         print("release check and scrubber")
-        rc = [sys.executable, str(ROOT / "scripts/release_check.py"), "--config", str(ws / "sentinel.config.yaml"), "--workspace", str(ws), "--quick", "--repo", "frontend"]
+        rc = CLI + ["--dir", str(ws), "release-check", "--quick", "--repo", "frontend"]
         (ws / "frontend/app.ts").write_text("export const a = 1;\n")
         code, out = run(rc)
         check("release check passes on a clean change", code == 0, out[-200:])
@@ -176,7 +182,7 @@ def main():
         check("scrubber removes tokens, home paths and emails", "eyJ" not in cleaned and FAKE_HOME not in cleaned and "real-domain" not in cleaned, cleaned)
 
         print("change map")
-        code, out = run([sys.executable, str(ROOT / "scripts/change_map/collect_changes.py"), "--config", str(ws / "sentinel.config.yaml"), "--out", str(tmp / "changes.json")])
+        code, out = run(CLI + ["--dir", str(ws), "change-map", "collect", "--out", str(tmp / "changes.json")])
         check("change map collects the changed files", code == 0 and json.loads((tmp / "changes.json").read_text())["nodes"], out[-200:])
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
