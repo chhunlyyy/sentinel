@@ -71,7 +71,7 @@ Shape effects, from `shape` in config:
 - Caps come from `limits`: review rounds, QA rounds, release-check rounds. At a cap, stop and report "not production-ready" with the open items.
 - Auto-escalation: a blocker from the reviewer in tier 2 or 3 re-triages the run upward.
 - Failure routing: code-bug goes to that repo's coder, then its hardener (tier 4), then reviewer re-check, then QA again. Spec-gap goes to the specifier; product decisions go to the requester.
-- Human gates (tier 3 and 4): confirm before QA clones real data; confirm before any push or PR.
+- Human gates (tier 3 and 4): confirm before QA clones real data; confirm before any PR. A push to the shared repo needs confirmation only when `state.auto_sync_push` is off.
 - Never trust a stage's own report when it ran on a different model or runner: re-run its key check (tests, mutation score, a failing QA step) before accepting.
 
 ## Run isolation

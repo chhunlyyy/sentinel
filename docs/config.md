@@ -195,11 +195,13 @@ state:
   dir: .sentinel
   retention: { runs: 20, logs_days: 14 }
   shared_repo: git@host:myteam/myteam-sentinel-shared.git
+  auto_sync_push: true
   shared_ref: main
 ```
 
 - `dir`: local state folder. Contains `runs/`, `cache/`, `shared/` (a clone of the shared repo), and `generated/`.
 - `retention`: `sentinel clean` keeps the newest `runs` run folders and deletes cache files older than `logs_days`.
+- `auto_sync_push` (default `true`): when a run passes, `/sentinel` pushes its specs, regression tests and proposed invariants to the shared repo as a `sentinel/<slug>` branch without asking. The scrub check still gates it. Set `false` to be asked first.
 - `shared_repo` (**required**): clone URL of the team's private shared repo. `sentinel init` asks for it and `sentinel shared set <url>` changes it. `sentinel doctor` fails and `sentinel run new` refuses while it is missing or not cloned.
 - `shared_ref`: the branch, tag, or commit to use. Pin a tag or commit for reproducible runs.
 

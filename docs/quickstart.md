@@ -84,7 +84,7 @@ If a session stops or hits a usage limit, `sentinel resume <slug>` shows the nex
 ## 7. Finish
 
 - `sentinel scrub` clears tokens, emails, credentials, and home paths from runs and cache.
-- `sentinel sync push <slug> --yes` (only after you approve) pushes a `sentinel/<slug>` branch of the new specs, regression tests, and proposed invariants to the shared repo for review. It refuses if the scrub check fails.
+- `sentinel sync push <slug> --auto` (by default; with `state.auto_sync_push: false`, `--yes` after you approve) pushes a `sentinel/<slug>` branch of the new specs, regression tests, and proposed invariants to the shared repo for review. It refuses if the scrub check fails.
 - `sentinel run finish <slug>` closes the run and releases the lock.
 - `sentinel stats` shows tier mix, escalations, average rounds, and cost per stage.
 - `sentinel clean` prunes old runs and cache. `sentinel clean --db` also drops the throwaway QA schemas.

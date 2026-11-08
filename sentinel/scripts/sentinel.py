@@ -381,8 +381,12 @@ def cmd_sync(args):
     if args.sync_cmd == "pull":
         shared.pull()
         return
-    if not args.yes:
-        sys.exit("push needs --yes after the requester has approved it")
+    if args.auto:
+        if not (config.get("state") or {}).get("auto_sync_push", True):
+            print("state.auto_sync_push is off: not pushing; ask the requester, then run with --yes")
+            return
+    elif not args.yes:
+        sys.exit("push needs --yes after the requester has approved it, or --auto when state.auto_sync_push is on")
     workspace = config_path.parent
     scrubber = scrub.Scrubber(workspace, scrub.env_values(workspace))
     run_directory = run_dir(config_path, config, args.slug)
@@ -543,6 +547,7 @@ def main():
     push = sync_sub.add_parser("push")
     push.add_argument("slug")
     push.add_argument("--yes", action="store_true")
+    push.add_argument("--auto", action="store_true", help="push only if state.auto_sync_push is on")
     push.set_defaults(func=cmd_sync)
 
     spec = sub.add_parser("spec")

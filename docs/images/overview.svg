@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img" aria-label="Sentinel gives a team one agent workflow and one shared repo">
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>
+<rect width="1000" height="560" rx="16" fill="#ffffff" stroke="#d1d5db"/>
+<text x="500" y="40" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="22" font-weight="700" fill="#1f2937" text-anchor="middle">The problem Sentinel solves</text>
+<text x="500" y="64" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#475569" text-anchor="middle">AI agents help one person. A team needs one workflow and one shared memory.</text>
+<rect x="30" y="90" width="440" height="200" rx="10" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+<text x="250" y="118" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="16" font-weight="700" fill="#991b1b" text-anchor="middle">Without Sentinel</text>
+<text x="56" y="150" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#7f1d1d" text-anchor="start">x  Everyone writes their own agent prompts</text>
+<text x="56" y="178" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#7f1d1d" text-anchor="start">x  Different tools, different rigor per person</text>
+<text x="56" y="206" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#7f1d1d" text-anchor="start">x  Specs and tests stay on one laptop</text>
+<text x="56" y="234" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#7f1d1d" text-anchor="start">x  Regression suite goes stale</text>
+<text x="56" y="262" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#7f1d1d" text-anchor="start">x  Logs and caches pile up, secrets leak</text>
+<rect x="530" y="90" width="440" height="200" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="750" y="118" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="16" font-weight="700" fill="#166534" text-anchor="middle">With Sentinel</text>
+<text x="556" y="150" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#14532d" text-anchor="start">+  One tiered workflow, sized to the task</text>
+<text x="556" y="178" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#14532d" text-anchor="start">+  Same stages in Claude Code, Antigravity, Codex, Cursor</text>
+<text x="556" y="206" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#14532d" text-anchor="start">+  Every stage runs in a clean context</text>
+<text x="556" y="234" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#14532d" text-anchor="start">+  Specs and regression tests shared by the whole team</text>
+<text x="556" y="262" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="400" fill="#14532d" text-anchor="start">+  Logs stay local; secrets scrubbed before sharing</text>
+<line x1="480" y1="190" x2="520" y2="190" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+<text x="500" y="330" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="18" font-weight="700" fill="#1f2937" text-anchor="middle">How a team works together</text>
+<rect x="80" y="350" width="140" height="56" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="150" y="374" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="middle">Dev A</text>
+<text x="150" y="394" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="middle">Claude Code</text>
+<rect x="260" y="350" width="140" height="56" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="330" y="374" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="middle">Dev B</text>
+<text x="330" y="394" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="middle">Antigravity</text>
+<rect x="440" y="350" width="140" height="56" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="510" y="374" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="middle">Dev C</text>
+<text x="510" y="394" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="middle">Codex</text>
+<rect x="620" y="350" width="140" height="56" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="690" y="374" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="middle">Dev D</text>
+<text x="690" y="394" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="middle">Cursor</text>
+<rect x="150" y="440" width="420" height="56" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+<text x="360" y="463" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="15" font-weight="700" fill="#9a3412" text-anchor="middle">/sentinel  tiered workflow</text>
+<text x="360" y="483" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#475569" text-anchor="middle">triage, spec, code, review, QA, release check</text>
+<line x1="150" y1="406" x2="286.5" y2="438" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+<line x1="330" y1="406" x2="349.5" y2="438" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+<line x1="510" y1="406" x2="412.5" y2="438" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+<line x1="690" y1="406" x2="475.5" y2="438" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+<rect x="720" y="420" width="250" height="110" rx="10" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="2"/>
+<text x="845" y="446" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="14" font-weight="700" fill="#5b21b6" text-anchor="middle">Shared repo (private git)</text>
+<text x="845" y="470" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="middle">specs + index</text>
+<text x="845" y="490" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="middle">invariants</text>
+<text x="845" y="510" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="middle">regression suite</text>
+<line x1="572" y1="455" x2="716" y2="455" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+<text x="644" y="445" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#475569" text-anchor="middle">push branch</text>
+<line x1="716" y1="485" x2="572" y2="485" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+<text x="644" y="505" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="400" fill="#475569" text-anchor="middle">pull latest</text>
+</svg>

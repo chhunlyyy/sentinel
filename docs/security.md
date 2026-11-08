@@ -46,7 +46,7 @@ It does not find secrets that have no recognizable shape, names, phone numbers, 
 - Agents can run shell commands in your repos. Stages that do not need to write source (reviewer, rollout, retrospective) are told not to, and the runner checks afterwards that no repo changed.
 - The runner's boundary check detects, after the fact, writes outside the stage's repo, commits, branch changes, and edits to the Sentinel config. It does not prevent them and does not undo them. It does not watch the workspace root or files outside the repos.
 - Some tools can skip their own permission prompts (`unsafe_skip_permissions`). It is off by default. Turn it on per runner only for unattended runs inside a disposable environment (a container or a throwaway checkout), never on a machine that holds production credentials.
-- Sentinel never commits or pushes by itself. `sync push` needs `--yes`, creates a branch, and never force-pushes. Stages are told not to commit when `agents_never_run_git` is on; the boundary check reports it when they do anyway.
+- Sentinel never commits or pushes by itself. `sync push` needs `--yes` or `--auto`, creates a branch, and never force-pushes. With `state.auto_sync_push: true` (the default) `/sentinel` publishes a passing run's specs and regression tests to the shared repo without asking; the scrub check still gates it and the content lands on a branch for pull request review. Set it to `false` to approve every push yourself. Stages are told not to commit when `agents_never_run_git` is on; the boundary check reports it when they do anyway.
 
 ## Dependencies
 

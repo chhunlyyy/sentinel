@@ -50,7 +50,7 @@ Stages run inside whatever tool you work in, each in its own clean context. For 
 
 **18. Retrospective (tier 4).** Proposes new project-wide rules when this run exposed a defect that could recur. It writes `proposed-invariants.md` and never edits `invariants.md` directly; the proposals go to the shared repo for the team to review.
 
-**19. Scrub and sync.** `sentinel scrub` removes tokens, emails, credentials and machine paths from the run records, and `sentinel scrub --check` must pass. After you approve, `sentinel sync push <slug> --yes` pushes a `sentinel/<slug>` branch to the shared repo with the new specs, regression tests and proposed invariants for pull-request review. It never force-pushes and refuses if the scrub check fails.
+**19. Scrub and sync.** `sentinel scrub` removes tokens, emails, credentials and machine paths from the run records, and `sentinel scrub --check` must pass. With `state.auto_sync_push` on (the default) `sentinel sync push <slug> --auto` runs by itself; with it off you approve first and it runs with `--yes`. It pushes a `sentinel/<slug>` branch to the shared repo with the new specs, regression tests and proposed invariants for pull-request review. It never force-pushes and refuses if the scrub check fails.
 
 **20. Finish.** `sentinel run finish <slug>` closes the run and releases the lock. Metrics (tokens and time per stage, rounds used, estimated versus final tier) are in `metrics.json`, and `sentinel stats` adds them up. The orchestrator gives you a final report: what was built, what each stage found and fixed, QA and regression results, the release-check result, open minor findings, and the paths to the change map, PR draft and rollout notes.
 

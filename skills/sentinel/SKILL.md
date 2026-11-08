@@ -80,7 +80,7 @@ Stage notes:
 - Change map: once the release check passes, use the `sentinel-change-map` skill and put the HTML path in the report.
 - Docs stage, then rollout notes (tier 4), then retrospective (tier 4). The retrospective only proposes invariants.
 - Scrub: run `sentinel scrub` after QA and again before sync, then `sentinel scrub --check`; a non-zero exit blocks the sync.
-- Sync: when a run passes, ask the requester before pushing anything. After approval run `sentinel sync push <slug> --yes`; it refuses if the scrub check fails, then pushes a `sentinel/<slug>` branch for pull request review. Never force-push. Then `sentinel run finish <slug>`.
+- Sync: when a run passes, run `sentinel sync push <slug> --auto`. With `state.auto_sync_push` on (the default) it pushes a `sentinel/<slug>` branch for pull request review, and refuses if the scrub check fails. With it off it pushes nothing and says so: then ask the requester, and after approval run `sentinel sync push <slug> --yes`. Never force-push. Tell the requester the branch name so they can open the pull request. Then `sentinel run finish <slug>`.
 - Metrics: after each stage call `sentinel metrics record` when your tool reports tokens or time.
 
 ## Caps and stopping

@@ -117,6 +117,15 @@ def main():
         check("shared set connects the workspace", code == 0 and (uws / ".sentinel/shared/.git").exists(), out[-200:])
         code, out = run(CLI + ["--dir", str(uws), "run", "new", "unblocked", "--tier", "2"])
         check("run new works once the shared repo is cloned", code == 0, out[-200:])
+        cfg_path = uws / "sentinel.config.yaml"
+        cfg_text = cfg_path.read_text()
+        check("the default config turns auto sync push on", "auto_sync_push: true" in cfg_text)
+        cfg_path.write_text(cfg_text.replace("auto_sync_push: true", "auto_sync_push: false"))
+        code, out = run(CLI + ["--dir", str(uws), "sync", "push", "unblocked", "--auto"])
+        check("sync push --auto does nothing when auto_sync_push is off", code == 0 and "auto_sync_push is off" in out, out[-200:])
+        code, out = run(CLI + ["--dir", str(uws), "sync", "push", "unblocked"])
+        check("sync push without --yes or --auto is refused", code != 0 and "--auto" in out, out[-200:])
+        cfg_path.write_text(cfg_text)
         run(CLI + ["--dir", str(uws), "run", "finish", "unblocked"])
 
         print("skills")

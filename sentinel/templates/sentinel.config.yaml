@@ -33,6 +33,7 @@ state:
   retention: { runs: 20, logs_days: 14 }
   shared_repo: "https://git.example.com/your-team/your-shared-repo.git"
   shared_ref: main
+  auto_sync_push: true
 
 tracker:
   kind: none

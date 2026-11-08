@@ -361,6 +361,10 @@
           "type": "string",
           "default": ".sentinel"
         },
+        "auto_sync_push": {
+          "type": "boolean",
+          "default": true
+        },
         "retention": {
           "type": "object",
           "additionalProperties": false,

@@ -4,6 +4,8 @@ Sentinel is a tiered build pipeline for AI coding agents. You describe a feature
 
 It is provider-neutral. The pipeline is plain files and a small Python CLI. Any agent that can read a prompt and edit files can run a stage: Claude Code, Codex, Gemini CLI, Antigravity, Cursor, or a human.
 
+![Sentinel gives a team one agent workflow and one shared repo](docs/images/overview.svg)
+
 ## Why
 
 - One run of "implement this properly" usually means five or six hand-written agent prompts, a QA setup, and a lot of logs. Sentinel packages that as config.
@@ -11,6 +13,8 @@ It is provider-neutral. The pipeline is plain files and a small Python CLI. Any 
 - The knowledge a team builds up (specs, project invariants, the regression suite) lives in one shared repo, so it stays current for everyone. Logs and caches stay local and disposable.
 
 ## How it works
+
+![Stages by tier](docs/images/workflow.svg)
 
 ```
 Tier 1  Coder
