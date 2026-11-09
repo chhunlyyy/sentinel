@@ -134,6 +134,9 @@ def main():
             sys.exit(f"unknown repo id {args.repo}")
         repo = matches[0]
     try:
+        if args.slug:
+            from paths import valid_slug
+            valid_slug(args.slug)
         out = render(template, build_context(config, repo, args.workspace, args.stage))
         sys.stdout.write(out.replace("<slug>", args.slug) if args.slug else out)
     except KeyError as missing:

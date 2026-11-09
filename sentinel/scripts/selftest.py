@@ -272,6 +272,15 @@ def main():
         code, out = run(CLI + ["--dir", str(ws), "run", "finish", "demo"])
         locks = run(["git", "ls-remote", str(remote)])[1]
         check("run finish releases the lock", code == 0 and "refs/sentinel/locks/demo" not in locks, locks[-200:])
+        print("input validation")
+        for bad in ("../escape", "a/b", "Up", "x..y", "-lead", "a.lock", "", "a b"):
+            code, out = run(CLI + ["--dir", str(ws), "run", "new", bad, "--adhoc"])
+            check(f"run new rejects the slug {bad!r}", code != 0 and not (ws / ".sentinel/runs" / bad).exists() if bad else code != 0, out[-120:])
+        check("nothing was written outside the runs folder", not (ws / ".sentinel/escape").exists() and not (ws / "escape").exists())
+        code, out = run(CLI + ["--dir", str(ws), "spec", "set", "ok-slug", "--status", "draft", "--tests", "../../x.ts"])
+        check("spec set rejects a test name with a path", code != 0 and "invalid test file name" in out, out[-160:])
+        code, out = run(CLI + ["--dir", str(ws), "stage", "render", "--stage", "reviewer", "--slug", "../x"])
+        check("stage render rejects a bad slug", code != 0 and "invalid slug" in out, out[-160:])
         print("per-stage runner and model")
         write_config(ws, lambda c: c.update({"routing": {"coder": {"runner": "claude", "model": "opus"}, "backend-coder": {"runner": "claude", "model": "sonnet"}, "hardener": {"runner": "agy", "model": "gemini-flash"}, "qa": {"runner": "claude", "model": "sonnet"}}, "runners": {"claude": {"command": "claude", "prompt_flag": "-p"}}}))
         code, out = run(CLI + ["--dir", str(ws), "routing", "--json"])

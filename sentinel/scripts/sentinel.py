@@ -297,6 +297,8 @@ def state_dir_of(config_path, config):
 
 
 def run_dir(config_path, config, slug):
+    from paths import valid_slug
+    valid_slug(slug)
     return state_dir_of(config_path, config) / "runs" / slug
 
 

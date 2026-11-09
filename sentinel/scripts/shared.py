@@ -236,6 +236,11 @@ class Shared:
         return self.dir / "specs" / "index.json"
 
     def set_spec(self, slug, status, pr, tests):
+        from paths import valid_slug
+        valid_slug(slug)
+        for name in tests:
+            if "/" in name or ".." in name or name.startswith("."):
+                sys.exit(f"invalid test file name {name!r}: give plain file names under regression/")
         index = json.loads(self.index_json().read_text()) if self.index_json().exists() else {}
         entry = index.get(slug, {})
         entry["status"] = status or entry.get("status", "draft")

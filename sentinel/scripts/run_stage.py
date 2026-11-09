@@ -117,6 +117,8 @@ def main():
     config = yaml.safe_load(config_path.read_text())
     workspace = config_path.parent
     state_dir = workspace / (config.get("state") or {}).get("dir", ".sentinel")
+    from paths import valid_slug
+    valid_slug(args.slug)
     run_directory = state_dir / "runs" / args.slug
     run_directory.mkdir(parents=True, exist_ok=True)
     cache = state_dir / "cache" / "runs" / args.slug
