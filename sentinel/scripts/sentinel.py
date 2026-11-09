@@ -193,6 +193,36 @@ def update_gitignore(workspace, state_dir):
         path.write_text("\n".join(existing + missing) + "\n")
 
 
+def cmd_routing(args):
+    from run_stage import all_runners, find_route
+    import render_stage
+    config_path, config = load_config(args.dir)
+    runners = all_runners(config)
+    rows = []
+    for stage_file in sorted((ROOT / "core" / "stages").glob("*.md")):
+        stage = stage_file.stem
+        front = yaml.safe_load(render_stage.FRONT.match(stage_file.read_text()).group(1))
+        targets = [r["id"] for r in config["repos"]] if front.get("per_repo") else [None]
+        for repo in targets:
+            route = find_route(config, stage, repo)
+            if args.stage and args.stage != stage:
+                continue
+            if args.repo and repo and args.repo != repo:
+                continue
+            row = {"stage": stage, "repo": repo, "mode": "this session", "runner": None, "model": None, "installed": True}
+            if route:
+                runner = runners.get(route["runner"], {})
+                row.update(mode="headless", runner=route["runner"], model=route.get("model"), installed=bool(runner) and bool(shutil.which(runner["command"].split()[0])))
+            rows.append(row)
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+    for row in rows:
+        name = f"{row['repo']}-{row['stage']}" if row["repo"] else row["stage"]
+        detail = f"{row['runner']}" + (f" ({row['model']})" if row["model"] else "") + ("" if row["installed"] else " NOT INSTALLED") if row["runner"] else "your current AI tool, in a subagent"
+        print(f"{name:<24}{row['mode']:<14}{detail}")
+
+
 def cmd_doctor(args):
     config_path, config = load_config(args.dir)
     workspace = config_path.parent
@@ -221,13 +251,16 @@ def cmd_doctor(args):
         for key, command in commands.items():
             if command and not shutil.which(command.split()[0]) and not command.startswith("./") and not command.startswith("npm") and not command.startswith("npx"):
                 problems.append(f"{repo['id']}: {key} command not found: {command.split()[0]}")
+    from run_stage import all_runners
     for stage, route in (config.get("routing") or {}).items():
-        from run_stage import all_runners
         runner = all_runners(config).get(route["runner"])
         if not runner:
             problems.append(f"routing {stage}: runner not defined: {route['runner']}")
-        elif not shutil.which(runner["command"].split()[0]):
-            problems.append(f"runner CLI not installed: {runner['command'].split()[0]} (stage {stage})")
+            continue
+        if not shutil.which(runner["command"].split()[0]):
+            problems.append(f"runner CLI not installed: {runner['command'].split()[0]} (routing {stage})")
+        if route.get("model") and not runner.get("model_flag"):
+            problems.append(f"routing {stage}: runner {route['runner']} has no model_flag, so model {route['model']} cannot be set")
     shared_url = (config.get("state") or {}).get("shared_repo")
     if not shared_url:
         problems.append("state.shared_repo is required: ask your team for the URL of its private shared repo and run `sentinel shared set <url>`")
@@ -520,6 +553,11 @@ def main():
     init.set_defaults(func=cmd_init)
 
     sub.add_parser("doctor").set_defaults(func=cmd_doctor)
+    routing = sub.add_parser("routing", help="show which runner and model each stage will use")
+    routing.add_argument("--stage")
+    routing.add_argument("--repo")
+    routing.add_argument("--json", action="store_true")
+    routing.set_defaults(func=cmd_routing)
 
     sync = sub.add_parser("sync-adapters")
     sync.add_argument("--tool", default="claude", choices=["claude", "agents", "codex", "gemini", "cursor"])

@@ -133,40 +133,44 @@ extra_checks:
 - `added_lines`: fails when an added line (in files matching `path_regex`, not matching `exclude_path_regex`) matches `pattern` and none of the `exclude_line_regex` patterns.
 - `changed_paths`: fails for each changed file matching `path_regex` that has the given `status` (`any`, `modified`, or `added`) and, if `must_match` is set, does not match it.
 
-## routing and runners (optional, advanced)
+## routing: a model or provider per stage (optional)
 
-You do not need these. By default the AI tool you work in runs every stage itself, as subagents where it has them or one after another where it does not. Add `routing` only to send a stage to a different tool, for example the cleaner to a cheaper model. The built-in runners `claude`, `codex`, `gemini` and `agy` are available without a `runners` section; define `runners` only to change them or add your own. The default config written by `sentinel init` has neither section.
+By default the AI tool you work in runs every stage itself, as subagents where it has them. Add `routing` to choose the runner (the AI tool) and the model for any stage. A routed stage is not a subagent: Sentinel starts that tool as its own headless process (`sentinel stage run`), in the background where your tool allows it, and checks the write boundary when it finishes. Independent stages, such as the coders of different repos, run side by side.
 
 ```yaml
 routing:
-  specifier: { runner: claude }
-  coder: { runner: claude }
-  cleaner: { runner: gemini }
-  hardener: { runner: codex }
-  reviewer: { runner: claude }
+  coder: { runner: claude, model: opus }
+  backend-coder: { runner: claude, model: sonnet }
   qa: { runner: claude, model: sonnet }
-
-runners:
-  claude: { command: claude, prompt_flag: -p, supports_subagents: true }
-  codex: { command: "codex exec" }
-  gemini: { command: gemini, prompt_flag: -p }
-  agy:
-    command: agy
-    prompt_flag: -p
-    model_flag: --model
-    resume_flag: --conversation
-    output: json_response
-    args: [--output-format, json, --mode, accept-edits]
-    unsafe_skip_permissions: false
-    unsafe_args: [--dangerously-skip-permissions]
+  hardener: { runner: agy, model: gemini-3.8-flash-high }
+  cleaner: { runner: gemini, model: gemini-2.5-flash }
 ```
 
-- Routing keys are `specifier`, `coder` (also used for the repro stage), `cleaner`, `hardener`, `reviewer`, `qa`. Other stages use `claude` unless overridden with `--runner`.
+- A key is a stage name (`repro`, `specifier`, `coder`, `cleaner`, `hardener`, `reviewer`, `qa`, `promotion`, `docs`, `rollout`, `retrospective`) or `<repo id>-<stage>`, which wins over the stage key for that repo. Repro uses the `coder` key unless it has its own.
+- `runner` is `claude`, `codex`, `gemini`, `agy` or one you define under `runners`. `model` is passed to the tool's model flag, so use the names that tool accepts: `claude --model`, `agy --model` (`agy models` lists them), `gemini -m`, `codex -m`.
+- A stage with no entry runs in the current session. The reviewer and QA never run inline, so give them a runner if your tool has no subagents.
+- `sentinel routing` prints what every stage will use and whether the CLI is installed. `sentinel doctor` fails when a routed CLI is missing or a model is set on a runner without a `model_flag`.
+- One-off override: `sentinel stage run --stage qa --runner agy --model gemini-3.8-flash-high ...`.
+
+### runners
+
+The built-in runners `claude`, `codex`, `gemini` and `agy` need no configuration. Add a `runners` entry only to change one or to add your own tool; your keys are merged into the built-in entry, so you only list what differs.
+
+```yaml
+runners:
+  agy:
+    args: [--output-format, json, --mode, accept-edits]
+  mytool:
+    command: mytool
+    prompt_flag: -p
+    model_flag: --model
+```
+
 - A runner is a command line. Sentinel builds: `command` + `args` + (`model_flag` model) + (`resume_flag` id) + the prompt (after `prompt_flag` if set, or on stdin when `input: stdin`).
-- `add_dir_flag`: the tool's flag for granting access to an extra directory (for example `--add-dir`). Sentinel passes the state folder, because stages run inside a repo but must read the brief, the invariants, and write their result under `.sentinel/`. Without it, tools that sandbox file access to the working directory cannot do their job.
+- `add_dir_flag`: the tool's flag for granting access to an extra directory (for example `--add-dir`). Sentinel passes the state folder, because stages run inside a repo but must read the brief and the invariants and write their result under `.sentinel/`. Without it, tools that sandbox file access to the working directory cannot do their job.
 - `output: json_response` reads `status`, `response`, and the session id (`session_field`, default `conversation_id`) from the JSON the tool prints.
 - `unsafe_skip_permissions: true` appends `unsafe_args` and prints a warning. Leave it false unless you accept that the tool will act without asking.
-- Verify the flags of each tool against its own documentation; the defaults here are a starting point.
+- Only `claude` and `agy` have been run for real in this project. Check the flags of `codex` and `gemini` against their own documentation.
 
 ## rules
 

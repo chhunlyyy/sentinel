@@ -67,7 +67,7 @@ Useful options:
 | `-l` | list the skills without installing |
 | `-y` | do not ask for confirmation |
 
-**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b4 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
+**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b5 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
 
 What you get:
 

@@ -31,24 +31,40 @@ def stage_group(stage):
 
 
 DEFAULT_RUNNERS = {
-    "claude": {"command": "claude", "prompt_flag": "-p", "add_dir_flag": "--add-dir"},
-    "codex": {"command": "codex exec"},
-    "gemini": {"command": "gemini", "prompt_flag": "-p"},
+    "claude": {"command": "claude", "prompt_flag": "-p", "model_flag": "--model", "add_dir_flag": "--add-dir"},
+    "codex": {"command": "codex exec", "model_flag": "-m"},
+    "gemini": {"command": "gemini", "prompt_flag": "-p", "model_flag": "-m"},
     "agy": {"command": "agy", "prompt_flag": "-p", "model_flag": "--model", "resume_flag": "--conversation", "add_dir_flag": "--add-dir", "output": "json_response", "args": ["--output-format", "json", "--mode", "accept-edits"], "unsafe_args": ["--dangerously-skip-permissions"]},
 }
 
 
 def all_runners(config):
-    return {**DEFAULT_RUNNERS, **(config.get("runners") or {})}
+    merged = {key: dict(value) for key, value in DEFAULT_RUNNERS.items()}
+    for key, value in (config.get("runners") or {}).items():
+        merged[key] = {**merged.get(key, {}), **value}
+    return merged
 
 
-def pick_runner(config, stage, override):
-    route = (config.get("routing") or {}).get(stage_group(stage)) or {}
+def find_route(config, stage, repo=None):
+    routing = config.get("routing") or {}
+    group = stage_group(stage)
+    keys = ([f"{repo}-{group}", f"{repo}-{stage}"] if repo else []) + [group, stage]
+    for key in keys:
+        if key in routing:
+            return routing[key]
+    return None
+
+
+def pick_runner(config, stage, override, repo=None, model_override=None):
+    route = find_route(config, stage, repo) or {}
     runner_id = override or route.get("runner", "claude")
     runner = all_runners(config).get(runner_id)
     if not runner:
         sys.exit(f"runner not defined in config: {runner_id}")
-    return runner_id, runner, route.get("model")
+    model = model_override or (route.get("model") if not override or override == route.get("runner") else None)
+    if model and not runner.get("model_flag"):
+        sys.exit(f"runner {runner_id} has no model_flag, so model {model} cannot be set; add model_flag to runners.{runner_id}")
+    return runner_id, runner, model
 
 
 def build_command(runner, prompt, model, resume, extra_dirs):
@@ -89,6 +105,7 @@ def main():
     parser.add_argument("--stage", required=True)
     parser.add_argument("--repo")
     parser.add_argument("--runner")
+    parser.add_argument("--model")
     parser.add_argument("--slug", required=True)
     parser.add_argument("--brief")
     parser.add_argument("--resume")
@@ -105,7 +122,7 @@ def main():
     cache = state_dir / "cache" / "runs" / args.slug
     cache.mkdir(parents=True, exist_ok=True)
 
-    runner_id, runner, model = pick_runner(config, args.stage, args.runner)
+    runner_id, runner, model = pick_runner(config, args.stage, args.runner, args.repo, args.model)
     template = (HERE.parent / "core" / "stages" / f"{args.stage}.md").read_text()
     front = yaml.safe_load(render_stage.FRONT.match(template).group(1))
     repo = None

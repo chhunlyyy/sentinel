@@ -272,6 +272,26 @@ def main():
         code, out = run(CLI + ["--dir", str(ws), "run", "finish", "demo"])
         locks = run(["git", "ls-remote", str(remote)])[1]
         check("run finish releases the lock", code == 0 and "refs/sentinel/locks/demo" not in locks, locks[-200:])
+        print("per-stage runner and model")
+        write_config(ws, lambda c: c.update({"routing": {"coder": {"runner": "claude", "model": "opus"}, "backend-coder": {"runner": "claude", "model": "sonnet"}, "hardener": {"runner": "agy", "model": "gemini-flash"}, "qa": {"runner": "claude", "model": "sonnet"}}, "runners": {"claude": {"command": "claude", "prompt_flag": "-p"}}}))
+        code, out = run(CLI + ["--dir", str(ws), "routing", "--json"])
+        table = {(r["repo"], r["stage"]): r for r in json.loads(out)} if code == 0 else {}
+        check("routing lists each stage with its runner and model", table.get(("frontend", "coder"), {}).get("model") == "opus" and table.get((None, "qa"), {}).get("runner") == "claude" and table.get((None, "reviewer"), {}).get("mode") == "this session", out[-200:])
+        check("a repo-specific route beats the stage route", table.get(("backend", "coder"), {}).get("model") == "sonnet")
+        check("a different provider can be routed per stage", table.get(("backend", "hardener"), {}).get("runner") == "agy" and table[("backend", "hardener")]["model"] == "gemini-flash")
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import run_stage
+        cfg = yaml.safe_load((ws / "sentinel.config.yaml").read_text())
+        rid, runner, model = run_stage.pick_runner(cfg, "coder", None, "frontend")
+        command, _ = run_stage.build_command(runner, "go", model, None, [])
+        check("the model flag reaches the command even when the runner is redefined", "--model" in command and command[command.index("--model") + 1] == "opus", " ".join(command))
+        rid, runner, model = run_stage.pick_runner(cfg, "hardener", None, "backend")
+        command, _ = run_stage.build_command(runner, "go", model, None, [])
+        check("another provider gets its own command and model", command[0] == "agy" and "gemini-flash" in command, " ".join(command))
+        write_config(ws, lambda c: c.update({"routing": {"coder": {"runner": "mine", "model": "x"}}, "runners": {"mine": {"command": "echo"}}}))
+        code, out = run(CLI + ["--dir", str(ws), "doctor"])
+        check("doctor flags a model on a runner that cannot take one", "no model_flag" in out, out[-200:])
+        write_config(ws, lambda c: (c.pop("routing", None), c.pop("runners", None)))
         print("direct push and conflicts")
         for w in (ws, ws2):
             write_config(w, lambda c: c["state"].update({"auto_sync_push": True}))
