@@ -228,6 +228,10 @@
         "type": "string"
       }
     },
+    "single_model": {
+      "type": "boolean",
+      "default": true
+    },
     "routing": {
       "type": "object",
       "additionalProperties": {
@@ -387,11 +391,16 @@
         },
         "shared_ref": {
           "type": "string"
+        },
+        "shared_mode": {
+          "type": "string",
+          "enum": [
+            "git",
+            "local"
+          ],
+          "default": "git"
         }
-      },
-      "required": [
-        "shared_repo"
-      ]
+      }
     },
     "tracker": {
       "type": "object",

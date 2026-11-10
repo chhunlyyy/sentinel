@@ -149,6 +149,7 @@ routing:
 - A key is a stage name (`repro`, `specifier`, `coder`, `cleaner`, `hardener`, `reviewer`, `qa`, `promotion`, `docs`, `rollout`, `retrospective`) or `<repo id>-<stage>`, which wins over the stage key for that repo. Repro uses the `coder` key unless it has its own.
 - `runner` is `claude`, `codex`, `gemini`, `agy` or one you define under `runners`. `model` is passed to the tool's model flag, so use the names that tool accepts: `claude --model`, `agy --model` (`agy models` lists them), `gemini -m`, `codex -m`.
 - A stage with no entry runs in the current session. The reviewer and QA never run inline, so give them a runner if your tool has no subagents.
+- `single_model` (default `true`): never pass a model to any stage. Every stage uses the current model of whichever tool runs it (the `model` values in `routing` and in the generated Claude agents are ignored; `routing` still picks the runner). Set `single_model: false` to use the per-stage `model` values. `--model` on `sentinel stage run` always wins.
 - `sentinel routing` prints what every stage will use and whether the CLI is installed. `sentinel doctor` fails when a routed CLI is missing or a model is set on a runner without a `model_flag`.
 - One-off override: `sentinel stage run --stage qa --runner agy --model gemini-3.8-flash-high ...`.
 
@@ -206,7 +207,8 @@ state:
 - `dir`: local state folder. Contains `runs/`, `cache/`, `shared/` (a clone of the shared repo), and `generated/`.
 - `retention`: `sentinel clean` keeps the newest `runs` run folders and deletes cache files older than `logs_days`.
 - `auto_sync_push` (default `true`): when a run passes, `/sentinel` pushes its specs, regression tests and proposed invariants straight into the shared repo's main branch without asking and without a pull request. The scrub check still gates it, and the agent resolves merge conflicts. Set `false` to be asked first.
-- `shared_repo` (**required**): clone URL of the team's private shared repo. `sentinel init` asks for it and `sentinel shared set <url>` changes it. `sentinel doctor` fails and `sentinel run new` refuses while it is missing or not cloned.
+- `shared_mode` (`git` default, or `local`): `local` means no shared repo. Rules, specs and regression tests live only in `.sentinel/shared/` on this machine (a plain folder, no git), run locks are files, and `sync push` only runs the scrub check. Set up with `sentinel init --local-only`; move to a team repo later with `sentinel shared set <url>`.
+- `shared_repo` (**required** unless `shared_mode: local`): clone URL of the team's private shared repo. `sentinel init` asks for it and `sentinel shared set <url>` changes it. `sentinel doctor` fails and `sentinel run new` refuses while it is missing or not cloned.
 - `shared_ref`: the branch, tag, or commit to use. Pin a tag or commit for reproducible runs.
 
 ## tracker

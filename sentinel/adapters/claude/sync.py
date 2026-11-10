@@ -52,6 +52,8 @@ def render(config_path, stage, repo_id, workspace):
 
 
 def model_for(config, stage):
+    if config.get("single_model", True) is not False:
+        return "inherit"
     route = (config.get("routing") or {}).get(stage) or {}
     return route.get("model", "inherit")
 
