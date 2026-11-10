@@ -47,6 +47,8 @@ def all_runners(config):
 
 
 def find_route(config, stage, repo=None):
+    if single_model(config):
+        return None
     routing = config.get("routing") or {}
     group = stage_group(stage)
     keys = ([f"{repo}-{group}", f"{repo}-{stage}"] if repo else []) + [group, stage]
