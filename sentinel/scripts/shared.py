@@ -58,14 +58,42 @@ class Shared:
         self.dir = Path(workspace) / state.get("dir", ".sentinel") / "shared"
         self.url = state.get("shared_repo") or ""
         self.ref = state.get("shared_ref") or "main"
+        self.local = state.get("shared_mode") == "local"
 
     def is_clone(self):
+        if self.local:
+            return (self.dir / "invariants.md").exists()
         return (self.dir / ".git").exists()
+
+    def init_local(self):
+        files = {
+            "README.md": README.replace("This private repository holds what the team shares across Sentinel runs. It is cloned to `.sentinel/shared/` in each workspace by `sentinel sync pull`.", "This folder holds what Sentinel keeps across runs on this machine (local-only mode, no shared git repo)."),
+            "invariants.md": (ROOT / "templates" / "invariants.md").read_text(),
+            "guidelines/README.md": GUIDELINES_README,
+            ".gitignore": GITIGNORE,
+        }
+        created = []
+        for name, content in files.items():
+            target = self.dir / name
+            if target.exists():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content)
+            created.append(name)
+        (self.dir / "specs").mkdir(parents=True, exist_ok=True)
+        if not (self.dir / "specs" / "index.json").exists():
+            (self.dir / "specs" / "index.json").write_text("{}\n")
+            self.render_index({})
+        (self.dir / "regression").mkdir(exist_ok=True)
+        print(f"local-only shared folder ready at {self.dir}" + (f" (created: {', '.join(created)})" if created else ""))
 
     def has_remote(self):
         return self.is_clone() and bool(git(self.dir, "remote", check=False).stdout.strip())
 
     def pull(self):
+        if self.local:
+            self.init_local()
+            return
         if not self.url:
             sys.exit("state.shared_repo is empty; set it in sentinel.config.yaml")
         if self.is_clone() and self.merging():
@@ -120,6 +148,20 @@ class Shared:
         print(f"publish them once with: git -C {self.dir} push -u origin {self.ref}")
 
     def push(self, slug, run_dir, scrubber_check):
+        if self.local:
+            if not self.is_clone():
+                self.init_local()
+            proposed = Path(run_dir) / "proposed-invariants.md"
+            if proposed.exists() and "no new invariants" not in proposed.read_text().lower():
+                (self.dir / "proposals").mkdir(exist_ok=True)
+                (self.dir / "proposals" / f"{slug}.md").write_text(proposed.read_text())
+            problems = scrubber_check()
+            if problems:
+                for path, found in problems.items():
+                    print(f"{path}: {', '.join(found)}")
+                sys.exit("scrub check failed")
+            print("local-only mode: nothing to push, files stay in .sentinel/shared")
+            return
         if not self.is_clone():
             sys.exit("shared repo is not cloned; run `sentinel sync pull` first")
         proposed = Path(run_dir) / "proposed-invariants.md"
@@ -179,6 +221,8 @@ class Shared:
         sys.exit("could not push to the shared repo after 3 attempts; run again")
 
     def continue_push(self, slug, scrubber_check):
+        if self.local:
+            sys.exit("local-only mode: there is no merge to continue")
         if not self.merging():
             sys.exit("no merge in progress; run `sentinel sync push <slug> --auto`")
         markers = ""

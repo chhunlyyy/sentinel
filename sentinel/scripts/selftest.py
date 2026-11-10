@@ -77,6 +77,26 @@ def main():
         problems = [l for l in out.splitlines() if l.startswith("- ") and "runner CLI not installed" not in l and "command not found" not in l]
         check("doctor reports no config problems", not problems, "; ".join(problems))
 
+        print("local-only shared mode")
+        ws3 = tmp / "ws3"
+        ws3.mkdir()
+        git_repo(ws3 / "backend", "build.gradle")
+        git_repo(ws3 / "frontend", "next.config.ts")
+        code, out = run(CLI + ["--dir", str(ws3), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+        cfg3 = yaml.safe_load((ws3 / "sentinel.config.yaml").read_text()) if code == 0 else {}
+        check("init --local-only needs no shared repo", code == 0 and cfg3["state"].get("shared_mode") == "local" and "shared_repo" not in cfg3["state"], out[-200:])
+        check("local-only creates the shared folder without git", (ws3 / ".sentinel/shared/invariants.md").exists() and not (ws3 / ".sentinel/shared/.git").exists())
+        code, out = run(CLI + ["--dir", str(ws3), "run", "new", "localdemo", "--tier", "2"])
+        check("local-only run new takes a file lock", code == 0 and (ws3 / ".sentinel/shared/locks/localdemo").exists(), out[-200:])
+        run(CLI + ["--dir", str(ws3), "run", "finish", "localdemo"])
+        code, out = run(CLI + ["--dir", str(ws3), "sync", "push", "localdemo", "--yes"])
+        check("local-only sync push is a no-op that still scrubs", code == 0 and "local-only" in out, out[-200:])
+        code, out = run(CLI + ["--dir", str(ws3), "doctor"])
+        check("local-only doctor does not ask for a shared repo", "shared repo" not in out, out[-200:])
+        code, out = run(CLI + ["--dir", str(ws3), "shared", "set", str(remote)])
+        cfg3 = yaml.safe_load((ws3 / "sentinel.config.yaml").read_text())
+        check("shared set switches a local-only workspace to git mode", cfg3["state"].get("shared_mode") == "git" and cfg3["state"].get("shared_repo") == str(remote), out[-200:])
+
         print("shared repo is required")
         bare = tmp / "no-shared"
         bare.mkdir()
@@ -282,7 +302,7 @@ def main():
         code, out = run(CLI + ["--dir", str(ws), "stage", "render", "--stage", "reviewer", "--slug", "../x"])
         check("stage render rejects a bad slug", code != 0 and "invalid slug" in out, out[-160:])
         print("per-stage runner and model")
-        write_config(ws, lambda c: c.update({"routing": {"coder": {"runner": "claude", "model": "opus"}, "backend-coder": {"runner": "claude", "model": "sonnet"}, "hardener": {"runner": "agy", "model": "gemini-flash"}, "qa": {"runner": "claude", "model": "sonnet"}}, "runners": {"claude": {"command": "claude", "prompt_flag": "-p"}}}))
+        write_config(ws, lambda c: c.update({"single_model": False, "routing": {"coder": {"runner": "claude", "model": "opus"}, "backend-coder": {"runner": "claude", "model": "sonnet"}, "hardener": {"runner": "agy", "model": "gemini-flash"}, "qa": {"runner": "claude", "model": "sonnet"}}, "runners": {"claude": {"command": "claude", "prompt_flag": "-p"}}}))
         code, out = run(CLI + ["--dir", str(ws), "routing", "--json"])
         table = {(r["repo"], r["stage"]): r for r in json.loads(out)} if code == 0 else {}
         check("routing lists each stage with its runner and model", table.get(("frontend", "coder"), {}).get("model") == "opus" and table.get((None, "qa"), {}).get("runner") == "claude" and table.get((None, "reviewer"), {}).get("mode") == "this session", out[-200:])
@@ -297,10 +317,22 @@ def main():
         rid, runner, model = run_stage.pick_runner(cfg, "hardener", None, "backend")
         command, _ = run_stage.build_command(runner, "go", model, None, [])
         check("another provider gets its own command and model", command[0] == "agy" and "gemini-flash" in command, " ".join(command))
-        write_config(ws, lambda c: c.update({"routing": {"coder": {"runner": "mine", "model": "x"}}, "runners": {"mine": {"command": "echo"}}}))
+        write_config(ws, lambda c: c.update({"single_model": False, "routing": {"coder": {"runner": "mine", "model": "x"}}, "runners": {"mine": {"command": "echo"}}}))
         code, out = run(CLI + ["--dir", str(ws), "doctor"])
         check("doctor flags a model on a runner that cannot take one", "no model_flag" in out, out[-200:])
-        write_config(ws, lambda c: (c.pop("routing", None), c.pop("runners", None)))
+        write_config(ws, lambda c: c.update({"single_model": True}))
+        code, out = run(CLI + ["--dir", str(ws), "doctor"])
+        check("single_model ignores a model on a runner that cannot take one", "no model_flag" not in out, out[-200:])
+        cfg = yaml.safe_load((ws / "sentinel.config.yaml").read_text())
+        cfg["runners"] = {"claude": {"command": "claude", "prompt_flag": "-p"}}
+        cfg["routing"] = {"coder": {"runner": "agy", "model": "gemini-flash"}}
+        rid, runner, model = run_stage.pick_runner(cfg, "coder", None, "backend")
+        command, _ = run_stage.build_command(runner, "go", model, None, [])
+        check("single_model keeps the runner but passes no model", command[0] == "agy" and "--model" not in command and model is None, " ".join(command))
+        rid, runner, model = run_stage.pick_runner(cfg, "coder", None, "backend", "other")
+        check("an explicit --model still wins under single_model", model == "other")
+        check("single_model is on when the key is absent", run_stage.single_model({}) is True and run_stage.single_model({"single_model": False}) is False)
+        write_config(ws, lambda c: (c.pop("routing", None), c.pop("runners", None), c.pop("single_model", None)))
         print("direct push and conflicts")
         for w in (ws, ws2):
             write_config(w, lambda c: c["state"].update({"auto_sync_push": True}))

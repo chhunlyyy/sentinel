@@ -23,6 +23,8 @@ rules:
   agents_never_run_git: false
   no_permanent_frontend_tests: false
 
+single_model: true
+
 limits:
   review_rounds: 2
   qa_rounds: 3
@@ -33,6 +35,7 @@ state:
   retention: { runs: 20, logs_days: 14 }
   shared_repo: "https://git.example.com/your-team/your-shared-repo.git"
   shared_ref: main
+  shared_mode: git
   auto_sync_push: true
 
 tracker:

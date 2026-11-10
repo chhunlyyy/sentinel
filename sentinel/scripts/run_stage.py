@@ -55,13 +55,18 @@ def find_route(config, stage, repo=None):
     return None
 
 
+def single_model(config):
+    return config.get("single_model", True) is not False
+
+
 def pick_runner(config, stage, override, repo=None, model_override=None):
     route = find_route(config, stage, repo) or {}
     runner_id = override or route.get("runner", "claude")
     runner = all_runners(config).get(runner_id)
     if not runner:
         sys.exit(f"runner not defined in config: {runner_id}")
-    model = model_override or (route.get("model") if not override or override == route.get("runner") else None)
+    configured = route.get("model") if not single_model(config) and (not override or override == route.get("runner")) else None
+    model = model_override or configured
     if model and not runner.get("model_flag"):
         sys.exit(f"runner {runner_id} has no model_flag, so model {model} cannot be set; add model_flag to runners.{runner_id}")
     return runner_id, runner, model

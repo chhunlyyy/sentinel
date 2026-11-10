@@ -85,7 +85,9 @@ def ask_shared_url():
     from shared import looks_like_git_url
     print(SHARED_HELP)
     while True:
-        url = input("shared repo URL: ").strip()
+        url = input("shared repo URL (leave empty for local-only, no shared repo): ").strip()
+        if not url:
+            return ""
         if looks_like_git_url(url):
             return url
         print("that does not look like a git URL (https://..., git@host:..., ssh://..., or a path)")
@@ -94,6 +96,9 @@ def ask_shared_url():
 def connect_shared(config_path, config):
     from shared import Shared, verify_remote
     shared = Shared(config_path.parent, config)
+    if shared.local:
+        shared.init_local()
+        return True
     ok, detail, _ = verify_remote(shared.url)
     if not ok:
         print(f"warning: could not reach {shared.url}: {detail}")
@@ -110,6 +115,10 @@ def connect_shared(config_path, config):
 def require_shared(config_path, config):
     from shared import Shared
     shared = Shared(config_path.parent, config)
+    if shared.local:
+        if not shared.is_clone():
+            shared.init_local()
+        return
     if not shared.url:
         sys.exit("state.shared_repo is required. Ask your team for the URL of its private shared repo and run `sentinel shared set <url>`.")
     if not shared.is_clone():
@@ -137,6 +146,8 @@ def cmd_shared_set(args):
     else:
         config.setdefault("state", {})["shared_repo"] = args.url
         text = yaml.safe_dump(config, sort_keys=False)
+    if _re.search(r"^\s*shared_mode:", text, _re.M):
+        text = _re.sub(r"^(\s*shared_mode:\s*).*$", lambda m: f"{m.group(1)}git", text, count=1, flags=_re.M)
     config_path.write_text(text)
     config_path, config = load_config(args.dir)
     connect_shared(config_path, config)
@@ -153,18 +164,27 @@ def cmd_init(args):
     shape = args.shape or ask("project shape (single, fullstack, fullstack-mobile, custom)", "fullstack", list(shapes))
     from shared import looks_like_git_url
     shared_url = (args.shared_repo or "").strip()
-    if not shared_url and interactive:
+    local_only = args.local_only
+    if not shared_url and not local_only and interactive:
         shared_url = ask_shared_url()
-    if not shared_url:
-        sys.exit("a shared repo is required: pass --shared-repo <url> (an empty private git repository your team owns)")
-    if not looks_like_git_url(shared_url):
+        local_only = not shared_url
+    if not shared_url and not local_only:
+        sys.exit("a shared repo is required: pass --shared-repo <url> (an empty private git repository your team owns), or --local-only")
+    if shared_url and local_only:
+        sys.exit("pass either --shared-repo or --local-only, not both")
+    if shared_url and not looks_like_git_url(shared_url):
         sys.exit(f"--shared-repo does not look like a git URL: {shared_url}")
     overrides = dict(item.split("=", 1) for item in (args.set or []))
     repos = build_repos(shape, workspace, interactive, overrides)
     config = yaml.safe_load((ROOT / "templates" / CONFIG_NAME).read_text())
     config["shape"] = shape
     config["repos"] = repos
-    config["state"]["shared_repo"] = shared_url
+    if local_only:
+        config["state"].pop("shared_repo", None)
+        config["state"]["shared_mode"] = "local"
+        config["state"]["auto_sync_push"] = False
+    else:
+        config["state"]["shared_repo"] = shared_url
     profiles = {r["profile"] for r in repos}
     drivers = {load_profile_driver(p) for p in profiles}
     config["qa"] = {"driver": "playwright" if "playwright" in drivers else sorted(drivers - {"none"})[0] if drivers - {"none"} else "none", "db_clone": "none", "fixtures": "sanitized"}
@@ -194,7 +214,7 @@ def update_gitignore(workspace, state_dir):
 
 
 def cmd_routing(args):
-    from run_stage import all_runners, find_route
+    from run_stage import all_runners, find_route, single_model
     import render_stage
     config_path, config = load_config(args.dir)
     runners = all_runners(config)
@@ -212,7 +232,7 @@ def cmd_routing(args):
             row = {"stage": stage, "repo": repo, "mode": "this session", "runner": None, "model": None, "installed": True}
             if route:
                 runner = runners.get(route["runner"], {})
-                row.update(mode="headless", runner=route["runner"], model=route.get("model"), installed=bool(runner) and bool(shutil.which(runner["command"].split()[0])))
+                row.update(mode="headless", runner=route["runner"], model=None if single_model(config) else route.get("model"), installed=bool(runner) and bool(shutil.which(runner["command"].split()[0])))
             rows.append(row)
     if args.json:
         print(json.dumps(rows, indent=2))
@@ -251,7 +271,7 @@ def cmd_doctor(args):
         for key, command in commands.items():
             if command and not shutil.which(command.split()[0]) and not command.startswith("./") and not command.startswith("npm") and not command.startswith("npx"):
                 problems.append(f"{repo['id']}: {key} command not found: {command.split()[0]}")
-    from run_stage import all_runners
+    from run_stage import all_runners, single_model
     for stage, route in (config.get("routing") or {}).items():
         runner = all_runners(config).get(route["runner"])
         if not runner:
@@ -259,10 +279,13 @@ def cmd_doctor(args):
             continue
         if not shutil.which(runner["command"].split()[0]):
             problems.append(f"runner CLI not installed: {runner['command'].split()[0]} (routing {stage})")
-        if route.get("model") and not runner.get("model_flag"):
+        if route.get("model") and not single_model(config) and not runner.get("model_flag"):
             problems.append(f"routing {stage}: runner {route['runner']} has no model_flag, so model {route['model']} cannot be set")
     shared_url = (config.get("state") or {}).get("shared_repo")
-    if not shared_url:
+    if (config.get("state") or {}).get("shared_mode") == "local":
+        if not (state_dir_of(config_path, config) / "shared" / "invariants.md").exists():
+            problems.append("local-only shared folder is not set up: run `sentinel sync pull`")
+    elif not shared_url:
         problems.append("state.shared_repo is required: ask your team for the URL of its private shared repo and run `sentinel shared set <url>`")
     elif not (state_dir_of(config_path, config) / "shared" / ".git").exists():
         problems.append(f"the shared repo ({shared_url}) is not cloned: run `sentinel sync pull`")
@@ -551,7 +574,8 @@ def main():
     init.add_argument("--non-interactive", action="store_true")
     init.add_argument("--force", action="store_true")
     init.add_argument("--set", action="append", help="id.path=..., id.profile=..., count=N")
-    init.add_argument("--shared-repo", help="clone URL of your team's private shared repo (required; asked for when omitted in interactive mode)")
+    init.add_argument("--shared-repo", help="clone URL of your team's private shared repo (asked for when omitted in interactive mode)")
+    init.add_argument("--local-only", action="store_true", help="no shared repo: keep rules, specs and regression tests only in .sentinel/shared on this machine")
     init.set_defaults(func=cmd_init)
 
     sub.add_parser("doctor").set_defaults(func=cmd_doctor)
