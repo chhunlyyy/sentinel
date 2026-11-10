@@ -150,7 +150,8 @@ routing:
 - `runner` is `claude`, `codex`, `gemini`, `agy` or one you define under `runners`. `model` is passed to the tool's model flag, so use the names that tool accepts: `claude --model`, `agy --model` (`agy models` lists them), `gemini -m`, `codex -m`.
 - A stage with no entry runs in the current session. The reviewer and QA never run inline, so give them a runner if your tool has no subagents.
 - `single_model` (default `true`): never pass a model to any stage. Every stage uses the current model of whichever tool runs it (the `model` values in `routing` and in the generated Claude agents are ignored; `routing` still picks the runner). Set `single_model: false` to use the per-stage `model` values. `--model` on `sentinel stage run` always wins.
-- `sentinel routing` prints what every stage will use and whether the CLI is installed. `sentinel doctor` fails when a routed CLI is missing or a model is set on a runner without a `model_flag`.
+- `sentinel routing` prints what every stage will use and whether the CLI is installed. `sentinel doctor` fails when a routed CLI is missing, a model is set on a runner without a `model_flag`, or a model is written with its flag (`--model sonnet` instead of `sonnet`). `sentinel doctor --check-models` also asks each runner whether it accepts the model, and for `agy` suggests the closest id from `agy models`.
+- Model names: you do not need full IDs. `claude` accepts the aliases `sonnet`, `opus` and `haiku` (always the latest of that family). `agy` uses the ids printed by `agy models`, such as `gemini-3.8-flash-high`; the display names ("Gemini 3.8 Flash (High)") are not accepted.
 - One-off override: `sentinel stage run --stage qa --runner agy --model gemini-3.8-flash-high ...`.
 
 ### runners
