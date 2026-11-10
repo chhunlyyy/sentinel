@@ -327,8 +327,10 @@ def main():
         cfg["runners"] = {"claude": {"command": "claude", "prompt_flag": "-p"}}
         cfg["routing"] = {"coder": {"runner": "agy", "model": "gemini-flash"}}
         rid, runner, model = run_stage.pick_runner(cfg, "coder", None, "backend")
-        command, _ = run_stage.build_command(runner, "go", model, None, [])
-        check("single_model keeps the runner but passes no model", command[0] == "agy" and "--model" not in command and model is None, " ".join(command))
+        check("single_model ignores routing, so every stage runs in the current tool", run_stage.find_route(cfg, "coder", "backend") is None and model is None)
+        write_config(ws, lambda c: c.update({"single_model": True, "routing": {"coder": {"runner": "agy"}}}))
+        code, out = run(CLI + ["--dir", str(ws), "routing", "--json"])
+        check("routing shows every stage in this session under single_model", code == 0 and all(r["mode"] == "this session" for r in json.loads(out)), out[-200:])
         rid, runner, model = run_stage.pick_runner(cfg, "coder", None, "backend", "other")
         check("an explicit --model still wins under single_model", model == "other")
         check("single_model is on when the key is absent", run_stage.single_model({}) is True and run_stage.single_model({"single_model": False}) is False)

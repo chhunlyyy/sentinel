@@ -303,7 +303,7 @@ def cmd_doctor(args):
             if command and not shutil.which(command.split()[0]) and not command.startswith("./") and not command.startswith("npm") and not command.startswith("npx"):
                 problems.append(f"{repo['id']}: {key} command not found: {command.split()[0]}")
     from run_stage import all_runners, single_model
-    for stage, route in (config.get("routing") or {}).items():
+    for stage, route in ({} if single_model(config) else config.get("routing") or {}).items():
         runner = all_runners(config).get(route["runner"])
         if not runner:
             problems.append(f"routing {stage}: runner not defined: {route['runner']}")
