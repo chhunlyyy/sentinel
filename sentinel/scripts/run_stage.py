@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -104,6 +105,57 @@ def parse_output(runner, text):
     return (data.get("response") or "").strip(), data.get(runner.get("session_field", "conversation_id")), data.get("status", "UNKNOWN")
 
 
+HEARTBEAT_SECONDS = 30
+
+
+def changed_count(workdir):
+    result = subprocess.run(["git", "-C", str(workdir), "status", "--porcelain"], capture_output=True, text=True)
+    return len(result.stdout.splitlines()) if result.returncode == 0 else None
+
+
+def run_live(command, stdin, workdir, timeout, log, err_log, name):
+    process = subprocess.Popen(command, cwd=workdir, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    collected = {"out": [], "err": []}
+
+    def pump(stream, key, path):
+        with open(path, "w") as handle:
+            for line in stream:
+                collected[key].append(line)
+                handle.write(line)
+                handle.flush()
+
+    threads = [threading.Thread(target=pump, args=(process.stdout, "out", log), daemon=True), threading.Thread(target=pump, args=(process.stderr, "err", err_log), daemon=True)]
+    for thread in threads:
+        thread.start()
+    if stdin is not None:
+        try:
+            process.stdin.write(stdin)
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+    started = time.time()
+    timed_out = False
+    while process.poll() is None:
+        try:
+            process.wait(timeout=HEARTBEAT_SECONDS)
+        except subprocess.TimeoutExpired:
+            elapsed = int(time.time() - started)
+            if elapsed >= timeout:
+                process.kill()
+                timed_out = True
+                break
+            changed = changed_count(workdir)
+            note = f", {changed} changed files in {workdir.name}" if changed is not None else ""
+            size = sum(len(line) for line in collected["out"])
+            print(f"[{name}] running {elapsed // 60}m{elapsed % 60:02d}s, {size} bytes of output{note}", file=sys.stderr, flush=True)
+    for thread in threads:
+        thread.join(timeout=5)
+    stderr = "".join(collected["err"])
+    if timed_out:
+        stderr += "\ntimeout"
+    return (124 if timed_out else process.returncode), "".join(collected["out"]), stderr
+
+
 def main():
     parser = argparse.ArgumentParser(prog="run-stage")
     parser.add_argument("--config")
@@ -161,15 +213,10 @@ def main():
 
     command, stdin = build_command(runner, prompt, model, args.resume, [state_dir])
     print(f"running {name} on {runner_id} in {workdir}", file=sys.stderr)
-    try:
-        stdin_kwargs = {"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}
-        result = subprocess.run(command, cwd=workdir, capture_output=True, text=True, timeout=args.timeout, **stdin_kwargs)
-        exit_code, stdout, stderr = result.returncode, result.stdout, result.stderr
-    except subprocess.TimeoutExpired as expired:
-        exit_code, stdout, stderr = 124, (expired.stdout or b"").decode() if isinstance(expired.stdout, bytes) else (expired.stdout or ""), "timeout"
     log = cache / f"{stamp}-{name}.output.txt"
-    log.write_text(stdout)
-    (cache / f"{stamp}-{name}.stderr.txt").write_text(stderr)
+    err_log = cache / f"{stamp}-{name}.stderr.txt"
+    print(f"live log: {log}", file=sys.stderr)
+    exit_code, stdout, stderr = run_live(command, stdin, workdir, args.timeout, log, err_log, name)
     report, session, status = parse_output(runner, stdout)
     if exit_code != 0 and status in ("SUCCESS", "UNKNOWN"):
         status = "FAILED"

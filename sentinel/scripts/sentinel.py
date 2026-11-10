@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
+import difflib
 import getpass
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -243,6 +245,35 @@ def cmd_routing(args):
         print(f"{name:<24}{row['mode']:<14}{detail}")
 
 
+def model_problems(config, stage, route, runner, live):
+    from run_stage import single_model
+    model = route.get("model")
+    if not model or single_model(config) or not runner.get("model_flag"):
+        return []
+    if model.startswith("-") or " " in model.strip():
+        return [f"routing {stage}: model {model!r} must be the model name only, without the flag (for example `sonnet`, not `--model sonnet`)"]
+    if not live or not shutil.which(runner["command"].split()[0]):
+        return []
+    known = []
+    if route["runner"] == "agy":
+        listing = subprocess.run(["agy", "models"], capture_output=True, text=True, timeout=60).stdout
+        known = [line.split("\t")[0] for line in listing.splitlines() if "\t" in line]
+        if known and model not in known:
+            close = difflib.get_close_matches(model, known, n=3, cutoff=0.4)
+            return [f"routing {stage}: agy does not know model {model!r}; " + (f"did you mean {', '.join(close)}?" if close else "") + f" known: {', '.join(known)}"]
+        return []
+    command = shlex.split(runner["command"]) + [runner["model_flag"], model]
+    command += ([runner["prompt_flag"]] if runner.get("prompt_flag") else []) + ["Reply with ok."]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return [f"routing {stage}: model check for {model!r} timed out"]
+    if result.returncode != 0:
+        tail = (result.stderr or result.stdout).strip().splitlines()[-1:] or ["failed"]
+        return [f"routing {stage}: {route['runner']} rejected model {model!r}: {tail[0]}"]
+    return []
+
+
 def cmd_doctor(args):
     config_path, config = load_config(args.dir)
     workspace = config_path.parent
@@ -281,6 +312,7 @@ def cmd_doctor(args):
             problems.append(f"runner CLI not installed: {runner['command'].split()[0]} (routing {stage})")
         if route.get("model") and not single_model(config) and not runner.get("model_flag"):
             problems.append(f"routing {stage}: runner {route['runner']} has no model_flag, so model {route['model']} cannot be set")
+        problems.extend(model_problems(config, stage, route, runner, args.check_models))
     shared_url = (config.get("state") or {}).get("shared_repo")
     if (config.get("state") or {}).get("shared_mode") == "local":
         if not (state_dir_of(config_path, config) / "shared" / "invariants.md").exists():
@@ -578,7 +610,9 @@ def main():
     init.add_argument("--local-only", action="store_true", help="no shared repo: keep rules, specs and regression tests only in .sentinel/shared on this machine")
     init.set_defaults(func=cmd_init)
 
-    sub.add_parser("doctor").set_defaults(func=cmd_doctor)
+    doctor = sub.add_parser("doctor")
+    doctor.add_argument("--check-models", action="store_true", help="ask each runner whether it accepts the model set in routing")
+    doctor.set_defaults(func=cmd_doctor)
     routing = sub.add_parser("routing", help="show which runner and model each stage will use")
     routing.add_argument("--stage")
     routing.add_argument("--repo")
