@@ -36,7 +36,7 @@ state:
   shared_repo: "https://git.example.com/your-team/your-shared-repo.git"
   shared_ref: main
   shared_mode: git
-  auto_sync_push: true
+  auto_sync_push: false
 
 tracker:
   kind: none

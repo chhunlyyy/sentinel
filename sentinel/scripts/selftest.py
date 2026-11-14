@@ -2,7 +2,9 @@
 import json
 import os
 import re
+import hashlib
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -42,6 +44,117 @@ def write_config(ws, mutate):
     config = yaml.safe_load(path.read_text())
     mutate(config)
     path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
+
+
+def db_set(ws, slug, **fields):
+    """Test fixture: put a version 2 run into a state the CLI cannot reach yet."""
+    conn = sqlite3.connect(ws / ".sentinel/sentinel.db")
+    sets = ",".join(f"{k}=?" for k in fields)
+    conn.execute(f"UPDATE runs SET {sets} WHERE slug=?", [*fields.values(), slug])
+    conn.commit()
+    conn.close()
+
+
+def db_row(ws, slug):
+    conn = sqlite3.connect(ws / ".sentinel/sentinel.db")
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM runs WHERE slug=?", (slug,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def phase_a_checks(tmp, remote):
+    print("registry, engine and publish default (phase A)")
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from registry import Registry
+    w = tmp / "ws-a"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    git_repo(w / "frontend", "next.config.ts")
+    code, out = run(CLI + ["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    check("AC-C-35a init --local-only writes auto_sync_push false", code == 0 and yaml.safe_load((w / "sentinel.config.yaml").read_text())["state"]["auto_sync_push"] is False, out[-200:])
+    check("AC-PER-01a no registry before the first run command", not (w / ".sentinel/sentinel.db").exists())
+    code, out = run(CLI + ["--dir", str(w), "run", "new", "leave-balance"])
+    db = w / ".sentinel/sentinel.db"
+    conn = sqlite3.connect(db) if db.exists() else None
+    mode = conn.execute("PRAGMA journal_mode").fetchone()[0] if conn else None
+    version = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0] if conn else None
+    check("AC-PER-01a the first run command creates the registry (WAL, latest schema)", code == 0 and mode == "wal" and int(version) == Registry.LATEST, out[-200:])
+    row = db_row(w, "leave-balance") or {}
+    check("AC-SM-02a run new makes a version 2 run, running and pending", row.get("workflow_version") == "2" and row.get("state") == "CREATED" and row.get("execution_status") == "running" and row.get("acceptance_status") == "pending", str(row))
+    shas = {r: subprocess.run(["git", "-C", str(w / r), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip() for r in ("backend", "frontend")}
+    stored = dict(conn.execute("SELECT repo_id, baseline_sha FROM run_repos WHERE run_id=?", (row.get("id"),)).fetchall()) if conn else {}
+    snap = conn.execute("SELECT sha256 FROM config_versions WHERE id=?", (row.get("config_snapshot_id"),)).fetchone() if conn else None
+    cfg_hash = hashlib.sha256((w / "sentinel.config.yaml").read_bytes()).hexdigest()
+    check("AC-PER-02a the registry stores both baseline commits and the config snapshot", stored == shas and snap is not None and snap[0] == cfg_hash, f"{stored} {snap}")
+    if conn:
+        conn.close()
+    code, out = run(CLI + ["--dir", str(w), "triage", "leave-balance", "--factors", "repos=1,files=2"])
+    view = json.loads((w / ".sentinel/runs/leave-balance/state.json").read_text())
+    row = db_row(w, "leave-balance")
+    check("AC-PER-04a triage rewrites the state.json view", code == 0 and view.get("schema_version") == 2 and view["state"] == "TRIAGED" and view["tier"] == 2 and view["baseline"] == shas and bool(view["stages"]) and view["execution_status"] == row["execution_status"] and view["acceptance_status"] == row["acceptance_status"], out[-200:])
+    code, out = run(CLI + ["--dir", str(w), "run", "update", "leave-balance", "--stage", "coder"])
+    check("AC-ORC-08c run update is refused on a version 2 run", code == 5 and "E_TRANSITION" in out, out[-200:])
+
+    # legacy runs
+    legacy = w / ".sentinel/runs/old-run"
+    legacy.mkdir(parents=True)
+    legacy_state = json.dumps({"slug": "old-run", "tier": 2, "initial_tier": 2, "adhoc": True, "stages": ["repro", "coder"], "completed": [], "sessions": {}, "rounds": {"review": 0, "qa": 0, "release_check": 0}, "baseline": {}, "started": "2026-01-01T00:00:00"}, indent=2)
+    (legacy / "state.json").write_text(legacy_state)
+    code, out = run(CLI + ["--dir", str(w), "resume", "old-run"])
+    legacy_row = db_row(w, "old-run") or {}
+    check("AC-ORC-08a a 0.1 run is indexed on first open and its state.json is untouched", legacy_row.get("workflow_version") == "0.1" and (legacy / "state.json").read_text() == legacy_state, str(legacy_row))
+    run(CLI + ["--dir", str(w), "run", "update", "old-run", "--stage", "repro"])
+    code, out = run(CLI + ["--dir", str(w), "resume", "old-run"])
+    check("AC-ORC-08b a legacy run keeps run update and resume", code == 0 and json.loads(out)["next"] == "coder", out[-200:])
+    code, out = run(CLI + ["--dir", str(w), "run", "new", "fresh-legacy", "--tier", "2"])
+    check("a --tier run is a 0.1 run with a registry row", code == 0 and (db_row(w, "fresh-legacy") or {}).get("workflow_version") == "0.1", out[-200:])
+    code, out = run(CLI + ["--dir", str(w), "run", "finish", "fresh-legacy"])
+    row = db_row(w, "fresh-legacy") or {}
+    check("run finish on a 0.1 run updates its registry row", code == 0 and (row.get("execution_status"), row.get("acceptance_status")) == ("completed", "accepted"), f"{out[-120:]} {row}")
+    code, out = run(CLI + ["--dir", str(w), "resume", "leave-balance"])
+    check("resume on a version 2 run is refused with E_TRANSITION", code == 5 and "E_TRANSITION" in out and "driven by the engine" in out, out[-200:])
+
+    # run finish mapping
+    for slug, state, outcome, execution, acceptance in (
+            ("fin-stop", "EXECUTING", "stopped", "cancelled", "rejected"),
+            ("fin-abandon", "EXECUTING", "abandoned", "cancelled", "rejected"),
+            ("fin-passed", "COMPLETED", "passed", "completed", "pending")):
+        run(CLI + ["--dir", str(w), "run", "new", slug])
+        db_set(w, slug, state=state, **({"execution_status": "completed"} if state == "COMPLETED" else {}))
+        code, out = run(CLI + ["--dir", str(w), "run", "finish", slug, "--outcome", outcome])
+        row = db_row(w, slug) or {}
+        check(f"AC-SM-02e run finish --outcome {outcome} on {state}", code == 0 and row.get("execution_status") == execution and row.get("acceptance_status") == acceptance, f"{out[-160:]} {row}")
+    run(CLI + ["--dir", str(w), "run", "new", "fin-unfinished"])
+    db_set(w, "fin-unfinished", state="EXECUTING")
+    code, out = run(CLI + ["--dir", str(w), "run", "finish", "fin-unfinished", "--outcome", "passed"])
+    check("AC-SM-02f run finish passed on an unfinished version 2 run is refused", code == 5 and "E_PRECONDITION" in out, out[-200:])
+
+    # concurrency
+    run(CLI + ["--dir", str(w), "run", "new", "race"])
+    procs = [subprocess.Popen(CLI + ["--dir", str(w), "triage", "race", "--factors", "files=2"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=ENV) for _ in range(2)]
+    outs = [(p.wait(), "".join(p.communicate())) for p in procs]
+    codes = sorted(c for c, _ in outs)
+    conn = sqlite3.connect(db)
+    events = conn.execute("SELECT COUNT(*) FROM events WHERE run_id=? AND type='run.state_changed'", ((db_row(w, "race") or {})["id"],)).fetchone()[0]
+    conn.close()
+    check("AC-C-36a two CLI processes triage one run: one wins, the other gets E_TRANSITION", codes == [0, 5] and any("E_TRANSITION" in o for c, o in outs if c == 5) and events == 1, f"{codes} events={events}")
+
+    # publish default
+    pw = tmp / "ws-pub"
+    pw.mkdir()
+    git_repo(pw / "app", "package.json")
+    code, out = run(CLI + ["--dir", str(pw), "init", "--shape", "single", "--non-interactive", "--shared-repo", str(remote)])
+    cfg_path = pw / "sentinel.config.yaml"
+    check("AC-C-35a init with a shared repo writes auto_sync_push false", code == 0 and yaml.safe_load(cfg_path.read_text())["state"]["auto_sync_push"] is False, out[-200:])
+    run(CLI + ["--dir", str(pw), "run", "new", "leave-balance", "--adhoc"])
+    run(CLI + ["--dir", str(pw), "run", "finish", "leave-balance"])
+    code, out = run(CLI + ["--dir", str(pw), "sync", "push", "leave-balance", "--auto"])
+    check("AC-C-35c sync push --auto does nothing under the new default", code == 0 and "auto_sync_push is off" in out and "refs/heads/sentinel/" not in run(["git", "ls-remote", str(remote)])[1], out[-200:])
+    text = cfg_path.read_text().replace("auto_sync_push: false", "auto_sync_push: true")
+    cfg_path.write_text(text)
+    code, out = run(CLI + ["--dir", str(pw), "doctor"])
+    check("AC-C-35b doctor notes automatic publishing is on and keeps the setting", "auto_sync_push is on" in out and cfg_path.read_text() == text, out[-200:])
 
 
 def main():
@@ -139,14 +252,15 @@ def main():
         check("run new works once the shared repo is cloned", code == 0, out[-200:])
         cfg_path = uws / "sentinel.config.yaml"
         cfg_text = cfg_path.read_text()
-        check("the default config turns auto sync push on", "auto_sync_push: true" in cfg_text)
-        cfg_path.write_text(cfg_text.replace("auto_sync_push: true", "auto_sync_push: false"))
+        check("the default config turns auto sync push off", "auto_sync_push: false" in cfg_text)
         code, out = run(CLI + ["--dir", str(uws), "sync", "push", "unblocked", "--auto"])
         check("sync push --auto does nothing when auto_sync_push is off", code == 0 and "auto_sync_push is off" in out, out[-200:])
         code, out = run(CLI + ["--dir", str(uws), "sync", "push", "unblocked"])
         check("sync push without --yes or --auto is refused", code != 0 and "--auto" in out, out[-200:])
         cfg_path.write_text(cfg_text)
         run(CLI + ["--dir", str(uws), "run", "finish", "unblocked"])
+
+        phase_a_checks(tmp, remote)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))

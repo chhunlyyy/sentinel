@@ -264,10 +264,13 @@ class Shared:
                 sys.exit(f"slug {slug} is locked by another run ({holder or 'remote ref exists'})")
             return
         lock = self.dir / "locks" / slug
-        if lock.exists():
-            sys.exit(f"slug {slug} is locked by another run: {lock.read_text().strip()}")
         lock.parent.mkdir(parents=True, exist_ok=True)
-        lock.write_text(f"{owner} {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            sys.exit(f"slug {slug} is locked by another run: {lock.read_text().strip()}")
+        with os.fdopen(fd, "w") as f:
+            f.write(f"{owner} {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
 
     def release(self, slug):
         if self.has_remote():

@@ -16,12 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 CONFIG_NAME = "sentinel.config.yaml"
 
-TIER_STAGES = {
-    1: ["coder"],
-    2: ["repro", "coder", "release_check", "metrics", "changelog"],
-    3: ["specifier", "retriage", "coder", "cleaner", "reviewer", "qa", "promotion", "release_check", "docs", "metrics"],
-    4: ["specifier", "retriage", "coder", "cleaner", "hardener", "reviewer", "qa", "promotion", "release_check", "docs", "rollout", "retrospective", "metrics"],
-}
+from engine import TIER_STAGES  # noqa: E402
+from errors import SentinelError  # noqa: E402
+from registry import legacy_statuses  # noqa: E402
 
 
 def load_json(name):
@@ -321,6 +318,8 @@ def cmd_doctor(args):
         problems.append("state.shared_repo is required: ask your team for the URL of its private shared repo and run `sentinel shared set <url>`")
     elif not (state_dir_of(config_path, config) / "shared" / ".git").exists():
         problems.append(f"the shared repo ({shared_url}) is not cloned: run `sentinel sync pull`")
+    if (config.get("state") or {}).get("auto_sync_push"):
+        print("note: state.auto_sync_push is on, so finished runs publish to the shared repo without asking; set it to false to publish only on request")
     if problems:
         print("\n".join(f"- {p}" for p in problems))
         sys.exit(1)
@@ -362,18 +361,37 @@ def head_sha(path):
     return result.stdout.strip() or None
 
 
-def cmd_run_new(args):
-    config_path, config = load_config(args.dir)
-    directory = run_dir(config_path, config, args.slug)
+def baseline_of(config_path, config, only=None):
+    return {r["id"]: head_sha(config_path.parent / r["path"]) for r in config["repos"] if not only or r["id"] in only}
+
+
+def claim_run(config_path, config, slug, adhoc):
+    """Validate the slug, refuse a duplicate, take the slug lock (not for adhoc). Returns the run directory."""
+    directory = run_dir(config_path, config, slug)
     if (directory / "state.json").exists():
-        sys.exit(f"run {args.slug} already exists; use `sentinel resume {args.slug}`")
-    tier = args.tier or 1
-    if not args.adhoc:
-        if not args.tier:
-            sys.exit("--tier is required unless --adhoc")
+        sys.exit(f"run {slug} already exists; use `sentinel resume {slug}`")
+    if not adhoc:
         require_shared(config_path, config)
         from shared import Shared
-        Shared(config_path.parent, config).acquire(args.slug, getpass.getuser())
+        Shared(config_path.parent, config).acquire(slug, getpass.getuser())
+    return directory
+
+
+def open_registry(config_path, config):
+    """Create or migrate the registry and index 0.1 runs; return the engine that owns it."""
+    from engine import Engine
+    return Engine(state_dir_of(config_path, config), config_path.parent, config)
+
+
+def cmd_run_new(args):
+    config_path, config = load_config(args.dir)
+    legacy = args.legacy or bool(args.tier) or args.adhoc
+    directory = claim_run(config_path, config, args.slug, args.adhoc) if legacy else None
+    if not legacy:
+        return new_v2_run(args, config_path, config)
+    if not args.adhoc and not args.tier:
+        sys.exit("--tier is required unless --adhoc")
+    tier = args.tier or 1
     directory.mkdir(parents=True, exist_ok=True)
     state = {
         "slug": args.slug,
@@ -384,11 +402,52 @@ def cmd_run_new(args):
         "completed": [],
         "sessions": {},
         "rounds": {"review": 0, "qa": 0, "release_check": 0},
-        "baseline": {r["id"]: head_sha(config_path.parent / r["path"]) for r in config["repos"]},
+        "baseline": baseline_of(config_path, config),
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     (directory / "state.json").write_text(json.dumps(state, indent=2))
+    open_registry(config_path, config).close()
     print(json.dumps(state, indent=2))
+
+
+def new_v2_run(args, config_path, config):
+    run_dir(config_path, config, args.slug)
+    only = [r for r in (args.repos or "").split(",") if r]
+    unknown = [r for r in only if r not in {c["id"] for c in config["repos"]}]
+    if unknown:
+        raise SentinelError("E_VALIDATION", f"unknown repo(s): {', '.join(unknown)}")
+    engine = open_registry(config_path, config)
+    try:
+        if engine.reg.get_run(args.slug):
+            sys.exit(f"run {args.slug} already exists; use `sentinel resume {args.slug}`")
+        claim_run(config_path, config, args.slug, False)
+        try:
+            engine.create_run(args.slug, "orchestrator", type=args.type, baseline=baseline_of(config_path, config, only))
+        except BaseException:
+            if not engine.reg.get_run(args.slug):  # row not committed: nothing owns the lock
+                from shared import Shared
+                Shared(config_path.parent, config).release(args.slug)
+            raise
+        print((run_dir(config_path, config, args.slug) / "state.json").read_text())
+    finally:
+        engine.close()
+
+
+def cmd_triage(args):
+    config_path, config = load_config(args.dir)
+    factors = {}
+    for item in (args.factors or "").split(","):
+        if item.strip():
+            key, sep, value = item.partition("=")
+            if not sep:
+                raise SentinelError("E_VALIDATION", f"factor {item!r} must look like key=value")
+            factors[key.strip()] = value.strip()
+    engine = open_registry(config_path, config)
+    try:
+        engine.triage(args.slug, factors, "orchestrator", requested=args.tier)
+        print((run_dir(config_path, config, args.slug) / "state.json").read_text())
+    finally:
+        engine.close()
 
 
 def read_state(config_path, config, slug):
@@ -398,8 +457,19 @@ def read_state(config_path, config, slug):
     return path, json.loads(path.read_text())
 
 
+def refuse_if_v2(config_path, config, slug, command):
+    engine = open_registry(config_path, config)
+    try:
+        if engine.is_v2(slug):
+            raise SentinelError("E_TRANSITION", f"`{command}` only works on 0.1 runs; run {slug} is a version 2 run",
+                                {"slug": slug})
+    finally:
+        engine.close()
+
+
 def cmd_run_update(args):
     config_path, config = load_config(args.dir)
+    refuse_if_v2(config_path, config, args.slug, "run update")
     path, state = read_state(config_path, config, args.slug)
     if args.stage and args.status == "done" and args.stage not in state["completed"]:
         state["completed"].append(args.stage)
@@ -421,6 +491,13 @@ def cmd_run_update(args):
 
 def cmd_resume(args):
     config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        if engine.is_v2(args.slug):
+            raise SentinelError("E_TRANSITION", "version 2 runs are driven by the engine (`sentinel triage` now, `sentinel next` from Phase E)",
+                                {"slug": args.slug})
+    finally:
+        engine.close()
     _, state = read_state(config_path, config, args.slug)
     limits = config.get("limits") or {}
     capped = [
@@ -452,10 +529,22 @@ def cmd_scrub(args):
 def cmd_run_finish(args):
     from shared import Shared
     config_path, config = load_config(args.dir)
-    path, state = read_state(config_path, config, args.slug)
-    state["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-    state["outcome"] = args.outcome
-    path.write_text(json.dumps(state, indent=2))
+    engine = open_registry(config_path, config)
+    try:
+        if engine.is_v2(args.slug):
+            # Phase B adds the TTY proof; until then the CLI caller is treated as the human.
+            engine.finish(args.slug, args.outcome, "human")
+            print(f"run {args.slug} {args.outcome}")
+            return
+        path, state = read_state(config_path, config, args.slug)
+        state["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        state["outcome"] = args.outcome
+        path.write_text(json.dumps(state, indent=2))
+        if engine.reg.get_run(args.slug):
+            execution, acceptance = legacy_statuses(args.outcome)
+            engine.reg.update_run(args.slug, execution_status=execution, acceptance_status=acceptance)
+    finally:
+        engine.close()
     if state.get("adhoc"):
         print(f"run {args.slug} {args.outcome}")
         return
@@ -474,7 +563,7 @@ def cmd_sync(args):
     if args.cont:
         pass
     elif args.auto:
-        if not (config.get("state") or {}).get("auto_sync_push", True):
+        if not (config.get("state") or {}).get("auto_sync_push", False):
             print("state.auto_sync_push is off: not pushing; ask the requester, then run with --yes")
             return
     elif not args.yes:
@@ -630,6 +719,9 @@ def main():
     new.add_argument("slug")
     new.add_argument("--tier", type=int, choices=[1, 2, 3, 4])
     new.add_argument("--adhoc", action="store_true", help="single-stage run: no lock, no shared repo needed")
+    new.add_argument("--legacy", action="store_true", help="create a 0.1 run (also implied by --tier and --adhoc)")
+    new.add_argument("--type", help="run type for a version 2 run")
+    new.add_argument("--repos", help="comma-separated repo ids a version 2 run covers (default: all)")
     new.set_defaults(func=cmd_run_new)
     update = run_sub.add_parser("update")
     update.add_argument("slug")
@@ -644,6 +736,12 @@ def main():
     finish.add_argument("slug")
     finish.add_argument("--outcome", choices=["passed", "stopped", "abandoned"], default="passed")
     finish.set_defaults(func=cmd_run_finish)
+
+    triage = sub.add_parser("triage", help="submit triage factors for a version 2 run; the engine sets the tier")
+    triage.add_argument("slug")
+    triage.add_argument("--factors", default="", help="key=value,... (repos, files, migration, auth, security, regression, logic)")
+    triage.add_argument("--tier", type=int, choices=[1, 2, 3, 4], help="requested tier; the engine may raise it")
+    triage.set_defaults(func=cmd_triage)
 
     sync = sub.add_parser("sync")
     sync_sub = sync.add_subparsers(dest="sync_cmd", required=True)
@@ -703,7 +801,13 @@ def main():
     if extra and not getattr(args, "passthrough", False):
         parser.error("unrecognized arguments: " + " ".join(extra))
     args.extra = extra
-    args.func(args)
+    try:
+        args.func(args)
+    except SentinelError as err:
+        print(f"{err.code}: {err.message}", file=sys.stderr)
+        if err.details:
+            print(json.dumps(err.details), file=sys.stderr)
+        sys.exit(err.exit_code)
 
 
 if __name__ == "__main__":

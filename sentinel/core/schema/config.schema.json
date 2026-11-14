@@ -367,7 +367,7 @@
         },
         "auto_sync_push": {
           "type": "boolean",
-          "default": true
+          "default": false
         },
         "retention": {
           "type": "object",
