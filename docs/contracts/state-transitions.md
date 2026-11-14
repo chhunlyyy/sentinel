@@ -46,7 +46,7 @@ Docs-only runs skip R8 to R11: `SPECIFICATION_APPROVED -> EXECUTING` (R12d) with
 | WAITING_FOR_INPUT | RUNNING | O, H | answer supplied, or orchestrator picked the native task up |
 | RUNNING, WAITING_FOR_INPUT | COMPLETED | E | process ended (or `task complete` called); result.json valid; no scope violation |
 | RUNNING, WAITING_FOR_INPUT | FAILED | E | non-zero exit, timeout, invalid result, scope violation |
-| RUNNING | BLOCKED | E | agent result status blocked |
+| RUNNING, WAITING_FOR_INPUT | BLOCKED | E | agent result status blocked (a native task reports it while waiting) |
 | any non-final | CANCELLED | H, E | cancel requested |
 
 `O` can only call `task complete`; the engine decides COMPLETED or FAILED.
@@ -76,4 +76,4 @@ Docs-only runs skip R8 to R11: `SPECIFICATION_APPROVED -> EXECUTING` (R12d) with
 
 ## 5. Error codes
 
-`E_TRANSITION`, `E_ACTOR`, `E_PRECONDITION`, `E_APPROVAL_STALE`, `E_APPROVAL_MISSING`, `E_INTEGRITY`, `E_SCOPE`, `E_RESULT_SCHEMA`, `E_LOCKED`, `E_POLICY`, `E_NOT_TTY`, `E_VALIDATION`, `E_NOT_FOUND`.
+`E_TRANSITION`, `E_ACTOR`, `E_PRECONDITION`, `E_APPROVAL_STALE`, `E_APPROVAL_MISSING`, `E_INTEGRITY`, `E_SCOPE`, `E_RESULT_SCHEMA`, `E_LOCKED`, `E_POLICY`, `E_NOT_TTY`, `E_VALIDATION`, `E_NOT_FOUND`, `E_EXIT` (task process exited non-zero or was lost), `E_TIMEOUT`, `E_AGENT` (agent reported failure), `E_PROVIDER` (runner missing or unusable).

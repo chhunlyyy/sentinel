@@ -15,6 +15,8 @@ import artifacts as A
 import machines
 from errors import SentinelError
 from registry import Registry, _now
+from runtime import RuntimeOps
+from tasks import TaskOps, retry_cap
 
 WORKFLOW_VERSION = "2"
 TIER_STAGES = {
@@ -40,13 +42,14 @@ R18_SOURCES = ("GHERKIN_APPROVED", "EXECUTING", "VERIFYING", "REVIEWING")
 UPSTREAM = "upstream specification approval invalidated"
 
 
-class Engine:
+class Engine(RuntimeOps, TaskOps):
     def __init__(self, state_dir, workspace, config, release_lock=None):
         self.state_dir = Path(state_dir)
         self.workspace = Path(workspace)
         self.config = config or {}
         self.reg = Registry.open(self.state_dir)
         self._release_lock = release_lock
+        self._kills = []
 
     def close(self):
         self.reg.close()
@@ -89,6 +92,7 @@ class Engine:
                     self.reg.add_audit("engine", "engine", "integrity_failed", f"{slug}/detection", reason=err.code)
                     self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=str(err))
         self.write_view(slug)
+        self._flush_kills()
 
     def is_v2(self, slug):
         run = self.reg.get_run(slug)
@@ -137,6 +141,14 @@ class Engine:
         self.reg.update_run(run["slug"], **fields)
         payload = {"from": frm, "to": to, "transition": rule, "reason": reason}
         self._event(run, "run.state_changed", actor, payload)
+        if rule in ("R17", "R18"):
+            self.cancel_open_tasks(run, "approval invalidated")
+        elif to in ("CANCELLED", "FAILED"):
+            self.cancel_open_tasks(run, f"run {to.lower()}")
+        if rule == "R3":
+            self._auto_task({**run, **fields}, "specifier")
+        elif rule == "R5" and run["type"] != "docs":
+            self._auto_task({**run, **fields}, "test_designer")
         if to in machines.RUN_FINAL:
             self._event(run, "run.status_changed", actor, {
                 "execution_status": fields["execution_status"],
@@ -146,6 +158,7 @@ class Engine:
 
     def _finish_up(self, slug, run_before):
         """After commit: rewrite the view, release the lock on a final state."""
+        self._flush_kills()
         run = self.reg.get_run(slug)
         self.write_view(slug)
         if run["state"] in ("CANCELLED", "FAILED") and run_before["state"] not in machines.RUN_FINAL:
@@ -402,8 +415,7 @@ class Engine:
 
     # ---- specifier / test_designer completion (R4, R8)
     def _retry_cap(self, role):
-        value = (self.config.get("limits") or {}).get(f"{role}_retries", 2)
-        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 2
+        return retry_cap(self.config, role)
 
     def _feedback_path(self, slug, role):
         return self.run_dir(slug) / f"feedback-{role}.json"
@@ -427,8 +439,8 @@ class Engine:
         data = self._feedback(slug, role)
         return list(data["errors"]) + [f"changes requested: {c}" for c in data["comments"]]
 
-    def task_completed(self, slug, role):
-        """The specifier or test_designer task finished: validate the shared files and open the review.
+    def task_completed(self, slug, role, task_id):
+        """Called by finish_task for a finished specifier or test_designer task `task_id`: validate the shared files and open the review.
 
         Returns {"accepted", "errors", "warnings", "state"}. Invalid files are not stored; the errors go
         into the next brief, and after `limits.<role>_retries` failures the run goes to NEEDS_HUMAN.
@@ -475,8 +487,10 @@ class Engine:
                 feedback = {"errors": [], "failures": 0, "comments": []}
         self._save_feedback(slug, role, feedback)  # after the commit: a rolled-back change leaves no file
         final = self._finish_up(slug, run)
-        return {"accepted": report.ok, "errors": list(report.errors), "warnings": list(report.warnings),
-                "state": final["state"]}
+        res = {"accepted": report.ok, "errors": list(report.errors), "warnings": list(report.warnings),
+               "state": final["state"]}
+        self._after_role_task(slug, role, res, task_id)
+        return res
 
     # ---- approval decisions (R5-R7, R9-R11)
     def _pending(self, run, gate, decision):

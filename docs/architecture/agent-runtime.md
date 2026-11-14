@@ -59,7 +59,9 @@ class Adapter(Protocol):
 
 - Built from the existing runner table (`DEFAULT_RUNNERS` plus `runners` in config): command, prompt flag, model flag, resume flag, add-dir flag, output format.
 - `submit` starts the process in the target repo's directory, streams the live log (existing heartbeat), returns a handle with the pid.
-- `cancel` sends SIGTERM, then SIGKILL after 10 s.
+- `cancel` sends SIGTERM to the runner's process group, then SIGKILL to the group after 10 s, also when the leader has already exited. Whoever cancels (the engine API `cancel_task`, or a run cancel) blocks for up to those 10 s while the group stops; it returns once the group is gone. The runner's group is also killed when the runner exits normally, so a background child never outlives its task.
+- The engine stores what it needs to verify a task at start: the sha256 of `task.json` and of the sealed copy `task.sealed.json` (the write scope is always read from the sealed copy, checked against that hash), and the start snapshot (`before.json`, kept in the registry too). A task process that edits or deletes these files fails with `E_INTEGRITY` and the run goes to `NEEDS_HUMAN`.
+- `exit.json` is written as soon as the runner is reaped; a `task run` that owns a task (pid and start time stored on the row) is the only process that may still be finishing it, so recovery declares a runner lost only when the runner and its owner are both gone.
 - `resume` is supported only when the runner defines `resume_flag` and returned a session id.
 - Environment passed to the child: inherited minus `SENTINEL_DASHBOARD_TOKEN` and any variable listed in `policies.redact_env`.
 
@@ -90,7 +92,7 @@ CREATED -> QUEUED -> RUNNING -> COMPLETED
 
 - Timeout: `constraints.timeout_seconds`, default from `policies.task_timeout_seconds` (5400).
 - Retry: a failed task is retried as a new task (new id, `retry_of` link) up to `max_retries`, with the failure reason in its brief. Scope violations are not retried automatically; they go to `NEEDS_HUMAN`.
-- Provider unavailable (command not found, auth error pattern): fallback provider from `providers.fallback`, else FAILED.
+- Provider unavailable (command not found): fallback provider from `providers.fallback`; if none is usable the task stays QUEUED and the run goes BLOCKED (R21, resumed by R22 when the runner returns). A runner that starts but fails (auth error) is a normal `E_EXIT` failure.
 
 ## 6. Write-scope enforcement
 

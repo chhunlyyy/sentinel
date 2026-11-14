@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel.dev/schema/task-v1.schema.json",
+  "title": "Sentinel task-v1",
+  "type": "object",
+  "required": ["schema", "id", "run_id", "role", "objective", "input", "repos", "permissions", "constraints", "expected_output"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "task-v1"},
+    "id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "role": {"enum": ["specifier", "test_designer", "tdd_red", "tdd_green", "tdd_refactor", "repro", "hardener",
+                      "reviewer", "qa", "promotion", "docs", "rollout", "retrospective"]},
+    "objective": {"type": "string", "minLength": 1},
+    "provider": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {"name": {"type": "string", "minLength": 1}, "model": {"type": ["string", "null"]},
+                     "adapter": {"enum": ["cli", "native"]}}
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "specification": {"type": "object", "required": ["path", "sha256"],
+                          "properties": {"path": {"type": "string"}, "sha256": {"type": "string"}}},
+        "gherkin": {"type": "object", "required": ["paths", "sha256"],
+                    "properties": {"paths": {"type": "array", "items": {"type": "string"}}, "sha256": {"type": "string"}}},
+        "cycle_id": {"type": ["string", "null"]},
+        "previous_results": {"type": "array", "items": {"type": "string"}},
+        "brief": {"type": ["string", "null"]}
+      }
+    },
+    "repos": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "permissions": {
+      "type": "object",
+      "required": ["read", "write"],
+      "properties": {
+        "read": {"type": "array", "items": {"type": "string"}},
+        "write": {"type": "array", "items": {"type": "string"}},
+        "readonly_approved": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["timeout_seconds"],
+      "properties": {
+        "timeout_seconds": {"type": "integer", "minimum": 1},
+        "max_retries": {"type": "integer", "minimum": 0},
+        "must_follow_tdd": {"type": "boolean"}
+      }
+    },
+    "expected_output": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {"schema": {"const": "agent-result-v1"}, "path": {"type": "string"}}
+    },
+    "attempt": {"type": "integer", "minimum": 1},
+    "retry_of": {"type": ["string", "null"]},
+    "depends_on": {"type": "array", "items": {"type": "string"}}
+  }
+}

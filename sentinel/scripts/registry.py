@@ -242,6 +242,9 @@ class Registry:
     def get_run(self, slug):
         return self._one("SELECT * FROM runs WHERE slug=?", (slug,))
 
+    def get_run_by_id(self, run_id):
+        return self._one("SELECT * FROM runs WHERE id=?", (run_id,))
+
     def list_runs(self):
         return [dict(r) for r in self._c.execute("SELECT * FROM runs ORDER BY created_at, slug")]
 
@@ -327,6 +330,13 @@ class Registry:
         clause = " AND ".join(f'"{k}"=?' for k in where)
         sql = f'SELECT * FROM "{table}"' + (f" WHERE {clause}" if clause else "") + " ORDER BY rowid"
         return [dict(r) for r in self._c.execute(sql, list(where.values()))]
+
+    def add_task_dep(self, task_id, depends_on):
+        self._c.execute("INSERT INTO task_deps(task_id, depends_on) VALUES (?,?)", (task_id, depends_on))
+
+    def task_deps(self, task_id):
+        return [r[0] for r in self._c.execute(
+            "SELECT depends_on FROM task_deps WHERE task_id=? ORDER BY rowid", (task_id,))]
 
     def add_trace_link(self, run_id, from_kind, from_id, to_kind, to_id):
         self._c.execute("INSERT INTO trace_links(run_id, from_kind, from_id, to_kind, to_id) VALUES (?,?,?,?,?)",

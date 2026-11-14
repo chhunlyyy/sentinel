@@ -1,4 +1,5 @@
 """Shared fixtures for Phase B part 2 tests (engine level and CLI level)."""
+import json
 import os
 import sys
 import tempfile
@@ -87,11 +88,29 @@ class PB(unittest.TestCase):
         return self.eng.decide(slug, gate, decision, "human", prefix=info["sha256"][:8], comment=comment,
                                approver="dev", approver_name="Dev User")
 
+    def submit(self, role, slug=SLUG):
+        """A specifier or test_designer task finishes: the open task of the role (made when none exists) goes
+        through start_task and finish_task with a fixture result. Returns the completion dict."""
+        run = self.run_row(slug)
+        open_tasks = [t for t in self.eng.reg.rows("tasks", run_id=run["id"], role=role)
+                      if t["state"] in ("CREATED", "QUEUED", "RUNNING", "WAITING_FOR_INPUT")]
+        if open_tasks:
+            tid = open_tasks[0]["id"]
+        else:
+            tid = self.eng.create_task(slug, role, f"{role} work", repos=["backend"], queue=True)["id"]
+        if self.eng.get_task(tid)["state"] == "CREATED":
+            self.eng.queue_task(tid)
+        self.eng.start_task(tid, schedule=False)
+        tdir = self.ws / ".sentinel" / "runs" / slug / "tasks" / tid
+        (tdir / "result.json").write_text(json.dumps(
+            {"schema": "agent-result-v1", "task_id": tid, "status": "completed", "summary": "done"}))
+        return self.eng.finish_task(tid, exit_code=0)["completion"]
+
     # ---- flow helpers
     def to_spec_review(self, slug=SLUG, tier=1, typ="feature", text=None):
         self.mk(slug, "PLANNED", tier, typ)
         self.write_spec(text, slug=slug, tier=tier, typ=typ)
-        res = self.eng.task_completed(slug, "specifier")
+        res = self.submit("specifier", slug)
         assert res["accepted"], res
         return slug
 
@@ -103,7 +122,7 @@ class PB(unittest.TestCase):
     def to_gherkin_review(self, slug=SLUG, tier=1, files=None):
         self.to_spec_approved(slug, tier)
         self.write_features(files, slug=slug)
-        res = self.eng.task_completed(slug, "test_designer")
+        res = self.submit("test_designer", slug)
         assert res["accepted"], res
         return slug
 

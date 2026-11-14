@@ -32,11 +32,12 @@ Events are rows in the append-only `events` table (`docs/architecture/data-archi
 | `approval.requested` | gate, version, sha256 |
 | `approval.decided` | gate, version, sha256, decision, comment |
 | `approval.invalidated` | gate, version, reason |
-| `task.created` / `task.queued` / `task.started` | role, repo, provider, model, adapter |
+| `task.created` / `task.queued` / `task.started` | role, repo, provider, model, adapter (`task.started` adds `fallback` {from, to} when a fallback provider took over) |
 | `task.progress` | elapsed_seconds, output_bytes, changed_files (from the heartbeat) |
 | `task.waiting` | waiting_on (orchestrator, human), question |
-| `task.finished` | state, error_code, seconds, tokens |
-| `task.scope_violation` | paths, kind |
+| `task.finished` | state, error_code, seconds, tokens, reason, details, exit_code |
+| `task.scope_violation` | paths, kind (`repo_not_allowed`, `head_moved`, `config_changed`, `state_in_repo`) |
+| `task.stop_requested` | (empty) `sentinel next` told the orchestrator once to stop the subagent of a cancelled or timed-out native task |
 | `cycle.state_changed` | cycle, behavior, from, to, classification |
 | `evidence.recorded` | kind, exit_code, passed, failed, classification |
 | `finding.created` / `finding.routed` / `finding.resolved` | severity, location, routed_to |

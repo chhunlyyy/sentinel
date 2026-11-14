@@ -71,7 +71,7 @@ TASK_ROWS = [
     ("", ["RUNNING"], ["WAITING_FOR_INPUT"], [E]),
     ("", ["WAITING_FOR_INPUT"], ["RUNNING"], [O, H]),
     ("", ["RUNNING", "WAITING_FOR_INPUT"], ["COMPLETED", "FAILED"], [E]),
-    ("", ["RUNNING"], ["BLOCKED"], [E]),
+    ("", ["RUNNING", "WAITING_FOR_INPUT"], ["BLOCKED"], [E]),
     ("", _TASK_NON_FINAL, ["CANCELLED"], [H, E]),
 ]
 APPROVAL_ROWS = [

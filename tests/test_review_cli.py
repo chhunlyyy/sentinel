@@ -16,7 +16,7 @@ class Review(CLIBase):
         self.to_spec_review(text=spec_text(reqs=("REQ-1: a", "REQ-2: b"), acs=("AC-1 (REQ-1): a",)))
         self.approve("spec", decision="changes", comment="more")
         self.write_spec(spec_text(version=2, reqs=("REQ-1: a", "REQ-2: b"), acs=("AC-1 (REQ-1): a",)) + "\nrevised\n")
-        self.eng.task_completed(SLUG, "specifier")
+        self.submit("specifier")
         code, out = self.cli("review", SLUG, "spec")
         self.assertEqual(code, 0, out)
         self.assertIn("revised", out)
@@ -281,17 +281,32 @@ class Tamper(CLIBase):
         self.assertEqual(len(self.audit("integrity_failed")), 1)
 
 
-class SubmitHook(CLIBase):
-    def test_submit_hook_runs_task_completion(self):
+class TaskCompleteHook(CLIBase):
+    """`sentinel task complete` replaced the Phase B `submit` hook: a native specifier task finishes, the engine validates."""
+
+    def finish_specifier(self, slug):
+        tid = self.eng.create_task(slug, "specifier", "Write the specification", ["backend"])["id"]
+        self.eng.queue_task(tid)
+        code, out = self.cli("task", "run", tid)
+        self.assertEqual(code, 0, out)
+        d = self.ws / ".sentinel/runs" / slug / "tasks" / tid
+        (d / "result.json").write_text(json.dumps({"schema": "agent-result-v1", "task_id": tid, "status": "completed",
+                                                   "summary": "done"}))
+        return tid
+
+    def test_task_complete_runs_specification_completion(self):
         self.mk()
         self.write_spec()
-        code, out = self.cli("submit", SLUG, "--role", "specifier")
+        tid = self.finish_specifier(SLUG)
+        code, out = self.cli("task", "complete", tid)
         self.assertEqual(code, 0, out)
         self.assertEqual(self.state(), "SPECIFICATION_REVIEW")
         self.mk("other")
         self.write_spec("", slug="other")
-        code, out = self.cli("submit", "other", "--role", "specifier")
-        self.assertEqual(code, 1, out)
+        tid = self.finish_specifier("other")
+        code, out = self.cli("task", "complete", tid)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.state("other"), "PLANNED")
         self.assertIn("missing front matter", out)
 
 
@@ -362,7 +377,7 @@ class AgentLaunch(CLIBase):
             f"open({str(out_file)!r}, 'w').write(f'{{r.returncode}}\\n{{r.stdout}}{{r.stderr}}')\n")
         cfg = self.ws / "sentinel.config.yaml"
         cfg.write_text(cfg.read_text() + f"runners:\n  agent:\n    command: {sys.executable} {script}\n")
-        code, out = self.cli("stage", "run", "--stage", "docs", "--slug", SLUG, "--runner", "agent")
+        code, out = self.cli("stage", "run", "--stage", "docs", "--slug", "agent-scratch", "--runner", "agent")  # stage run is refused on version 2 runs
         self.assertEqual(code, 0, out)
         status, _, text = out_file.read_text().partition("\n")
         self.assertEqual(status, "5", text)

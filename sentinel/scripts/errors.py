@@ -4,6 +4,7 @@ CODES = {
     "E_TRANSITION", "E_ACTOR", "E_PRECONDITION", "E_APPROVAL_STALE", "E_APPROVAL_MISSING",
     "E_INTEGRITY", "E_SCOPE", "E_RESULT_SCHEMA", "E_LOCKED", "E_POLICY", "E_NOT_TTY",
     "E_VALIDATION", "E_NOT_FOUND", "E_MIGRATION",
+    "E_EXIT", "E_TIMEOUT", "E_AGENT", "E_PROVIDER",
 }
 
 # CLI exit codes. 3 (boundary) and 4 (conflict) are kept from 0.1.

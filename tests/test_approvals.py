@@ -35,7 +35,7 @@ class Submit(PB):
         p = self.ws / ".sentinel/runs" / SLUG / "spec.md"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(spec_text())
-        res = self.eng.task_completed(SLUG, "specifier")
+        res = self.submit("specifier")
         self.assertFalse(res["accepted"])
         self.assertIn(f"specs/{SLUG}/spec.md not found", res["errors"])
         self.assertEqual(self.state(), "PLANNED")
@@ -52,7 +52,7 @@ class Submit(PB):
     def test_AC_SPA_03d_errors_go_into_next_brief(self):
         self.mk()
         self.write_spec(make_spec([s for s in LITE if s != "Edge cases"], tier=1))
-        res = self.eng.task_completed(SLUG, "specifier")
+        res = self.submit("specifier")
         self.assertFalse(res["accepted"])
         self.assertEqual(self.state(), "PLANNED")
         self.assertEqual(self.approvals(), [])
@@ -63,9 +63,9 @@ class Submit(PB):
         self.mk()
         self.write_spec("")
         for _ in range(2):
-            self.eng.task_completed(SLUG, "specifier")
+            self.submit("specifier")
             self.assertEqual(self.state(), "PLANNED")
-        res = self.eng.task_completed(SLUG, "specifier")
+        res = self.submit("specifier")
         self.assertFalse(res["accepted"])
         self.assertEqual(self.state(), "NEEDS_HUMAN")
         ev = self.events("run.state_changed")[-1]["payload"]
@@ -75,7 +75,7 @@ class Submit(PB):
         self.eng.config = {**CONFIG, "limits": {"specifier_retries": 0}}
         self.mk()
         self.write_spec("")
-        self.eng.task_completed(SLUG, "specifier")
+        self.submit("specifier")
         self.assertEqual(self.state(), "NEEDS_HUMAN")
         self.assertEqual(self.events("run.state_changed")[-1]["payload"]["reason"],
                          "specification invalid after 0 retries")
@@ -83,16 +83,16 @@ class Submit(PB):
     def test_valid_submission_resets_the_failure_counter(self):
         self.mk()
         self.write_spec("")
-        self.eng.task_completed(SLUG, "specifier")
+        self.submit("specifier")
         self.write_spec()
-        self.assertTrue(self.eng.task_completed(SLUG, "specifier")["accepted"])
+        self.assertTrue(self.submit("specifier")["accepted"])
         self.assertEqual(self.eng.brief_feedback(SLUG, "specifier"), [])
 
     def test_specifier_needs_planned_state(self):
         self.mk(state="TRIAGED")
         self.write_spec()
         with self.assertRaises(SentinelError) as c:
-            self.eng.task_completed(SLUG, "specifier")
+            self.submit("specifier")
         self.assertEqual(c.exception.code, "E_TRANSITION")
 
     def test_AC_GHA_01a_valid_gherkin_opens_review(self):
@@ -112,7 +112,7 @@ class Submit(PB):
         self.to_spec_review()
         self.write_features()
         with self.assertRaises(SentinelError) as c:
-            self.eng.task_completed(SLUG, "test_designer")
+            self.submit("test_designer")
         self.assertEqual(c.exception.code, "E_TRANSITION")
         self.assertEqual(self.state(), "SPECIFICATION_REVIEW")
         self.assertEqual(self.artifacts("gherkin"), [])
@@ -120,14 +120,14 @@ class Submit(PB):
     def test_AC_GHA_03e_gherkin_errors_into_brief_and_cap(self):
         self.to_spec_approved()
         self.write_features({"balance.feature": GOOD["balance.feature"]})
-        res = self.eng.task_completed(SLUG, "test_designer")
+        res = self.submit("test_designer")
         self.assertFalse(res["accepted"])
         self.assertEqual(self.state(), "SPECIFICATION_APPROVED")
         self.assertEqual(self.approvals("gherkin"), [])
         self.assertEqual(self.artifacts("gherkin"), [])
         self.assertIn("AC-2 has no scenario", self.eng.brief_feedback(SLUG, "test_designer"))
-        self.eng.task_completed(SLUG, "test_designer")
-        self.eng.task_completed(SLUG, "test_designer")
+        self.submit("test_designer")
+        self.submit("test_designer")
         self.assertEqual(self.state(), "NEEDS_HUMAN")
         self.assertEqual(self.events("run.state_changed")[-1]["payload"]["reason"],
                          "Gherkin invalid after 2 retries")
@@ -241,7 +241,7 @@ class Decide(PB):
         self.to_spec_review()
         self.approve("spec", decision="changes", comment="more")
         self.write_spec(spec_text(version=2) + "\n<!-- v2 -->\n")
-        self.assertTrue(self.eng.task_completed(SLUG, "specifier")["accepted"])
+        self.assertTrue(self.submit("specifier")["accepted"])
         self.assertEqual(self.state(), "SPECIFICATION_REVIEW")
         ap = self.approvals("specification")
         self.assertEqual([(a["version"], a["state"]) for a in ap], [(1, "CHANGES_REQUESTED"), (2, "IN_REVIEW")])
@@ -478,7 +478,7 @@ class Invalidation(PB):
         with self.assertRaises(SentinelError) as c:
             self.eng.request_state(SLUG, "EXECUTING", "engine")
         self.assertEqual(c.exception.code, "E_TRANSITION")
-        self.assertTrue(self.eng.task_completed(SLUG, "test_designer")["accepted"])
+        self.assertTrue(self.submit("test_designer")["accepted"])
         self.assertEqual([(a["version"], a["state"]) for a in self.approvals("gherkin")],
                          [(1, "INVALIDATED"), (2, "IN_REVIEW")])
 

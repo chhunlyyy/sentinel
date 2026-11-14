@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sentinel.dev/schema/agent-result-v1.schema.json",
+  "title": "Sentinel agent-result-v1",
+  "type": "object",
+  "required": ["schema", "task_id", "status", "summary"],
+  "properties": {
+    "schema": {"const": "agent-result-v1"},
+    "task_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["completed", "blocked", "failed"]},
+    "summary": {"type": "string"},
+    "claimed_changed_files": {"type": "array", "items": {"type": "string"}},
+    "claimed_commands": {
+      "type": "array",
+      "items": {"type": "object", "required": ["command"],
+                "properties": {"command": {"type": "string"}, "exit_code": {"type": ["integer", "null"]}}}
+    },
+    "findings": {
+      "type": "array",
+      "items": {"type": "object", "required": ["severity", "text"],
+                "properties": {"severity": {"enum": ["blocker", "major", "minor"]},
+                               "location": {"type": "string"}, "text": {"type": "string"}}}
+    },
+    "questions": {"type": "array"},
+    "out_of_lane": {"type": "array"},
+    "new_dependencies": {
+      "type": "array",
+      "items": {"type": "object", "properties": {"name": {"type": "string"}, "reason": {"type": "string"}}}
+    },
+    "rollout": {"type": "array"}
+  }
+}

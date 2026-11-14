@@ -20,12 +20,15 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 | PB-01 | Gates | Spec and Gherkin artifacts, validators, coverage table | Completed | PA-02 | `artifacts.py`, `tests/test_artifacts.py` |
 | PB-02 | Gates | Review and approve (TTY), hashing, invalidation | Completed | PB-01 | `engine.py` approvals and detection, `sentinel review/approve/submit`, `migrations/0002_audit_reason.sql`, `tests/test_approvals.py`, `tests/test_review_cli.py`, `tests/test_adapters_sync.py` |
 | PC-00 | Runtime | Phase C Gherkin (test plan) | Completed | PB review | approved 2026-11-14 at hash `dbccd512de4c60e8d149ab172ad62ddda002dcb3561a027f57fc07a5de9369fa`, `plan/v1.1/phaseC/features/*.feature` |
-| PC-01 | Runtime | Task and result contracts; adapter interface | In Progress | PA-02 | |
-| PC-02 | Runtime | CLI adapter (from run_stage), native adapter, scheduler, retries, cancel | Pending | PC-01 | |
-| PD-01 | TDD | Path-level scopes; test and production globs in profiles | Pending | PC-02 | |
+| PC-01 | Runtime | Task and result contracts; adapter interface | Completed | PA-02 | `tasks.py`, `adapters.py`, schemas, `migrations/0003_task_runtime.sql`, `tests/test_task_contracts.py`, `tests/test_adapter_interface.py`, `tests/test_tasks_engine.py` |
+| PC-02 | Runtime | CLI adapter (from run_stage), native adapter, scheduler, retries, cancel | Completed | PC-01 | `runtime.py`, `scheduler.py`, `run_stage.py` LiveProcess, `sentinel next`/`task run`/`task complete`, `tests/test_cli_adapter.py`, `test_native_adapter.py`, `test_scheduler.py`, `test_retries_cancel.py`, `test_next_cli.py`, `test_review_fixes.py` |
+| PD-00 | TDD | Phase D Gherkin (test plan) | Completed | PC review | approved 2026-11-14 at hash `3bb67c8c68cd911c7281b5cd2407d92b4f787274ead20d6f457a729031126441`, `plan/v1.1/phaseD/features/*.feature` |
+| PD-01 | TDD | Path-level scopes; test and production globs in profiles | In Progress | PC-02 | |
 | PD-02 | TDD | test_designer, tdd_red, tdd_green, tdd_refactor stages; failure classifier; cycle evidence | Pending | PD-01, PB-02 | |
+| PE-00 | Verification | Phase E Gherkin (test plan) | Completed | PD review | approved 2026-11-14 at hash `dcbf28683ff5331af8e645ba4afb7c1e4f6437dab626d26a3d1785e03d320958`, `plan/v1.1/phaseE/features/*.feature` |
 | PE-01 | Verification | Verification runner, acceptance, reports, export and import | Pending | PD-02 | |
 | PE-02 | Skills | Rewrite orchestrator skill around `sentinel next`; regenerate adapters | Pending | PE-01 | |
+| PF-00 | Local API | Phase F Gherkin (test plan) | Completed | PE review | approved 2026-11-14 at hash `5ef93cdedf89f47d667c41d18e964070b18fbb79b5ddb8274a002d019865dfbc`, `plan/v1.1/phaseF/features/*.feature` |
 | PF-01 | Local API | Server, auth, allow-listed operations, SSE | Pending | PE-01 | |
 | PG-01 | Dashboard | Installation, projects, repos, configuration center, readiness | Pending | PF-01 | |
 | PG-02 | Dashboard | Tasks, approval center, monitoring, TDD, verification, diffs, trace | Pending | PG-01 | |
@@ -46,3 +49,11 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 - Opus review: 2 major (integrity failure during detection bricked the run; resume skipped re-detection), 9 minor; all fixed with regression tests.
 - Behavior to note: `run finish` on v2 runs needs a TTY; `sync-adapters` adds advisory deny rules for `sentinel approve`/`accept` to `.claude/settings.json`; migration 0002 adds `audit.reason`; invalid edited specs are not stored (approve refused E_VALIDATION), edited Gherkin sets are stored even if invalid (AC-GHA-05i); a Gherkin edit while BLOCKED/NEEDS_HUMAN is detected on resume.
 - Phase B accepted by human review 2026-11-14. Phase C Gherkin approved, including open point 2 (missing runner -> BLOCKED, overriding agent-runtime.md "else FAILED").
+- Phase F Gherkin approved 2026-11-14. Decision: dashboard `pause` and "request intervention" controls are dropped from 1.1.0 (no paused state); the API keeps refusing them. No Phase G addendum.
+
+## Phase C notes
+
+- Evidence 2026-11-14: Red recorded (PC-01: 39+21 errors, 1 failure + 9 errors; PC-02: 89 failures + 22 errors; review fixes red for items 1-3, 5-9, 14). Green: `python3 -W default -m unittest discover -s tests` 366 OK in 65 s, no ResourceWarnings, no leaked processes; selftest 151 passed, 0 failed. Phase C Gherkin hash unchanged (`dbccd512…`).
+- Opus review: 2 blockers (agent could bypass the scope check by deleting or editing before.json / task.sealed.json), 6 major (false process-lost, stage run hang regression, group children surviving cancel, glob false negative, exponential overlap, config schema rejecting documented keys), 8 minor; all fixed. Tampering with task files now yields E_INTEGRITY and NEEDS_HUMAN.
+- Behaviour to note: `sentinel submit` removed (use `task run` / `task complete`); `stage run` refused on v2 runs; cancel may block the caller up to 10 s; missing runner -> run BLOCKED.
+- Phase C accepted by human review 2026-11-14.

@@ -59,3 +59,24 @@ class Snapshot:
         if config_state(self.config_paths) != self.config_before:
             found.append("sentinel config, generated agents, or skills were modified")
         return found
+
+
+def changed_state(repo):
+    """{"head": sha, "paths": {path: sha256 or None}} for every changed or untracked path (None: deleted)."""
+    head = git(repo, "rev-parse", "HEAD").strip()
+    paths = {}
+    for line in git(repo, "status", "--porcelain", "--untracked-files=all", "-z").split("\0"):
+        if len(line) < 4:
+            continue
+        name = line[3:]
+        try:
+            paths[name] = hashlib.sha256((Path(repo) / name).read_bytes()).hexdigest()
+        except OSError:
+            paths[name] = None
+    return {"head": head, "paths": paths}
+
+
+def changed_between(before, after):
+    """Sorted paths whose content differs between two changed_state() results."""
+    names = set(before["paths"]) | set(after["paths"])
+    return sorted(n for n in names if before["paths"].get(n) != after["paths"].get(n))

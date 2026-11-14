@@ -3,6 +3,7 @@ import argparse
 import difflib
 import getpass
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -525,7 +526,7 @@ def cmd_resume(args):
     engine = open_registry(config_path, config)
     try:
         if engine.is_v2(args.slug):
-            raise SentinelError("E_TRANSITION", "version 2 runs are driven by the engine (`sentinel triage` now, `sentinel next` from Phase E)",
+            raise SentinelError("E_TRANSITION", "version 2 runs are driven by the engine (`sentinel triage`, `sentinel next`, `sentinel task run`)",
                                 {"slug": args.slug})
     finally:
         engine.close()
@@ -686,15 +687,75 @@ def cmd_approve(args):
         engine.close()
 
 
-def cmd_submit(args):
-    """Orchestrator hook: the specifier or test_designer task for a run has finished (Phase C wires real tasks)."""
+
+def check_slug(slug):
+    from paths import slug_problem
+    problem = slug_problem(slug)
+    if problem:
+        raise SentinelError("E_VALIDATION", problem)
+    return slug
+
+
+def print_step(step):
+    """`sentinel next` for a person."""
+    kind = step["kind"]
+    if kind == "human":
+        print(f"Human action: {step['reason']}")
+        for command in step.get("commands") or []:
+            print(f"  {command}")
+        if step.get("fix"):
+            print(f"  fix: {step['fix']}")
+    elif kind == "task":
+        print(f"Task {step['task']} ({step['role']}, {step['adapter']}): {step['label']}")
+        print(f"  {step['command']}")
+    elif kind == "orchestrator":
+        print(f"Orchestrator: {step['action']}")
+        if step.get("command"):
+            print(f"  {step['command']}")
+    elif kind == "wait":
+        print(f"Wait: {step['reason']}" + (f" ({', '.join(step['tasks'])})" if step.get("tasks") else ""))
+    else:
+        print(f"Done: execution {step['execution']}, acceptance {step['acceptance']}")
+
+
+def cmd_next(args):
     config_path, config = load_config(args.dir)
     engine = open_registry(config_path, config)
     try:
-        res = engine.task_completed(args.slug, args.role)
-        print(json.dumps(res, indent=2))
-        if not res["accepted"]:
-            sys.exit(1)
+        step = engine.next_step(check_slug(args.slug))
+        code = step.pop("exit")
+        if args.json:
+            print(json.dumps(step, indent=2))
+        else:
+            print_step(step)
+        sys.exit(code)
+    finally:
+        engine.close()
+
+
+def cmd_task(args):
+    """task run | task complete. A task process (SENTINEL_TASK_ID set) is refused by the engine."""
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        caller = os.environ.get("SENTINEL_TASK_ID")
+        if args.task_cmd == "run":
+            result = engine.run_task(args.task_id, caller_task=caller)
+        else:
+            result = engine.complete_task(args.task_id, caller_task=caller)
+        code = result.pop("exit")
+        tail = result.pop("stderr_tail", None)
+        print(json.dumps(result, indent=2))
+        if result.get("blocked"):
+            print(f"{result['reason']}; fix: {result['fix']}", file=sys.stderr)
+        elif tail and result["state"] == "FAILED":
+            print("----- runner stderr (tail)", file=sys.stderr)
+            print(tail, file=sys.stderr)
+        if result.get("retry"):
+            print(f"retry queued: {result['retry']}", file=sys.stderr)
+        for line in (result.get("completion") or {}).get("errors") or []:
+            print(f"rejected: {line}", file=sys.stderr)
+        sys.exit(code)
     finally:
         engine.close()
 
@@ -897,10 +958,17 @@ def main():
     approve.add_argument("-m", "--comment")
     approve.set_defaults(func=cmd_approve)
 
-    submit = sub.add_parser("submit", help="orchestrator hook: a specifier or test_designer task finished")
-    submit.add_argument("slug")
-    submit.add_argument("--role", required=True, choices=["specifier", "test_designer"])
-    submit.set_defaults(func=cmd_submit)
+    nxt = sub.add_parser("next", help="what is allowed now: a task, an orchestrator action, a human action, wait or done")
+    nxt.add_argument("slug")
+    nxt.add_argument("--json", action="store_true")
+    nxt.set_defaults(func=cmd_next)
+
+    task = sub.add_parser("task", help="run a queued task, or complete a native task (orchestrator)")
+    task_sub = task.add_subparsers(dest="task_cmd", required=True)
+    for name, text in (("run", "start a QUEUED task through its adapter"), ("complete", "a native task finished; the engine decides")):
+        member = task_sub.add_parser(name, help=text)
+        member.add_argument("task_id")
+        member.set_defaults(func=cmd_task)
 
     triage = sub.add_parser("triage", help="submit triage factors for a version 2 run; the engine sets the tier")
     triage.add_argument("slug")

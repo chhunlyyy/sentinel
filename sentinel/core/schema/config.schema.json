@@ -354,6 +354,16 @@
           "type": "integer",
           "minimum": 1,
           "default": 3
+        },
+        "specifier_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "test_designer_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
         }
       }
     },
@@ -474,6 +484,78 @@
       "type": "object",
       "additionalProperties": {
         "type": "string"
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "runner": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "max_retries": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel_tasks": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "task_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5400
+        },
+        "redact_env": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "provider_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "human_required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fallback": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default": {
+          "type": "string"
+        }
       }
     }
   }

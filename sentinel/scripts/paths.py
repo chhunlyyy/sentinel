@@ -10,9 +10,17 @@ def skills_dir():
     raise FileNotFoundError("the skills folder was not found next to the sentinel package")
 
 
-def valid_slug(slug):
+def slug_problem(slug):
+    """Why `slug` is not a valid run name, or None."""
     import re
-    import sys
     if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", slug or "") or ".." in slug or slug.endswith((".", ".lock")):
-        sys.exit(f"invalid slug {slug!r}: use 1 to 64 lowercase letters, digits, dots, dashes or underscores, starting with a letter or digit")
+        return f"invalid slug {slug!r}: use 1 to 64 lowercase letters, digits, dots, dashes or underscores, starting with a letter or digit"
+    return None
+
+
+def valid_slug(slug):
+    import sys
+    problem = slug_problem(slug)
+    if problem:
+        sys.exit(problem)
     return slug

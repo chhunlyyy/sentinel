@@ -234,6 +234,22 @@ def phase_b_checks(tmp):
         (specs / slug / "features").mkdir(parents=True, exist_ok=True)
         (specs / slug / "spec.md").write_text(lite_spec(slug))
 
+    def submit(slug, role):
+        """The orchestrator path of Phase C: a native task for the role goes through `task run` and `task complete`."""
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from engine import Engine
+        cfg = yaml.safe_load((w / "sentinel.config.yaml").read_text())
+        eng = Engine(w / ".sentinel", w, cfg)
+        try:
+            tid = eng.create_task(slug, role, f"{role} work", [cfg["repos"][0]["id"]])["id"]
+            eng.queue_task(tid)
+        finally:
+            eng.close()
+        code, out = run(CLI + d + ["task", "run", tid])
+        (w / ".sentinel/runs" / slug / "tasks" / tid / "result.json").write_text(json.dumps(
+            {"schema": "agent-result-v1", "task_id": tid, "status": "completed", "summary": "done"}))
+        return run(CLI + d + ["task", "complete", tid])
+
     def features(slug):
         for n, t in FEATURES.items():
             (specs / slug / "features" / n).write_text(t)
@@ -248,10 +264,10 @@ def phase_b_checks(tmp):
         return [r["state"] for r in db_all(w, "SELECT state FROM approvals WHERE run_id=(SELECT id FROM runs WHERE slug=?) AND gate=? ORDER BY rowid", (slug, gate))]
 
     new_run("lb")
-    code, out = run(CLI + d + ["submit", "lb", "--role", "specifier"])
+    code, out = submit("lb", "specifier")
     check("AC-SPA-01a a valid specification opens the review with an IN_REVIEW approval", code == 0 and state("lb") == "SPECIFICATION_REVIEW" and aps("lb", "specification") == ["IN_REVIEW"], out[-200:])
     code, out = run(CLI + d + ["review", "lb", "spec"])
-    check("AC-SPA-04b review of a first version says there is no previous reviewed version", code == 0 and "no previous reviewed version" in out and db_all(w, "SELECT sha256 FROM artifacts")[0]["sha256"] in out, out[-200:])
+    check("AC-SPA-04b review of a first version says there is no previous reviewed version", code == 0 and "no previous reviewed version" in out and db_all(w, "SELECT sha256 FROM artifacts WHERE kind='spec'")[0]["sha256"] in out, out[-200:])
     code, out = run(CLI + d + ["review", "lb", "tests"])
     check("AC-SPA-04c review refuses an unknown gate with usage exit 2", code == 2, out[-200:])
     code, out = run(CLI + d + ["approve", "lb", "spec"])
@@ -267,7 +283,7 @@ def phase_b_checks(tmp):
     code, out = run_tty(CLI + d + ["approve", "lb", "spec"], typed=["00000000"])
     check("AC-SPA-06d a second approval of the same version is refused with E_TRANSITION", code == 5 and "E_TRANSITION" in out, out[-200:])
     features("lb")
-    code, out = run(CLI + d + ["submit", "lb", "--role", "test_designer"])
+    code, out = submit("lb", "test_designer")
     check("AC-GHA-01a valid feature files open the Gherkin review", code == 0 and state("lb") == "GHERKIN_REVIEW" and aps("lb", "gherkin") == ["IN_REVIEW"], out[-200:])
     code, out = run(CLI + d + ["review", "lb", "gherkin"])
     check("AC-GHA-05a review lists the feature files, scenarios and coverage table", code == 0 and "features/balance.feature" in out and "@AC-1" in out and "concurrency" in out and "coverage incomplete" in out, out[-300:])
@@ -282,32 +298,32 @@ def phase_b_checks(tmp):
     check("AC-SPA-08c a spec edit after approval returns the run to SPECIFICATION_REVIEW (R17)", state("lb") == "SPECIFICATION_REVIEW" and aps("lb", "specification") == ["INVALIDATED", "IN_REVIEW"] and aps("lb", "gherkin") == ["INVALIDATED", "INVALIDATED"], f"{aps('lb', 'specification')} {aps('lb', 'gherkin')} {out[-150:]}")
 
     new_run("stale")
-    run(CLI + d + ["submit", "stale", "--role", "specifier"])
+    submit("stale", "specifier")
     old = prefix("stale", "specification")
     sp = specs / "stale/spec.md"
     sp.write_text(sp.read_text() + "\nmore\n")
     code, out = run_tty(CLI + d + ["approve", "stale", "spec"], typed=[old])
     check("AC-SPA-08a a spec edited after review is refused with E_APPROVAL_STALE and a new version is opened", code == 5 and "E_APPROVAL_STALE" in out and aps("stale", "specification") == ["INVALIDATED", "IN_REVIEW"], out[-250:])
     new_run("edit-race")
-    run(CLI + d + ["submit", "edit-race", "--role", "specifier"])
+    submit("edit-race", "specifier")
     shown = prefix("edit-race", "specification")
     er = specs / "edit-race/spec.md"
     code, out = run_tty(CLI + d + ["approve", "edit-race", "spec"], typed=[shown], on_prompt=lambda: er.write_text(er.read_text() + "\nrace\n"))
     check("AC-SPA-08b a file edited between the prompt and the typed prefix is refused as stale", code == 5 and "E_APPROVAL_STALE" in out and "APPROVED" not in aps("edit-race", "specification"), out[-250:])
 
     new_run("chg")
-    run(CLI + d + ["submit", "chg", "--role", "specifier"])
+    submit("chg", "specifier")
     code, out = run_tty(CLI + d + ["approve", "chg", "spec", "--request-changes"])
     check("AC-SPA-05b requesting changes without a comment is refused before the prompt", code == 5 and "E_VALIDATION" in out and "first 8 characters" not in out, out[-200:])
     code, out = run_tty(CLI + d + ["approve", "chg", "spec", "--request-changes", "-m", "Add the half-day case"], typed=[prefix("chg", "specification")])
     check("AC-SPA-05a requesting changes returns the run to PLANNED (R6)", code == 0 and state("chg") == "PLANNED" and aps("chg", "specification") == ["CHANGES_REQUESTED"], out[-200:])
     new_run("rej")
-    run(CLI + d + ["submit", "rej", "--role", "specifier"])
+    submit("rej", "specifier")
     code, out = run_tty(CLI + d + ["approve", "rej", "spec", "--reject", "-m", "Out of scope"], typed=[prefix("rej", "specification")])
     check("AC-SPA-05d rejecting cancels the run (R7)", code == 0 and state("rej") == "CANCELLED" and aps("rej", "specification") == ["REJECTED"], out[-200:])
 
     new_run("race")
-    run(CLI + d + ["submit", "race", "--role", "specifier"])
+    submit("race", "specifier")
     pfx = prefix("race", "specification")
     import pty
     procs = []
@@ -323,7 +339,7 @@ def phase_b_checks(tmp):
     check("AC-SPA-06f two terminals approve at once: exactly one wins", sorted(c for c, _ in results) == [0, 5] and len(db_all(w, "SELECT 1 FROM events WHERE type='approval.decided' AND run_id=(SELECT id FROM runs WHERE slug='race')")) == 1, str(results)[-300:])
 
     new_run("tamper")
-    run(CLI + d + ["submit", "tamper", "--role", "specifier"])
+    submit("tamper", "specifier")
     pfx = prefix("tamper", "specification")
     stored = w / ".sentinel/runs/tamper/artifacts/spec-v1.md"
     stored.write_text(stored.read_text() + "x")
@@ -348,6 +364,90 @@ def phase_b_checks(tmp):
     deny = settings.get("permissions", {}).get("deny", [])
     agent_text = "".join(p.read_text() for p in (w / ".claude/agents").glob("*.md"))
     check("AC-SEC-04a generated Claude settings deny sentinel approve and accept, and agents are told never to run them", "Bash(sentinel approve:*)" in deny and "Bash(sentinel accept:*)" in deny and "Never run `sentinel approve` or `sentinel accept`" in agent_text, out[-200:])
+
+
+def phase_c_checks(tmp):
+    print("task runtime (phase C)")
+    w = tmp / "ws-c"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    git_repo(w / "frontend", "next.config.ts")
+    run(CLI + ["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    d = ["--dir", str(w)]
+    bin_dir = w / "bin"
+    bin_dir.mkdir()
+
+    def runner(name, body):
+        path = bin_dir / name
+        path.write_text(f"#!{sys.executable}\nimport json, os, re, pathlib, sys\nprompt = sys.argv[-1]\n"
+                        "result = re.search(r'Result file \\(absolute path\\): (\\S+)', prompt).group(1)\n"
+                        "def done(status='completed'):\n"
+                        "    pathlib.Path(result).write_text(json.dumps({'schema': 'agent-result-v1', 'task_id': os.environ['SENTINEL_TASK_ID'], 'status': status, 'summary': 's'}))\n" + body)
+        path.chmod(0o755)
+        return str(path)
+
+    write_config(w, lambda c: c.update({"single_model": False, "agents": {"docs": {"runner": "fake"}, "qa": {"runner": "stray"}, "reviewer": {"runner": "gone"}},
+                                         "runners": {"fake": {"command": runner("fake", "pathlib.Path(os.getcwd(), 'docs').mkdir(exist_ok=True)\npathlib.Path(os.getcwd(), 'docs/leave.md').write_text('x')\ndone()\n")},
+                                                     "stray": {"command": runner("stray", "pathlib.Path(os.getcwd()).parent.joinpath('frontend/stray.txt').write_text('x')\ndone()\n")},
+                                                     "gone": {"command": "no-such-agent-cli"}}}))
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from engine import Engine
+
+    def new_run(slug):
+        run(CLI + d + ["run", "new", slug])
+        db_set(w, slug, state="EXECUTING", tier=3, initial_tier=3)
+
+    def task(slug, role, write, queue=True):
+        cfg = yaml.safe_load((w / "sentinel.config.yaml").read_text())
+        eng = Engine(w / ".sentinel", w, cfg)
+        try:
+            tid = eng.create_task(slug, role, f"{role} work", ["backend"], write=write)["id"]
+            if queue:
+                eng.queue_task(tid)
+        finally:
+            eng.close()
+        return tid
+
+    def row(tid):
+        return db_all(w, "SELECT * FROM tasks WHERE id=?", (tid,))[0]
+
+    new_run("rt")
+    tid = task("rt", "docs", ["backend/docs/**"])
+    code, out = run(CLI + d + ["task", "run", tid])
+    r = row(tid)
+    check("AC-AGT-04a a headless task runs through the fake runner and completes", code == 0 and r["state"] == "COMPLETED" and r["adapter"] == "cli" and r["provider"] == "fake", out[-250:])
+    stray = task("rt", "qa", [])
+    code, out = run(CLI + d + ["task", "run", stray])
+    r = row(stray)
+    check("AC-AGT-06b a write outside the task's repo fails it with exit 3 and E_SCOPE", code == 3 and r["state"] == "FAILED" and r["error_code"] == "E_SCOPE", out[-250:])
+    (w / "frontend/stray.txt").unlink(missing_ok=True)
+    write_config(w, lambda c: c.update({"single_model": True}))  # the run keeps the config it starts with (CFG-08)
+    new_run("rt-native")
+    nat = task("rt-native", "docs", ["backend/docs/**"])
+    code, out = run(CLI + d + ["task", "run", nat])
+    waiting = row(nat)["state"] == "WAITING_FOR_INPUT"
+    tdir = w / ".sentinel/runs/rt-native/tasks" / nat
+    (w / "backend/docs").mkdir(exist_ok=True)
+    (w / "backend/docs/native.md").write_text("x")
+    (tdir / "result.json").write_text(json.dumps({"schema": "agent-result-v1", "task_id": nat, "status": "completed", "summary": "s"}))
+    code2, out2 = run(CLI + d + ["task", "complete", nat])
+    check("AC-AGT-04d and AC-AGT-04e a native task waits for the orchestrator, then task complete finishes it", waiting and code == 0 and code2 == 0 and row(nat)["state"] == "COMPLETED", out[-150:] + out2[-150:])
+    code, out = run(CLI + d + ["task", "complete", nat])
+    check("AC-ORC-02h a second task complete is refused with E_TRANSITION", code == 5 and "E_TRANSITION" in out, out[-200:])
+    write_config(w, lambda c: c.update({"single_model": False}))
+    new_run("rt-blocked")
+    rev = task("rt-blocked", "reviewer", [])
+    code, out = run(CLI + d + ["task", "run", rev])
+    check("AC-AGT-05e a missing runner leaves the task QUEUED and blocks the run (exit 6, R21)", code == 6 and row(rev)["state"] == "QUEUED" and db_row(w, "rt-blocked")["state"] == "BLOCKED" and "install no-such-agent-cli" in out, out[-250:])
+    code, out = run(CLI + d + ["next", "rt-blocked", "--json"])
+    check("AC-ARC-03a next on a blocked run is a human step with exit 6", code == 6 and json.loads(out)["kind"] == "human", out[-200:])
+    for args, want, name in ((["next", "../x"], "E_VALIDATION", "next with a bad slug"), (["task", "run", "t-000000000000"], "E_NOT_FOUND", "task run with an unknown id"), (["task", "complete", "t-zzzz"], "E_VALIDATION", "task complete with a bad id")):
+        code, out = run(CLI + d + args)
+        check(f"AC-ARC-03h {name} is refused with {want}", code == 5 and want in out, out[-200:])
+    code, out = run(CLI + d + ["stage", "run", "--slug", "rt", "--stage", "coder", "--repo", "backend", "--runner", "fake"])
+    check("AC-ORC-08g stage run is refused on a version 2 run and names task run", code == 5 and "sentinel task run" in out, out[-200:])
+    code, out = run(CLI + d + ["submit", "rt", "--role", "specifier"])
+    check("the Phase B submit command is gone", code == 2, out[-200:])
 
 
 def main():
@@ -455,6 +555,7 @@ def main():
 
         phase_a_checks(tmp, remote)
         phase_b_checks(tmp)
+        phase_c_checks(tmp)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))
