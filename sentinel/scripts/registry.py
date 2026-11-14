@@ -294,11 +294,14 @@ class Registry:
             out.append(d)
         return out
 
-    def add_audit(self, actor, channel, action, target, before_sha=None, after_sha=None):
+    def add_audit(self, actor, channel, action, target, before_sha=None, after_sha=None, reason=None):
         cur = self._c.execute(
-            "INSERT INTO audit(actor, channel, action, target, before_sha, after_sha, at) VALUES (?,?,?,?,?,?,?)",
-            (actor, channel, action, target, before_sha, after_sha, _now()))
+            "INSERT INTO audit(actor, channel, action, target, before_sha, after_sha, at, reason) VALUES (?,?,?,?,?,?,?,?)",
+            (actor, channel, action, target, before_sha, after_sha, _now(), reason))
         return cur.lastrowid
+
+    def audit_rows(self):
+        return [dict(r) for r in self._c.execute("SELECT * FROM audit ORDER BY id")]
 
     def has_passing_evidence(self, run_id, kind="test"):
         return self._c.execute("SELECT 1 FROM evidence WHERE run_id=? AND kind=? AND passed > 0 LIMIT 1",
@@ -315,6 +318,27 @@ class Registry:
     def get_row(self, table, id):
         self._check_table(table)
         return self._one(f'SELECT * FROM "{table}" WHERE id=?', (id,))
+
+    def rows(self, table, **where):
+        """Rows of an id table (or trace_links) matching every column in `where`, in insertion order."""
+        if table not in _ID_PREFIX and table != "trace_links":
+            raise ValueError(f"table not allowed: {table!r}")
+        self._check_fields(table, where)
+        clause = " AND ".join(f'"{k}"=?' for k in where)
+        sql = f'SELECT * FROM "{table}"' + (f" WHERE {clause}" if clause else "") + " ORDER BY rowid"
+        return [dict(r) for r in self._c.execute(sql, list(where.values()))]
+
+    def add_trace_link(self, run_id, from_kind, from_id, to_kind, to_id):
+        self._c.execute("INSERT INTO trace_links(run_id, from_kind, from_id, to_kind, to_id) VALUES (?,?,?,?,?)",
+                        (run_id, from_kind, from_id, to_kind, to_id))
+
+    def replace_trace_links(self, run_id, links, **match):
+        """Delete the run's links matching `match` (column=value) and insert `links` (4-tuples)."""
+        self._check_fields("trace_links", match)
+        clause = "".join(f' AND "{k}"=?' for k in match)
+        self._c.execute(f"DELETE FROM trace_links WHERE run_id=?{clause}", [run_id, *match.values()])
+        for link in links:
+            self.add_trace_link(run_id, *link)
 
     def update_row(self, table, id, **fields):
         self._check_table(table)

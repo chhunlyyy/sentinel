@@ -95,6 +95,7 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | `sentinel next <slug> [--json]` | O, H | what is allowed now: task to run, human action, or done |
 | `sentinel task run <task-id>` | O | dispatch through the adapter |
 | `sentinel task complete <task-id>` | O | native task finished; engine validates |
+| `sentinel submit <slug> --role specifier|test_designer` | O | Phase B hook: the specifier or test_designer task finished; engine validates the shared files. Replaced by `task complete` in Phase C |
 | `sentinel review <slug> spec|gherkin` | H | show artifact, diff, validation |
 | `sentinel approve <slug> spec|gherkin [--request-changes|--reject] [-m comment]` | H (TTY) | decision |
 | `sentinel verify <slug>` | O, H | run verification |

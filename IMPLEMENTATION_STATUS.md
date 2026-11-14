@@ -17,9 +17,10 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 | PA-02 | Core | Run, task, approval, cycle state machines; acceptance split | Completed | PA-01 | `machines.py`, `engine.py`, `tests/test_machines.py`, `tests/test_engine.py`, `tests/test_cli.py` |
 | PA-03 | Core | Publish default off; doctor note | Completed | PA-00 | template + schema default false; doctor note; selftest AC-C-35a/b/c |
 | PB-00 | Gates | Phase B Gherkin (test plan) | Completed | PA review | approved 2026-11-14 at hash `aca8bae64794fb4fe5e986a818f9a8279bb779950849aa644e07231381fa9278`, `plan/v1.1/phaseB/features/*.feature` |
-| PB-01 | Gates | Spec and Gherkin artifacts, validators, coverage table | In Progress | PA-02 | |
-| PB-02 | Gates | Review and approve (TTY), hashing, invalidation | Pending | PB-01 | |
-| PC-01 | Runtime | Task and result contracts; adapter interface | Pending | PA-02 | |
+| PB-01 | Gates | Spec and Gherkin artifacts, validators, coverage table | Completed | PA-02 | `artifacts.py`, `tests/test_artifacts.py` |
+| PB-02 | Gates | Review and approve (TTY), hashing, invalidation | Completed | PB-01 | `engine.py` approvals and detection, `sentinel review/approve/submit`, `migrations/0002_audit_reason.sql`, `tests/test_approvals.py`, `tests/test_review_cli.py`, `tests/test_adapters_sync.py` |
+| PC-00 | Runtime | Phase C Gherkin (test plan) | Completed | PB review | approved 2026-11-14 at hash `dbccd512de4c60e8d149ab172ad62ddda002dcb3561a027f57fc07a5de9369fa`, `plan/v1.1/phaseC/features/*.feature` |
+| PC-01 | Runtime | Task and result contracts; adapter interface | In Progress | PA-02 | |
 | PC-02 | Runtime | CLI adapter (from run_stage), native adapter, scheduler, retries, cancel | Pending | PC-01 | |
 | PD-01 | TDD | Path-level scopes; test and production globs in profiles | Pending | PC-02 | |
 | PD-02 | TDD | test_designer, tdd_red, tdd_green, tdd_refactor stages; failure classifier; cycle evidence | Pending | PD-01, PB-02 | |
@@ -38,3 +39,10 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 - Opus review found 17 issues (1 blocker, 4 major, 12 minor); all fixed with regression tests. Phase A Gherkin hash unchanged (`c6409820…`).
 - Behavior changes to note: configs without `auto_sync_push` now mean off; `resume` and `run update` refuse version 2 runs (exit 5); legacy indexer maps stopped/abandoned to cancelled/rejected; `run finish` on v2 runs is treated as human without TTY proof until Phase B.
 - Phase A accepted by human review 2026-11-14.
+
+## Phase B notes
+
+- Evidence 2026-11-14: Red recorded (artifacts 112 errors; approvals 74 errors; review CLI 4 failures + 28 errors; review regressions 8 failures). Green: unittest 232 OK; selftest 140 passed, 0 failed. Phase B Gherkin hash unchanged (`aca8bae6…`).
+- Opus review: 2 major (integrity failure during detection bricked the run; resume skipped re-detection), 9 minor; all fixed with regression tests.
+- Behavior to note: `run finish` on v2 runs needs a TTY; `sync-adapters` adds advisory deny rules for `sentinel approve`/`accept` to `.claude/settings.json`; migration 0002 adds `audit.reason`; invalid edited specs are not stored (approve refused E_VALIDATION), edited Gherkin sets are stored even if invalid (AC-GHA-05i); a Gherkin edit while BLOCKED/NEEDS_HUMAN is detected on resume.
+- Phase B accepted by human review 2026-11-14. Phase C Gherkin approved, including open point 2 (missing runner -> BLOCKED, overriding agent-runtime.md "else FAILED").

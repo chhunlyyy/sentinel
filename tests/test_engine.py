@@ -152,14 +152,14 @@ class TestRunMachine(Base):
         self.assertEqual((row["state"], row["previous_state"]), ("VERIFYING", None))
 
     def test_R22_requires_previous_state(self):
-        self.make(state="EXECUTING")
+        self.make(state="VERIFYING")
         self.eng.request_state("leave-balance", "BLOCKED", "engine")
         with self.assertRaises(SentinelError) as cm:
             self.eng.request_state("leave-balance", "GHERKIN_APPROVED", "engine")
         self.assertEqual(cm.exception.code, "E_PRECONDITION")
         self.assertEqual(self.run_row()["state"], "BLOCKED")
-        self.eng.request_state("leave-balance", "EXECUTING", "engine")
-        self.assertEqual(self.run_row()["state"], "EXECUTING")
+        self.eng.request_state("leave-balance", "VERIFYING", "engine")
+        self.assertEqual(self.run_row()["state"], "VERIFYING")
 
     def test_triage_emits_run_triaged_with_factors(self):
         self.make()

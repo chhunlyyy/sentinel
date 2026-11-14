@@ -52,7 +52,7 @@ No endpoint takes a shell string. All subprocess calls use argument lists.
 - CLI: `sentinel approve` refuses when `sys.stdin.isatty()` is false, shows the artifact hash, and requires typing the first 8 hex characters.
 - Dashboard: approval endpoint requires the session cookie and CSRF header, and the request body must include the full hash the reviewer saw. Stale hash: `409 E_APPROVAL_STALE`.
 - Records: approver identity (OS user, git `user.name`), channel (`tty` or `dashboard`), time, version, hash, decision, comment.
-- Generated agent configs (`sync-adapters`) add a deny rule for `sentinel approve*` and `sentinel accept*` where the tool supports one (Claude Code `permissions.deny`), and an explicit rule in the agent instructions otherwise.
+- Generated agent configs (`sync-adapters`) add a deny rule for `sentinel approve*` and `sentinel accept*` where the tool supports one (Claude Code `permissions.deny`), and an explicit rule in the agent instructions otherwise. These deny rules are advisory (a pattern cannot cover every way to spell or wrap a command, for example `sentinel --dir X approve`); the TTY check in `sentinel approve` is the control.
 
 **Residual risk (R1):** an agent running as the same OS user could, in theory, script a pseudo-terminal or read the token file. Sentinel records the channel and identity and documents this. Strong separation needs a different OS user or a sandbox, which is out of scope for 1.1.0.
 

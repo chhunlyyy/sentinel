@@ -27,6 +27,7 @@ To implement a feature or fix a bug through Sentinel, first run `sentinel doctor
 2. Read `.sentinel/generated/orchestrator.md` and follow it. It tells you how to pick the effort tier and run each stage.
 3. Stage prompts are in `.sentinel/generated/prompts/<name>.md`. Run a stage with `sentinel stage run --stage <stage> [--repo <id>] --slug <slug> --brief <file>`, or follow the prompt yourself when you are the only agent.
 4. Run state lives in `.sentinel/runs/<slug>/state.json`; resume with `sentinel resume <slug>`.
+5. Agents never run `sentinel approve` or `sentinel accept`. Those are human decisions made at a terminal.
 
 Rules from `sentinel.config.yaml` apply to everything you write:
 {rules}

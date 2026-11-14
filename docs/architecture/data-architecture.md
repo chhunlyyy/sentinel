@@ -67,7 +67,8 @@ events(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, task_id TEXT,
        type TEXT, actor TEXT, payload TEXT, at TEXT);        -- append-only
 
 audit(id INTEGER PRIMARY KEY AUTOINCREMENT, actor TEXT, channel TEXT, action TEXT,
-      target TEXT, before_sha TEXT, after_sha TEXT, at TEXT); -- append-only
+      target TEXT, before_sha TEXT, after_sha TEXT, at TEXT,
+      reason TEXT);                                          -- append-only
 ```
 
 Rules:

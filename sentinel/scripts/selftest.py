@@ -8,6 +8,8 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 import yaml
@@ -122,12 +124,12 @@ def phase_a_checks(tmp, remote):
             ("fin-passed", "COMPLETED", "passed", "completed", "pending")):
         run(CLI + ["--dir", str(w), "run", "new", slug])
         db_set(w, slug, state=state, **({"execution_status": "completed"} if state == "COMPLETED" else {}))
-        code, out = run(CLI + ["--dir", str(w), "run", "finish", slug, "--outcome", outcome])
+        code, out = run_tty(CLI + ["--dir", str(w), "run", "finish", slug, "--outcome", outcome])
         row = db_row(w, slug) or {}
         check(f"AC-SM-02e run finish --outcome {outcome} on {state}", code == 0 and row.get("execution_status") == execution and row.get("acceptance_status") == acceptance, f"{out[-160:]} {row}")
     run(CLI + ["--dir", str(w), "run", "new", "fin-unfinished"])
     db_set(w, "fin-unfinished", state="EXECUTING")
-    code, out = run(CLI + ["--dir", str(w), "run", "finish", "fin-unfinished", "--outcome", "passed"])
+    code, out = run_tty(CLI + ["--dir", str(w), "run", "finish", "fin-unfinished", "--outcome", "passed"])
     check("AC-SM-02f run finish passed on an unfinished version 2 run is refused", code == 5 and "E_PRECONDITION" in out, out[-200:])
 
     # concurrency
@@ -155,6 +157,197 @@ def phase_a_checks(tmp, remote):
     cfg_path.write_text(text)
     code, out = run(CLI + ["--dir", str(pw), "doctor"])
     check("AC-C-35b doctor notes automatic publishing is on and keeps the setting", "auto_sync_push is on" in out and cfg_path.read_text() == text, out[-200:])
+
+
+def run_tty(cmd, typed=(), eof=False, on_prompt=None, cwd=None):
+    """Run a command with a pseudo-terminal as stdin and stdout; answer the hash prompt with `typed`."""
+    import pty
+    pid, fd = pty.fork()
+    if pid == 0:
+        if cwd:
+            os.chdir(cwd)
+        os.execvpe(cmd[0], cmd, ENV)
+    return tty_finish(pid, fd, typed, eof, on_prompt)
+
+
+def tty_finish(pid, fd, typed=(), eof=False, on_prompt=None, wait_only=False):
+    import select
+    out, sent = b"", wait_only
+    end = time.time() + 40
+    while time.time() < end:
+        r, _, _ = select.select([fd], [], [], 0.2)
+        if r:
+            try:
+                data = os.read(fd, 4096)
+            except OSError:
+                break
+            if not data:
+                break
+            out += data
+        if not sent and b"first 8 characters" in out:
+            sent = True
+            if on_prompt:
+                on_prompt()
+            if eof:
+                os.write(fd, b"\x04")
+            else:
+                for t in typed:
+                    os.write(fd, (t + "\n").encode())
+    _, status = os.waitpid(pid, 0)
+    os.close(fd)
+    return os.waitstatus_to_exitcode(status), out.decode(errors="replace").replace("\r\n", "\n")
+
+
+def db_all(ws, sql, args=()):
+    conn = sqlite3.connect(ws / ".sentinel/sentinel.db")
+    conn.row_factory = sqlite3.Row
+    rows = [dict(r) for r in conn.execute(sql, args)]
+    conn.close()
+    return rows
+
+
+def lite_spec(slug, version=1, extra=""):
+    secs = ["Problem statement", "Scope", "Out of scope", "Functional requirements", "Acceptance criteria",
+            "Edge cases", "Security considerations", "Risks and assumptions"]
+    body = {"Functional requirements": "- REQ-1: first\n- REQ-2: second", "Acceptance criteria": "- AC-1 (REQ-1): a\n- AC-2 (REQ-2): b"}
+    parts = [f"---\nrun: {slug}\nversion: {version}\ntier: 1\n---\n"]
+    parts += [f"## {n}\n{body.get(n, 'Text for ' + n + '.')}\n" for n in secs]
+    return "\n".join(parts) + extra
+
+
+FEATURES = {"balance.feature": "@REQ-1\nFeature: F\n\n  @AC-1 @unit @P1\n  Scenario: a\n    Given x\n    When y\n    Then z\n",
+            "form.feature": "@REQ-2\nFeature: G\n\n  @AC-2 @integration @P1\n  Scenario: b\n    Given x\n    When y\n    Then z\n"}
+
+
+def phase_b_checks(tmp):
+    print("approval gates (phase B)")
+    w = tmp / "ws-b"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    code, out = run(CLI + ["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    d = ["--dir", str(w)]
+    specs = w / ".sentinel/shared/specs"
+
+    def new_run(slug, state="PLANNED"):
+        run(CLI + d + ["run", "new", slug])
+        db_set(w, slug, state=state, tier=1, initial_tier=1)
+        (specs / slug / "features").mkdir(parents=True, exist_ok=True)
+        (specs / slug / "spec.md").write_text(lite_spec(slug))
+
+    def features(slug):
+        for n, t in FEATURES.items():
+            (specs / slug / "features" / n).write_text(t)
+
+    def prefix(slug, kind):
+        return db_all(w, "SELECT sha256 FROM approvals WHERE run_id=(SELECT id FROM runs WHERE slug=?) AND gate=? AND state='IN_REVIEW'", (slug, kind))[0]["sha256"][:8]
+
+    def state(slug):
+        return db_row(w, slug)["state"]
+
+    def aps(slug, gate):
+        return [r["state"] for r in db_all(w, "SELECT state FROM approvals WHERE run_id=(SELECT id FROM runs WHERE slug=?) AND gate=? ORDER BY rowid", (slug, gate))]
+
+    new_run("lb")
+    code, out = run(CLI + d + ["submit", "lb", "--role", "specifier"])
+    check("AC-SPA-01a a valid specification opens the review with an IN_REVIEW approval", code == 0 and state("lb") == "SPECIFICATION_REVIEW" and aps("lb", "specification") == ["IN_REVIEW"], out[-200:])
+    code, out = run(CLI + d + ["review", "lb", "spec"])
+    check("AC-SPA-04b review of a first version says there is no previous reviewed version", code == 0 and "no previous reviewed version" in out and db_all(w, "SELECT sha256 FROM artifacts")[0]["sha256"] in out, out[-200:])
+    code, out = run(CLI + d + ["review", "lb", "tests"])
+    check("AC-SPA-04c review refuses an unknown gate with usage exit 2", code == 2, out[-200:])
+    code, out = run(CLI + d + ["approve", "lb", "spec"])
+    refused = db_all(w, "SELECT * FROM audit WHERE action='approve_refused'")
+    check("AC-SEC-03a approve without a terminal is refused with E_NOT_TTY and audited", code == 5 and "E_NOT_TTY" in out and aps("lb", "specification") == ["IN_REVIEW"] and len(refused) == 1 and refused[0]["reason"] == "E_NOT_TTY", out[-200:])
+    code, out = run_tty(CLI + d + ["approve", "lb", "spec"], typed=["00000000"])
+    check("AC-SEC-03c a wrong hash prefix is refused with E_VALIDATION", code == 5 and "E_VALIDATION" in out and aps("lb", "specification") == ["IN_REVIEW"], out[-200:])
+    code, out = run_tty(CLI + d + ["approve", "lb", "spec"], eof=True)
+    check("AC-SEC-03d closing the prompt exits 1 and stores nothing", code == 1 and aps("lb", "specification") == ["IN_REVIEW"] and not db_all(w, "SELECT 1 FROM events WHERE type='approval.decided'"), out[-200:])
+    code, out = run_tty(CLI + d + ["approve", "lb", "spec", "-m", "Looks right"], typed=[f"  {prefix('lb', 'specification').upper()} "])
+    row = db_all(w, "SELECT * FROM approvals WHERE gate='specification'")[0]
+    check("AC-SPA-06a a human at a terminal approves the specification (R5)", code == 0 and state("lb") == "SPECIFICATION_APPROVED" and row["state"] == "APPROVED" and row["channel"] == "tty" and row["comment"] == "Looks right" and len(db_all(w, "SELECT 1 FROM audit WHERE action='approve'")) == 1, out[-200:])
+    code, out = run_tty(CLI + d + ["approve", "lb", "spec"], typed=["00000000"])
+    check("AC-SPA-06d a second approval of the same version is refused with E_TRANSITION", code == 5 and "E_TRANSITION" in out, out[-200:])
+    features("lb")
+    code, out = run(CLI + d + ["submit", "lb", "--role", "test_designer"])
+    check("AC-GHA-01a valid feature files open the Gherkin review", code == 0 and state("lb") == "GHERKIN_REVIEW" and aps("lb", "gherkin") == ["IN_REVIEW"], out[-200:])
+    code, out = run(CLI + d + ["review", "lb", "gherkin"])
+    check("AC-GHA-05a review lists the feature files, scenarios and coverage table", code == 0 and "features/balance.feature" in out and "@AC-1" in out and "concurrency" in out and "coverage incomplete" in out, out[-300:])
+    code, out = run_tty(CLI + d + ["approve", "lb", "gherkin"], typed=[prefix("lb", "gherkin")])
+    check("AC-GHA-05b a human approves the Gherkin set (R9)", code == 0 and state("lb") == "GHERKIN_APPROVED" and aps("lb", "gherkin") == ["APPROVED"], out[-200:])
+    (specs / "lb/features/balance.feature").write_text(FEATURES["balance.feature"] + "\n  @AC-1 @unit @P1\n  Scenario: more\n    Given x\n    When y\n    Then z\n")
+    code, out = run(CLI + d + ["review", "lb", "gherkin"])
+    check("AC-GHA-05i a Gherkin edit after approval returns the run to GHERKIN_REVIEW (R18)", state("lb") == "GHERKIN_REVIEW" and aps("lb", "gherkin") == ["INVALIDATED", "IN_REVIEW"] and aps("lb", "specification") == ["APPROVED"], out[-200:])
+    p = specs / "lb/spec.md"
+    p.write_text(p.read_text() + "\nedit\n")
+    code, out = run(CLI + d + ["review", "lb", "spec"])
+    check("AC-SPA-08c a spec edit after approval returns the run to SPECIFICATION_REVIEW (R17)", state("lb") == "SPECIFICATION_REVIEW" and aps("lb", "specification") == ["INVALIDATED", "IN_REVIEW"] and aps("lb", "gherkin") == ["INVALIDATED", "INVALIDATED"], f"{aps('lb', 'specification')} {aps('lb', 'gherkin')} {out[-150:]}")
+
+    new_run("stale")
+    run(CLI + d + ["submit", "stale", "--role", "specifier"])
+    old = prefix("stale", "specification")
+    sp = specs / "stale/spec.md"
+    sp.write_text(sp.read_text() + "\nmore\n")
+    code, out = run_tty(CLI + d + ["approve", "stale", "spec"], typed=[old])
+    check("AC-SPA-08a a spec edited after review is refused with E_APPROVAL_STALE and a new version is opened", code == 5 and "E_APPROVAL_STALE" in out and aps("stale", "specification") == ["INVALIDATED", "IN_REVIEW"], out[-250:])
+    new_run("edit-race")
+    run(CLI + d + ["submit", "edit-race", "--role", "specifier"])
+    shown = prefix("edit-race", "specification")
+    er = specs / "edit-race/spec.md"
+    code, out = run_tty(CLI + d + ["approve", "edit-race", "spec"], typed=[shown], on_prompt=lambda: er.write_text(er.read_text() + "\nrace\n"))
+    check("AC-SPA-08b a file edited between the prompt and the typed prefix is refused as stale", code == 5 and "E_APPROVAL_STALE" in out and "APPROVED" not in aps("edit-race", "specification"), out[-250:])
+
+    new_run("chg")
+    run(CLI + d + ["submit", "chg", "--role", "specifier"])
+    code, out = run_tty(CLI + d + ["approve", "chg", "spec", "--request-changes"])
+    check("AC-SPA-05b requesting changes without a comment is refused before the prompt", code == 5 and "E_VALIDATION" in out and "first 8 characters" not in out, out[-200:])
+    code, out = run_tty(CLI + d + ["approve", "chg", "spec", "--request-changes", "-m", "Add the half-day case"], typed=[prefix("chg", "specification")])
+    check("AC-SPA-05a requesting changes returns the run to PLANNED (R6)", code == 0 and state("chg") == "PLANNED" and aps("chg", "specification") == ["CHANGES_REQUESTED"], out[-200:])
+    new_run("rej")
+    run(CLI + d + ["submit", "rej", "--role", "specifier"])
+    code, out = run_tty(CLI + d + ["approve", "rej", "spec", "--reject", "-m", "Out of scope"], typed=[prefix("rej", "specification")])
+    check("AC-SPA-05d rejecting cancels the run (R7)", code == 0 and state("rej") == "CANCELLED" and aps("rej", "specification") == ["REJECTED"], out[-200:])
+
+    new_run("race")
+    run(CLI + d + ["submit", "race", "--role", "specifier"])
+    pfx = prefix("race", "specification")
+    import pty
+    procs = []
+    for _ in range(2):
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.execvpe(CLI[0], CLI + d + ["approve", "race", "spec"], ENV)
+        procs.append((pid, fd))
+    results = []
+    threads = [threading.Thread(target=lambda a=a: results.append(tty_finish(a[0], a[1], typed=[pfx]))) for a in procs]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    check("AC-SPA-06f two terminals approve at once: exactly one wins", sorted(c for c, _ in results) == [0, 5] and len(db_all(w, "SELECT 1 FROM events WHERE type='approval.decided' AND run_id=(SELECT id FROM runs WHERE slug='race')")) == 1, str(results)[-300:])
+
+    new_run("tamper")
+    run(CLI + d + ["submit", "tamper", "--role", "specifier"])
+    pfx = prefix("tamper", "specification")
+    stored = w / ".sentinel/runs/tamper/artifacts/spec-v1.md"
+    stored.write_text(stored.read_text() + "x")
+    code, out = run_tty(CLI + d + ["approve", "tamper", "spec"], typed=[pfx])
+    check("AC-ART-01b a modified stored copy is refused with E_INTEGRITY and audited", code == 5 and "E_INTEGRITY" in out and len(db_all(w, "SELECT 1 FROM audit WHERE action='integrity_failed'")) == 1, out[-200:])
+    code, out = run(CLI + d + ["review", "tamper", "spec"])
+    check("AC-ART-01d review of a modified stored copy fails with E_INTEGRITY", code == 5 and "E_INTEGRITY" in out, out[-200:])
+
+    run(CLI + d + ["run", "new", "old-run", "--tier", "2"])
+    before = (w / ".sentinel/runs/old-run/state.json").read_bytes()
+    code, out = run_tty(CLI + d + ["approve", "old-run", "spec"], typed=["00000000"])
+    check("AC-SPA-06e a 0.1 run has no approval gates (E_TRANSITION, state.json untouched)", code == 5 and "E_TRANSITION" in out and (w / ".sentinel/runs/old-run/state.json").read_bytes() == before, out[-200:])
+
+    new_run("fin", state="EXECUTING")
+    code, out = run(CLI + d + ["run", "finish", "fin", "--outcome", "stopped"])
+    check("run finish on a version 2 run without a terminal is refused with E_NOT_TTY", code == 5 and "E_NOT_TTY" in out and state("fin") == "EXECUTING", out[-200:])
+    code, out = run_tty(CLI + d + ["run", "finish", "fin", "--outcome", "stopped"])
+    check("run finish on a version 2 run at a terminal cancels it", code == 0 and state("fin") == "CANCELLED", out[-200:])
+
+    code, out = run(CLI + d + ["sync-adapters"])
+    settings = json.loads((w / ".claude/settings.json").read_text()) if (w / ".claude/settings.json").exists() else {}
+    deny = settings.get("permissions", {}).get("deny", [])
+    agent_text = "".join(p.read_text() for p in (w / ".claude/agents").glob("*.md"))
+    check("AC-SEC-04a generated Claude settings deny sentinel approve and accept, and agents are told never to run them", "Bash(sentinel approve:*)" in deny and "Bash(sentinel accept:*)" in deny and "Never run `sentinel approve` or `sentinel accept`" in agent_text, out[-200:])
 
 
 def main():
@@ -261,6 +454,7 @@ def main():
         run(CLI + ["--dir", str(uws), "run", "finish", "unblocked"])
 
         phase_a_checks(tmp, remote)
+        phase_b_checks(tmp)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))

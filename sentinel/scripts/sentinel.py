@@ -343,7 +343,38 @@ def cmd_sync_adapters(args):
     for skill in sorted(p for p in skills_dir().iterdir() if (p / "SKILL.md").exists()):
         shutil.copytree(skill, workspace / ".claude" / "skills" / skill.name, dirs_exist_ok=True)
         installed.append(skill.name)
+    deny_human_commands(workspace)
     print(f"agents written to {out}; skills written to .claude/skills: {', '.join(installed)}")
+
+
+HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)",
+                       "Bash(sentinel --dir * approve *)", "Bash(sentinel --dir * accept *)"]
+
+
+def deny_human_commands(workspace):
+    """Merge deny rules for the human-only commands into .claude/settings.json (keeps every other setting).
+
+    The rules are advisory (other spellings of the command can slip past a pattern); the TTY check in
+    `sentinel approve` is the real control. A file with an unexpected shape is left untouched.
+    """
+    path = workspace / ".claude" / "settings.json"
+    try:
+        settings = json.loads(path.read_text()) if path.exists() else {}
+    except ValueError:
+        sys.exit(f"{path} is not valid JSON; fix it and run sync-adapters again")
+    if not isinstance(settings, dict):
+        sys.exit(f"{path} must hold a JSON object, not {type(settings).__name__}; fix it and run sync-adapters again")
+    perms = settings.setdefault("permissions", {})
+    if not isinstance(perms, dict):
+        sys.exit(f"{path}: \"permissions\" must be an object; fix it and run sync-adapters again")
+    deny = perms.setdefault("deny", [])
+    if not isinstance(deny, list):
+        sys.exit(f"{path}: \"permissions.deny\" must be a list; fix it and run sync-adapters again")
+    for rule in HUMAN_ONLY_COMMANDS:
+        if rule not in deny:
+            deny.append(rule)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2) + "\n")
 
 
 def state_dir_of(config_path, config):
@@ -526,13 +557,39 @@ def cmd_scrub(args):
     print(f"scrubbed {len(changed)} file(s)")
 
 
+def is_tty():
+    """A human at an interactive terminal: both stdin and stdout are a tty."""
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def human_identity():
+    """(OS user, git name or None) of whoever runs the command."""
+    user = getpass.getuser()
+    name = None
+    try:
+        out = subprocess.run(["git", "var", "GIT_AUTHOR_IDENT"], capture_output=True, text=True, timeout=10).stdout
+        name = out.rsplit(" <", 1)[0].strip() or None if " <" in out else None
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return user, name
+
+
+def refuse_without_tty(what):
+    return SentinelError("E_NOT_TTY", f"{what} needs a human at an interactive terminal (stdin and stdout must be a tty)")
+
+
 def cmd_run_finish(args):
     from shared import Shared
     config_path, config = load_config(args.dir)
     engine = open_registry(config_path, config)
     try:
         if engine.is_v2(args.slug):
-            # Phase B adds the TTY proof; until then the CLI caller is treated as the human.
+            if not is_tty():
+                engine.audit(human_identity()[0], "cli", "finish_refused", args.slug, reason="E_NOT_TTY")
+                raise refuse_without_tty("`run finish` on a version 2 run")
             engine.finish(args.slug, args.outcome, "human")
             print(f"run {args.slug} {args.outcome}")
             return
@@ -550,6 +607,96 @@ def cmd_run_finish(args):
         return
     Shared(config_path.parent, config).release(args.slug)
     print(f"run {args.slug} {args.outcome}; lock released")
+
+
+def print_review(info, slug):
+    print(f"{info['gate']} of {slug}: version {info['version']}, approval {info['approval_state']}, run {info['run_state']}")
+    print(f"sha256: {info['sha256']}")
+    print()
+    if info["gate"] == "specification":
+        print(info["text"].rstrip("\n"))
+    else:
+        for f in info["files"]:
+            print(f"== {f['path']}")
+        print()
+        print("scenarios:")
+        for sc in info["scenarios"]:
+            print(f"  {sc['path']}:{sc['line']}  {sc['name']}  " + " ".join("@" + t for t in sc["tags"]))
+        cov = info.get("coverage") or {}
+        print()
+        print("coverage:")
+        for row in cov.get("rows", []):
+            extra = f" ({row['reason']})" if row.get("reason") else ""
+            print(f"  {row['category']:<18} {row['status']}{extra}")
+        print(cov.get("summary", ""))
+    print()
+    print("validation errors:" + (" none" if not info["errors"] else ""))
+    for e in info["errors"]:
+        print(f"  - {e}")
+    print("validation warnings:" + (" none" if not info["warnings"] else ""))
+    for w in info["warnings"]:
+        print(f"  - {w}")
+    print()
+    if info["diff"] is None:
+        print("no previous reviewed version")
+    else:
+        print(f"diff from version {info['previous_version']} to version {info['version']}:")
+        print(info["diff"].rstrip("\n") or "(no changes)")
+
+
+def cmd_review(args):
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        info = engine.review(args.slug, args.gate)
+        print_review(info, args.slug)
+    finally:
+        engine.close()
+
+
+def cmd_approve(args):
+    config_path, config = load_config(args.dir)
+    gate = args.gate
+    if not gate:
+        sys.exit("usage: sentinel approve <slug> spec|gherkin [--request-changes|--reject] [-m comment]")
+    if args.request_changes and args.reject:
+        sys.exit("usage: choose one of --request-changes, --reject")
+    decision = "changes" if args.request_changes else "reject" if args.reject else "approve"
+    user, git_name = human_identity()
+    engine = open_registry(config_path, config)
+    try:
+        try:
+            if not is_tty():
+                raise refuse_without_tty("`sentinel approve`")
+            info = engine.pending_approval(args.slug, gate, decision, args.comment)
+        except SentinelError as err:
+            engine.audit_refused(args.slug, gate, err.code, user, "tty" if is_tty() else "cli")
+            raise
+        print(f"{info['gate']} of {args.slug}: version {info['version']}, decision: {decision}")
+        print(f"sha256: {info['sha256']}")
+        try:
+            typed = input("Type the first 8 characters of the sha256 to confirm: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\ninput closed; nothing stored", file=sys.stderr)
+            sys.exit(1)
+        run = engine.decide(args.slug, gate, decision, "human", prefix=typed, comment=args.comment,
+                            approver=user, approver_name=git_name, channel="tty")
+        print(f"{info['gate']} version {info['version']} {decision}; run {args.slug} is {run['state']}")
+    finally:
+        engine.close()
+
+
+def cmd_submit(args):
+    """Orchestrator hook: the specifier or test_designer task for a run has finished (Phase C wires real tasks)."""
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        res = engine.task_completed(args.slug, args.role)
+        print(json.dumps(res, indent=2))
+        if not res["accepted"]:
+            sys.exit(1)
+    finally:
+        engine.close()
 
 
 def cmd_sync(args):
@@ -736,6 +883,24 @@ def main():
     finish.add_argument("slug")
     finish.add_argument("--outcome", choices=["passed", "stopped", "abandoned"], default="passed")
     finish.set_defaults(func=cmd_run_finish)
+
+    review = sub.add_parser("review", help="show the specification or Gherkin set in review (read-only)")
+    review.add_argument("slug")
+    review.add_argument("gate", nargs="?", choices=["spec", "gherkin"])
+    review.set_defaults(func=cmd_review)
+
+    approve = sub.add_parser("approve", help="decide the specification or Gherkin set (human, interactive terminal only)")
+    approve.add_argument("slug")
+    approve.add_argument("gate", nargs="?", choices=["spec", "gherkin"])
+    approve.add_argument("--request-changes", action="store_true")
+    approve.add_argument("--reject", action="store_true")
+    approve.add_argument("-m", "--comment")
+    approve.set_defaults(func=cmd_approve)
+
+    submit = sub.add_parser("submit", help="orchestrator hook: a specifier or test_designer task finished")
+    submit.add_argument("slug")
+    submit.add_argument("--role", required=True, choices=["specifier", "test_designer"])
+    submit.set_defaults(func=cmd_submit)
 
     triage = sub.add_parser("triage", help="submit triage factors for a version 2 run; the engine sets the tier")
     triage.add_argument("slug")

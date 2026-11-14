@@ -77,7 +77,7 @@ TASK_ROWS = [
 APPROVAL_ROWS = [
     ("", ["DRAFT"], ["IN_REVIEW"], [E]),
     ("", ["IN_REVIEW"], ["APPROVED", "CHANGES_REQUESTED", "REJECTED"], [H]),
-    ("", ["APPROVED"], ["INVALIDATED"], [E]),
+    ("", ["IN_REVIEW", "APPROVED"], ["INVALIDATED"], [E]),   # IN_REVIEW row added by Phase B open point 9
     ("", ["CHANGES_REQUESTED"], ["DRAFT"], [E]),
 ]
 _CYCLE_RUNNING = ["RED_RUNNING", "GREEN_RUNNING", "REFACTOR_RUNNING"]
