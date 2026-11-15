@@ -22,13 +22,15 @@ FORM = "features/request_form.feature :: Form shows the balance"
 T1, T2 = "RemainingBalanceTest.employeeSeesRemainingDays", "RemainingBalanceTest.balanceNeverBelowZero"
 
 FAKE_TOOL = """#!{py}
-import json, os, pathlib, sys
+import json, os, pathlib, sys, time
 here = pathlib.Path(__file__).resolve().parent
 cfg = json.loads((here / "faketest.json").read_text())
 mode, args = sys.argv[1], sys.argv[2:]
 with open(here / "faketest.log", "a") as f:
     f.write(json.dumps({{"mode": mode, "args": args, "repo": os.path.basename(os.getcwd())}}) + "\\n")
 sc = cfg.get(os.path.basename(os.getcwd()) + ":" + mode) or cfg.get(mode) or cfg.get("default") or {{}}
+if sc.get("sleep"):
+    time.sleep(sc["sleep"])
 if sc.get("stdout"):
     print(sc["stdout"], flush=True)
 if sc.get("stderr"):

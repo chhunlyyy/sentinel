@@ -201,6 +201,8 @@ class RuntimeOps:
         run = self._get_v2(slug)
         if run["state"] in machines.RUN_FINAL:
             return run
+        if self.check_imported_baseline(run):
+            return self._get_v2(slug)
         self._unblock(slug)
         self._recover(slug)
         run = self._get_v2(slug)
@@ -220,6 +222,11 @@ class RuntimeOps:
                 pass  # the run is parked with the reason; `next` reports it
         if self._get_v2(slug)["state"] not in machines.RUN_FINAL:
             self.schedule(slug)
+        if self._get_v2(slug)["state"] == "REVIEWING":
+            try:
+                self.check_r15(slug)
+            except SentinelError:
+                pass  # the run is parked with the reason; `next` reports it
         return self._get_v2(slug)
 
     def _unblock(self, slug):
@@ -612,7 +619,12 @@ class RuntimeOps:
                    if m else "resolve the blocker, then run `sentinel next` again")
             return {**base, "kind": "human", "reason": reason, "fix": fix}
         if state in machines.RUN_FINAL:
-            return {**base, "kind": "done", "execution": run["execution_status"], "acceptance": run["acceptance_status"]}
+            step = {**base, "kind": "done", "execution": run["execution_status"], "acceptance": run["acceptance_status"]}
+            if state == "COMPLETED":
+                step["human_acceptance"] = self.human_acceptance(run)
+                if step["human_acceptance"] == "pending" and run["acceptance_status"] == "accepted":
+                    step["command"] = f"sentinel accept {run['slug']}"
+            return step
         return self._task_steps(run, base)
 
     def _state_reason(self, run, to):
@@ -635,4 +647,7 @@ class RuntimeOps:
         if active or queued:
             return {**base, "kind": "wait", "tasks": active,
                     "reason": "waiting for running tasks" if active else "queued tasks cannot start yet"}
+        if run["state"] == "VERIFYING":
+            return {**base, "kind": "orchestrator", "action": "run the verification checks",
+                    "command": f"sentinel verify {run['slug']}"}
         return {**base, "kind": "human", "reason": f"no task planned for {run['state']}"}

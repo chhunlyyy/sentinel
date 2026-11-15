@@ -266,13 +266,15 @@ def report(state_dir, slug, fmt):
     path = root / ("report.json" if fmt == "json" else "report.md")
     if _has_link(path, root) or not path.is_file():
         raise SentinelError("E_PRECONDITION", f"run {slug} has no report yet", {"slug": slug})
-    text = _read_regular(path).decode("utf-8", errors="replace")
+    raw = _read_regular(path)
+    text = raw.decode("utf-8", errors="replace")
     if fmt == "md":
         return {"format": "md", "content": text}
+    sha = hashlib.sha256(raw).hexdigest()  # the hash a human types the first 8 characters of to accept the run
     try:
-        return json.loads(text)
+        return {"sha256": sha, "report": json.loads(text)}
     except ValueError:
-        return {"format": "json", "content": text}
+        return {"sha256": sha, "format": "json", "content": text}
 
 
 def _has_link(path, root):

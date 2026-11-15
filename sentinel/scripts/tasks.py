@@ -181,7 +181,7 @@ class TaskOps:
 
     def _make_task(self, run, role, objective=None, repos=None, *, write=None, read=None, timeout_seconds=None,
                    max_retries=None, depends_on=(), cycle_id=None, retry_of=None, brief=None,
-                   must_follow_tdd=None, readonly_approved=None, attempt=1, queue=False):
+                   must_follow_tdd=None, readonly_approved=None, attempt=1, queue=False, extra_input=None):
         """Inside a transaction: validate, write task.json, insert the row and the task.created event."""
         if run["state"] in machines.RUN_FINAL:
             raise SentinelError("E_TRANSITION", f"run is {run['state']}; it takes no new tasks", {"state": run["state"]})
@@ -206,6 +206,7 @@ class TaskOps:
             permissions["readonly_approved"] = list(readonly_approved)
         inp = self._spec_inputs(run)
         inp["cycle_id"] = cycle_id
+        inp.update(extra_input or {})
         if retry_of:
             inp["previous_results"] = [retry_of]
         if brief:
@@ -701,10 +702,14 @@ class TaskOps:
         row = self._task_row(task_id)
         row["error_details"] = v["details"]
         row["retry"] = retry
+        if v["state"] == "COMPLETED":
+            self.link_fix_task_files(task_id)
         if v["state"] == "COMPLETED" and task["role"] in ("specifier", "test_designer"):
             row["completion"] = self.task_completed(run0["slug"], task["role"], task_id)
         if v["state"] == "COMPLETED" and task["role"] in ("tdd_red", "tdd_green", "tdd_refactor"):
             row["verification"] = self.verify_phase(task_id)
+        if v["state"] == "COMPLETED" and task["role"] in ("reviewer", "qa"):
+            row["findings"] = self.after_review_task(task_id)
         return row
 
     # ---- retries (ORC-05)
@@ -723,7 +728,10 @@ class TaskOps:
         if tdd:
             self._cap_reached(run, self._cycle(task["cycle_id"]), task["role"][4:], f"{v['code']}: {v['message']}")
         elif run["state"] != "NEEDS_HUMAN":
-            self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=f"{task['role']} task failed after {cap} retries")
+            why = f"{task['role']} task failed after {cap} retries"
+            if task["role"] in ("tdd_green", "hardener"):  # a verification fix task
+                why = f"{task['role']} fix task {task['id']} failed after {cap} retries: retry cap reached"
+            self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=why)
         return None
 
     def _make_retry(self, run, task, v, attempt):

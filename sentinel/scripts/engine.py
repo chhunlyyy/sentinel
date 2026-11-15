@@ -12,6 +12,7 @@ import shutil
 from pathlib import Path
 
 import artifacts as A
+import boundary
 import machines
 import scopes
 from errors import SentinelError
@@ -20,6 +21,10 @@ from registry import Registry, _now
 from cycles import CycleOps
 from runtime import RuntimeOps
 from tasks import TaskOps, retry_cap
+from verify import VerifyOps
+from review import ReviewOps
+from accept import AcceptOps
+from bundle import BundleOps
 
 WORKFLOW_VERSION = "2"
 TIER_STAGES = {
@@ -45,7 +50,7 @@ R18_SOURCES = ("GHERKIN_APPROVED", "EXECUTING", "VERIFYING", "REVIEWING")
 UPSTREAM = "upstream specification approval invalidated"
 
 
-class Engine(CycleOps, RuntimeOps, TaskOps, ControlOps):
+class Engine(CycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, RuntimeOps, TaskOps, ControlOps):
     def __init__(self, state_dir, workspace, config, release_lock=None):
         self.channel = None
         self.actor_name = None
@@ -135,7 +140,11 @@ class Engine(CycleOps, RuntimeOps, TaskOps, ControlOps):
         previous = run["previous_state"] if frm in parked and to in parked else frm if to in parked else None
         fields = {"state": to, "execution_status": machines.execution_status_for(to), "previous_state": previous}
         reasons = []
-        if to == "COMPLETED":  # only reachable from REVIEWING: self-transitions are refused above
+        computed = getattr(self, "_computed", None)
+        if to == "COMPLETED" and computed:  # R15 of a verified run (PE-01): acceptance computed from the registry
+            reasons = list(computed[1])
+            fields["acceptance_status"] = computed[0]
+        elif to == "COMPLETED":  # only reachable from REVIEWING: self-transitions are refused above
             if not self.reg.has_passing_evidence(run["id"]):
                 reasons.append(MISSING_EVIDENCE)
             fields["acceptance_status"] = "rejected" if reasons else "accepted"
@@ -192,11 +201,23 @@ class Engine(CycleOps, RuntimeOps, TaskOps, ControlOps):
             run = self.reg.get_run(slug)
             for repo_id, sha in sorted(baseline.items()):
                 self.reg.add_run_repo(run["id"], repo_id, sha)
+                self._record_dirty(run, repo_id)
             self._event(run, "run.created", actor, {
                 "tier": None, "type": type, "repos": sorted(baseline),
                 "config_sha256": hashlib.sha256(config_text.encode("utf-8")).hexdigest()})
         self.write_view(slug)
         return self.reg.get_run(slug)
+
+    def _record_dirty(self, run, repo_id):
+        """Paths already changed when the run is created, with their hashes: verification does not blame them (VER-01)."""
+        try:
+            path = self._repo_path(self._run_config(run) if run.get("config_snapshot_id") else self.config, repo_id)
+            if (path / ".git").exists():
+                dirty = boundary.changed_state(path)["paths"]
+                self.reg._c.execute("UPDATE run_repos SET baseline_dirty=? WHERE run_id=? AND repo_id=?",
+                                    (json.dumps(dirty), run["id"], repo_id))
+        except (OSError, ValueError, KeyError):
+            pass
 
     def triage(self, slug, factors, actor, requested=None):
         self._sync(slug)

@@ -108,7 +108,7 @@ class MigrationEight(SV):
     def test_a_database_at_version_7_gets_0008_applied_on_open(self):
         from registry import Registry, _load_file_migrations
         migs = sorted(_load_file_migrations())
-        self.assertEqual([m[0] for m in migs], list(range(1, 9)))
+        self.assertEqual([m[0] for m in migs], list(range(1, 10)))
         d = Path(self._home.name) / "state"
         Registry.open(d, [m for m in migs if m[0] <= 7]).close()
         c = sqlite3.connect(d / "sentinel.db")
@@ -119,8 +119,8 @@ class MigrationEight(SV):
         c.commit()
         r = Registry.open(d, migs)
         self.addCleanup(r.close)
-        self.assertEqual(r.schema_version(), 8)
+        self.assertEqual(r.schema_version(), 9)
         after = {x[1] for x in r._c.execute("PRAGMA table_info(cycles)")}
         self.assertGreater(len(after), len(before), (before, after))
         self.assertEqual(json.loads(r._c.execute("SELECT value FROM meta WHERE key='applied_migrations'").fetchone()[0]),
-                         list(range(1, 9)))
+                         list(range(1, 10)))

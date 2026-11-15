@@ -290,7 +290,8 @@ class Views(ReadBase):
         self.assertIn("coverage", r.json)
         self.assertRegex(r.json["sha256"], r"^[0-9a-f]{64}$")
         r = self.http.get(f"{base}/report")
-        self.assertEqual((r.status, r.json["slug"]), (200, SLUG))
+        self.assertEqual((r.status, r.json["report"]["slug"]), (200, SLUG))
+        self.assertRegex(r.json["sha256"], r"^[0-9a-f]{64}$")
 
     def test_AC_MON_01c_a_new_run_has_empty_views_not_errors(self):
         self.mk("leave-form", "CREATED", 1)
