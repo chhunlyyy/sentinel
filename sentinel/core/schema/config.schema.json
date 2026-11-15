@@ -66,6 +66,12 @@
               },
               "mutate": {
                 "type": "string"
+              },
+              "audit": {
+                "type": "string"
+              },
+              "docs": {
+                "type": "string"
               }
             }
           },
@@ -137,6 +143,25 @@
           "summary_patterns": {
             "type": "array",
             "items": {
+              "type": "string"
+            }
+          },
+          "migration_lane": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "tool_versions": {
+            "type": "object",
+            "additionalProperties": {
               "type": "string"
             }
           }
@@ -650,6 +675,97 @@
         "refactor_retries": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mutation": {
+          "enum": [
+            "tier4",
+            "always",
+            "never"
+          ],
+          "default": "tier4"
+        },
+        "migration_check": {
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto"
+        },
+        "disabled": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "targeted",
+              "build",
+              "lint",
+              "typecheck",
+              "hygiene",
+              "secret",
+              "deps",
+              "mutation",
+              "migration",
+              "extra",
+              "docs_links",
+              "docs_build"
+            ]
+          }
+        },
+        "extra": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "added_lines",
+                  "changed_paths"
+                ]
+              },
+              "repo": {
+                "type": "string"
+              },
+              "path_regex": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "exclude_path_regex": {
+                "type": "string"
+              },
+              "exclude_line_regex": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "status": {
+                "enum": [
+                  "any",
+                  "modified",
+                  "added"
+                ]
+              },
+              "must_match": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     }

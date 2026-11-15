@@ -14,7 +14,8 @@ from errors import SentinelError
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 _ID_PREFIX = {"runs": "r-", "tasks": "t-", "approvals": "a-", "cycles": "c-",
-              "evidence": "e-", "artifacts": "ar-", "findings": "f-", "changed_files": "cf-"}
+              "evidence": "e-", "artifacts": "ar-", "findings": "f-", "changed_files": "cf-",
+              "verification_rounds": "vr-"}
 
 
 def _now():
@@ -316,6 +317,11 @@ class Registry:
             (run_id, task_id, type, actor, json.dumps(payload) if payload is not None else None, _now(),
              actor_name, channel))
         return cur.lastrowid
+
+    def last_status_reasons(self, run_id):
+        """The reasons of the latest `run.status_changed` event of a run (why it is rejected), or []."""
+        events = self.list_events(run_id, "run.status_changed")
+        return list((events[-1]["payload"] or {}).get("reasons") or []) if events else []
 
     def list_events(self, run_id=None, type=None):
         where, args = [], []

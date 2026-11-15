@@ -73,6 +73,6 @@ export const calls = {
   decide: async (c: Client, slug: string, project: string, body: { gate: 'specification' | 'gherkin' } & Record<string, unknown>) =>
     A.decision(await c.post<W.WRun>(buildPath('decide', { slug }, proj(project)), body), body.gate),
   accept: async (c: Client, slug: string, project: string, body: { decision: string; comment?: string | null } & Record<string, unknown>) =>
-    A.acceptance(await c.post<W.WRun>(buildPath('accept', { slug }, proj(project)), body), body.decision, body.comment ?? null),
+    A.acceptance(await c.post<W.WRun>(buildPath('accept', { slug }, proj(project)), body)),
   control: async (c: Client, slug: string, project: string, body: unknown) => A.run(await c.post<W.WRun>(buildPath('control', { slug }, proj(project)), body)),
 };

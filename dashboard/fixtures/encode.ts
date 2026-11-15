@@ -154,17 +154,23 @@ export const tdd = (t: T.TddAnswer): W.WTdd => ({
 const evidence = (e: T.Evidence, cycle: T.Cycle | undefined, taskId: string | null): W.WEvidence => ({
   id: e.id, task_id: taskId, cycle_id: cycle?.id ?? null, kind: e.kind, command: e.command, exit_code: e.exit_code, classification: e.classification,
   passed: e.passed, failed: e.failed, skipped: null, output_artifact_id: e.output_artifact, started_at: e.started_at, finished_at: e.finished_at,
-  repo_id: e.repo, provider: e.provider, model: e.model,
+  repo_id: e.repo, provider: e.provider, model: e.model, name: null, round: null, verdict: null,
 });
+
+const rowVerdict = (e: T.Evidence): string => (e.status === 'passed' ? 'pass' : e.status === 'failed' ? 'fail' : e.status);
 
 export function verification(r: RunData): W.WVerification {
   const cycleOf = (id: string) => r.tdd.cycles.find((c) => c.phases.some((p) => p.evidence_ids.includes(id)));
   const taskOf = (id: string) => cycleOf(id)?.phases.find((p) => p.evidence_ids.includes(id))?.task_id ?? null;
   const v = r.verification;
   return {
-    round: v.round,
-    missing: v.missing,
-    evidence: [...r.tdd.evidence.map((e) => evidence(e, cycleOf(e.id), taskOf(e.id))), ...v.rows.map((e) => evidence(e, undefined, null))],
+    round: v.round ? v.round.number : null,
+    missing: v.missing.map((m) => `${m.repo ?? ''} ${m.kind}`.trim()),
+    evidence: [
+      ...r.tdd.evidence.map((e) => evidence(e, cycleOf(e.id), taskOf(e.id))),
+      ...v.rows.map((e) => ({ ...evidence(e, undefined, null), round: v.round ? v.round.number : null, verdict: rowVerdict(e) })),
+    ],
+    acceptance_record: v.acceptance_record ? { decision: v.acceptance_record.decision, approver: v.acceptance_record.approver, channel: v.acceptance_record.channel, at: v.acceptance_record.at, comment: v.acceptance_record.comment } : null,
     acceptance: {
       execution_status: r.detail.execution_status, acceptance_status: v.acceptance.computed,
       reasons: v.acceptance.reasons.map((x) => x.text),

@@ -15,16 +15,16 @@ export function AcceptanceTab({ run, pid, onChanged }: { run: Run; pid: string; 
   const verification = useResource(`acc-verification-${pid}-${run.slug}`, (c) => calls.verification(c, run.slug, pid), { project: pid, run: run.slug });
   const report = useResource(`acc-report-${pid}-${run.slug}`, (c) => calls.report(c, run.slug, pid), { project: pid, run: run.slug });
   const action = useAction();
-  const [done, setDone] = useState<{ record: Run['acceptance_record'] & object; text: string } | null>(null);
-  const record = done?.record ?? run.acceptance_record ?? null;
+  const [done, setDone] = useState(false);
+  const record = verification.data?.acceptance_record ?? null;
 
   const decide = async (d: { decision: Decision; confirmation: string; comment: string | null }) => {
     const sha = report.data?.sha256;
     if (!sha) return;
     await action.run(
       () => calls.accept(app.client, run.slug, pid, { sha256_of_report: sha, confirmation: d.confirmation, decision: d.decision === 'accept' ? 'accept' : 'reject', comment: d.comment }),
-      (r) => {
-        setDone({ record: r.acceptance, text: d.decision === 'accept' ? 'Acceptance confirmed' : 'Rejected' });
+      () => {
+        setDone(true);
         return '';
       },
       {
@@ -32,6 +32,7 @@ export function AcceptanceTab({ run, pid, onChanged }: { run: Run; pid: string; 
         onSettled: () => {
           onChanged();
           void report.reload();
+          void verification.reload();
         },
       },
     );
@@ -48,13 +49,13 @@ export function AcceptanceTab({ run, pid, onChanged }: { run: Run; pid: string; 
     );
   } else if (run.state !== 'COMPLETED' && !record) {
     body = <p>Acceptance is possible when the run is COMPLETED</p>;
-  } else if (!report.data) {
+  } else if (!report.data || !verification.data) {
     body = report.error ? <ErrorView error={report.error} /> : <p className="hint" role="status">Loading</p>;
   } else {
     const rejectedByEngine = computed?.computed === 'rejected';
     body = (
       <>
-        {record ? <DecisionRecordView record={record} text={done?.text ?? 'Acceptance confirmed'} /> : null}
+        {record ? <DecisionRecordView record={record} text="Acceptance confirmed" /> : null}
         {rejectedByEngine ? (
           <div className="banner danger">
             <p>The engine rejected this run</p>

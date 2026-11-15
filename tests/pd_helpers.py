@@ -1,4 +1,5 @@
 """Shared fixtures for Phase D tests: repos with the fake test tool, approved Gherkin, planned cycles, fake agents."""
+import contextlib
 import json
 import sys
 import textwrap
@@ -22,13 +23,15 @@ FORM = "features/request_form.feature :: Form shows the balance"
 T1, T2 = "RemainingBalanceTest.employeeSeesRemainingDays", "RemainingBalanceTest.balanceNeverBelowZero"
 
 FAKE_TOOL = """#!{py}
-import json, os, pathlib, sys
+import json, os, pathlib, sys, time
 here = pathlib.Path(__file__).resolve().parent
 cfg = json.loads((here / "faketest.json").read_text())
 mode, args = sys.argv[1], sys.argv[2:]
 with open(here / "faketest.log", "a") as f:
     f.write(json.dumps({{"mode": mode, "args": args, "repo": os.path.basename(os.getcwd())}}) + "\\n")
 sc = cfg.get(os.path.basename(os.getcwd()) + ":" + mode) or cfg.get(mode) or cfg.get("default") or {{}}
+if sc.get("sleep"):
+    time.sleep(sc["sleep"])
 if sc.get("stdout"):
     print(sc["stdout"], flush=True)
 if sc.get("stderr"):
@@ -103,6 +106,19 @@ class PD(PCX):
             git(self.ws / rid, "add", "-A")
             git(self.ws / rid, "commit", "-q", "-m", "ignore build")
 
+    @contextlib.contextmanager
+    def subTest(self, *args, **params):
+        """A failing subtest still resets the workspace, so the next one does not boot on its leftovers."""
+        with super().subTest(*args, **params):
+            try:
+                yield
+            except BaseException:
+                try:
+                    self.reset_ws()
+                except Exception:
+                    pass
+                raise
+
     def reset_ws(self):
         """Fresh registry and clean repos, same config (for subtests that boot several runs)."""
         import shutil
@@ -116,6 +132,8 @@ class PD(PCX):
             git(self.ws / rid, "checkout", "-q", "--", ".")
             git(self.ws / rid, "clean", "-fdq")
         (self.ws / self.BIN / "faketest.log").unlink(missing_ok=True)
+        shutil.rmtree(self.ws / ".claude", ignore_errors=True)
+        (self.ws / "AGENTS.md").unlink(missing_ok=True)
 
     def fake_tool(self, **modes):
         """Write the fake test tool and its scenario file; modes: {"full": {...}, "targeted": {...}, "default": {...}}."""

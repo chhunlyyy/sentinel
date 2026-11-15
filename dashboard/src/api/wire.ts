@@ -238,12 +238,18 @@ export interface WEvidence {
   repo_id: string | null;
   provider: string | null;
   model: string | null;
+  name: string | null;
+  round: number | null;
+  verdict: string | null;
 }
 
 export interface WVerification {
-  round: { number: number; at: string } | number | null;
-  missing: { repo?: string | null; kind: string; reason?: string }[];
+  /** the latest finished verification round, null before one finished */
+  round: number | null;
+  /** checks the round planned but left no row for, as "repo kind[ name]" */
+  missing: string[];
   evidence: WEvidence[];
+  acceptance_record: { decision: string; approver: string; channel: string; at: string; comment: string | null } | null;
   acceptance: { execution_status: string; acceptance_status: string; reasons: unknown[] };
 }
 
@@ -321,5 +327,5 @@ export interface WConfigDiff {
   diff: string;
 }
 
-/** GET /report today returns the report document itself; Phase E adds the { sha256, report } envelope. */
-export type WReport = { sha256: string; report: Record<string, unknown> } | Record<string, unknown>;
+/** GET /report: the report document with the sha256 a human types the first 8 characters of to accept the run. */
+export type WReport = { sha256: string; report: Record<string, unknown> };

@@ -19,7 +19,8 @@
       "type": "array",
       "items": {"type": "object", "required": ["severity", "text"],
                 "properties": {"severity": {"enum": ["blocker", "major", "minor"]},
-                               "location": {"type": "string"}, "text": {"type": "string"}}}
+                               "location": {"type": "string"}, "text": {"type": "string"},
+                               "category": {"enum": ["code_bug", "spec_gap"]}}}
     },
     "questions": {"type": "array"},
     "out_of_lane": {"type": "array"},

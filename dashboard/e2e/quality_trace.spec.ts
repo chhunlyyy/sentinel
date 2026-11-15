@@ -56,15 +56,15 @@ test.describe('verification evidence', () => {
     await open(page, `${RUN_URL}/verification`);
     const main = page.getByRole('main');
     await expect(main).toContainText('Round 2');
-    await expect(main).toContainText('2026-11-14 09:20:00 UTC');
+    await expect(main).toContainText('Round 2 at 2026-11-14 09:20:10 UTC');
     const row = page.getByTestId('evidence-row-e-ver-test');
     for (const t of ['backend', 'test', 'passed', 'Exit code 0', '42 passed', '0 failed', '2026-11-14 09:20:10 UTC']) await expect(row).toContainText(t);
     await expect(row.getByRole('link', { name: 'Output' })).toBeVisible();
     const notRun = page.getByTestId('not-run');
     await expect(notRun).toContainText('lint');
     await expect(notRun).toContainText('build');
-    // the server reports a check that did not run as a row without an exit code
-    await expect(notRun).toContainText('not_run');
+    await expect(notRun).toContainText('not_configured');
+    await expect(notRun).toContainText('disabled');
     await expect(page.getByTestId('missing-evidence')).not.toContainText('lint');
     await expect(page.getByTestId('missing-evidence')).toContainText('frontend');
   });
@@ -78,7 +78,7 @@ test.describe('verification evidence', () => {
   test('AC-VER-03g the computed acceptance and its reasons', async ({ page, api }) => {
     await api.set([...RUN('leave-balance'), 'verification', 'acceptance'], {
       computed: 'rejected',
-      reasons: [{ text: 'required tests fail', view: 'verification' }, { text: 'required reviews open', view: 'tdd' }],
+      reasons: [{ text: 'required tests fail', view: 'verification' }, { text: 'required reviews open', view: 'verification' }],
     });
     await open(page, `${RUN_URL}/verification`);
     const panel = page.getByTestId('acceptance-computed');
@@ -87,7 +87,8 @@ test.describe('verification evidence', () => {
     await expect(items).toHaveCount(2);
     await expect(items.nth(0)).toContainText('required tests fail');
     await expect(items.nth(1)).toContainText('required reviews open');
-    // the server sends reasons as text without a view; every reason links to the verification view
+    // each reason links to the view that shows it
+    await expect(items.nth(0).getByRole('link')).toHaveAttribute('href', /\/verification$/);
     await expect(items.nth(1).getByRole('link')).toHaveAttribute('href', /\/verification$/);
   });
 });
@@ -104,7 +105,9 @@ test.describe('final acceptance', () => {
     expect(posts[0].body).toEqual({ sha256_of_report: REPORT, confirmation: '77ab01cd', decision: 'accept', comment: null });
     const rec = page.getByTestId('decision-record');
     await expect(rec).toContainText('Acceptance confirmed');
+    await expect(rec).toContainText('dev');
     await expect(rec).toContainText('dashboard');
+    await expect(rec).toContainText('2026-11-14 09:35:00 UTC');
   });
 
   const states: { name: string; setup: (api: import('./helpers.ts').Api) => Promise<void>; confirm: boolean; reject: boolean; text: string }[] = [
@@ -116,8 +119,13 @@ test.describe('final acceptance', () => {
     { name: 'REVIEWING', setup: async (api) => api.set([...RUN('leave-form'), 'detail', 'state'], 'REVIEWING'), confirm: false, reject: false, text: 'Acceptance is possible when the run is COMPLETED' },
     {
       name: 'already confirmed',
-      setup: async (api) => api.set([...RUN('leave-form'), 'detail', 'acceptance_status'], 'accepted'),
+      setup: async (api) => api.set([...RUN('leave-form'), 'verification', 'acceptance_record'], { decision: 'accept', approver: 'dev', channel: 'tty', at: '2026-11-14T09:35:00Z', comment: null }),
       confirm: false, reject: true, text: 'Acceptance confirmed',
+    },
+    {
+      name: 'already rejected',
+      setup: async (api) => api.set([...RUN('leave-form'), 'verification', 'acceptance_record'], { decision: 'reject', approver: 'dev', channel: 'tty', at: '2026-11-14T09:35:00Z', comment: 'wrong totals' }),
+      confirm: false, reject: false, text: 'This cannot change',
     },
   ];
   for (const s of states) {
@@ -125,6 +133,7 @@ test.describe('final acceptance', () => {
       await s.setup(api);
       await open(page, `${FORM_URL}/acceptance`);
       await expect(page.getByTestId('acceptance-panel')).toContainText(s.text);
+      if (s.name.startsWith('already')) await expect(page.getByTestId('decision-record')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Confirm acceptance' })).toHaveCount(0);
       await expect(page.getByRole('radio', { name: 'Accept', exact: true })).toHaveCount(0);
       await expect(page.getByRole('radio', { name: 'Reject', exact: true })).toHaveCount(s.reject ? 1 : 0);

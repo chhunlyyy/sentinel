@@ -190,7 +190,6 @@ export interface Run {
   approvals: { specification: ApprovalState; gherkin: ApprovalState };
   task_counts: Record<string, number>;
   config_snapshot?: { version: number; sha256: string } | null;
-  acceptance_record?: DecisionRecord | null;
   next?: NextStep;
 }
 
@@ -303,7 +302,6 @@ export interface ApprovalDecisionAnswer {
 }
 
 export interface AcceptanceAnswer {
-  acceptance: DecisionRecord;
   run: Run;
 }
 
@@ -343,10 +341,11 @@ export interface VerificationAnswer {
   rows: Evidence[];
   missing: { repo: string | null; kind: string; reason: string }[];
   acceptance: { computed: string; reasons: { text: string; view: 'tdd' | 'verification' | 'trace' | 'changes' }[] };
+  /** the human's decision on the computed acceptance; null while pending */
+  acceptance_record: DecisionRecord | null;
 }
 
 export interface ReportAnswer {
-  /** null until the server sends the Phase E envelope { sha256, report } */
   sha256: string | null;
   report: Record<string, unknown>;
 }

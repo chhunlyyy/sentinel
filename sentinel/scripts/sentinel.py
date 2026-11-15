@@ -307,8 +307,10 @@ def cmd_sync_adapters(args):
     print(f"agents written to {out}; skills written to .claude/skills: {', '.join(installed)}")
 
 
-HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)",
-                       "Bash(sentinel --dir * approve *)", "Bash(sentinel --dir * accept *)",
+HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)", "Bash(sentinel resolve:*)",
+                       "Bash(sentinel --dir * approve *)", "Bash(sentinel --dir * accept *)", "Bash(sentinel --dir * resolve *)",
+                       "Bash(sentinel run export:*)", "Bash(sentinel run import:*)",
+                       "Bash(sentinel --dir * run export *)", "Bash(sentinel --dir * run import *)",
                        "Read(~/.config/sentinel/**)", "Read(//**/.config/sentinel/server.json)",
                        "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)"]
 
@@ -704,6 +706,149 @@ def cmd_next(args):
         engine.close()
 
 
+def cmd_verify(args):
+    """Run one verification round (engine only; the orchestrator calls it when `next` says so)."""
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        res = engine.verify(check_slug(args.slug), caller_task=os.environ.get("SENTINEL_TASK_ID"))
+        for row in res["rows"]:
+            word = {"pass": "pass", "fail": "fail"}.get(row["verdict"], row["verdict"])
+            name = f" {row['name']}" if row.get("name") else ""
+            print(f"{row['repo']} {row['kind']}{name}: {word}")
+        if res.get("round") is None:
+            print(f"VERIFICATION STOPPED: {res.get('reason')}")
+        elif res["passed"]:
+            print(f"VERIFICATION PASSED (round {res['round']})")
+        else:
+            print(f"VERIFICATION FAILED (round {res['round']}): {res.get('reason') or 'fix tasks queued: ' + ', '.join(res['fix_tasks'])}")
+        sys.exit(res["exit"])
+    finally:
+        engine.close()
+
+
+def human_gate(engine, slug, what, target=None):
+    """A human decision command: refused inside a task process (E_ACTOR) and without a terminal (E_NOT_TTY); refusals are
+    audited against the run, or against `target` when the command names no run yet (an import)."""
+    user, git_name = human_identity()
+    task = os.environ.get("SENTINEL_TASK_ID")
+    err = None
+    if task:
+        err = SentinelError("E_ACTOR", f"a task process may not run `sentinel {what}` (called from task {task})", {"task": task})
+    elif not is_tty():
+        err = refuse_without_tty(f"`sentinel {what}`")
+    if err:
+        if target or engine.is_v2(slug):
+            engine.audit(user, "tty" if is_tty() else "cli", f"{what.replace(' ', '_')}_refused" if what != "accept" else "acceptance_refused",
+                         target or slug, reason=err.code)
+        raise err
+    return user, git_name
+
+
+def cmd_accept(args):
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        slug = check_slug(args.slug)
+        user, git_name = human_gate(engine, slug, "accept")
+        decision = "reject" if args.reject else "accept"
+        if args.reject and not (args.comment or "").strip():
+            raise SentinelError("E_VALIDATION", "rejecting needs a comment: -m <comment>")
+        try:
+            info = engine.pending_acceptance(slug)
+        except SentinelError as err:
+            engine.audit(user, "tty", "acceptance_refused", slug, reason=err.code)
+            raise
+        print(f"Acceptance of {slug}: run {info['state']}, computed acceptance {info['acceptance']}, human decision: {info['human']}")
+        print(f"report sha256: {info['sha256']}")
+        for reason in info["reasons"]:
+            print(f"  - {reason}")
+        for dep in info["added_dependencies"]:
+            print(f"  new dependency: {dep}")
+        print(f"decision: {decision}")
+        try:
+            typed = input("Type the first 8 characters of the report sha256 to confirm: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\ninput closed; nothing stored", file=sys.stderr)
+            sys.exit(1)
+        engine.accept(slug, decision, "human", prefix=typed, comment=args.comment, approver=user, approver_name=git_name, channel="tty")
+        print(f"run {slug}: {decision} recorded")
+    finally:
+        engine.close()
+
+
+def cmd_report(args):
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        slug = check_slug(args.slug)
+        if not engine.is_v2(slug):
+            if not engine.reg.get_run(slug):
+                raise SentinelError("E_NOT_FOUND", f"no run named {slug}", {"slug": slug})
+            raise SentinelError("E_TRANSITION", f"run {slug} is a 0.1 run; `sentinel report` only works on version 2 runs", {"slug": slug})
+        engine.load_run(slug)
+        res = engine.write_report(slug)
+        if args.json:
+            print(json.dumps(res["report"], indent=2))
+        else:
+            print(f"report of {slug}: sha256 {res['sha256']}")
+        print(res["json"])
+        print(res["md"])
+    finally:
+        engine.close()
+
+
+def cmd_resolve(args):
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        slug = check_slug(args.slug)
+        user, _ = human_gate(engine, slug, "resolve")
+        run = engine.resolve(slug, user=user, channel="tty", comment=args.comment, waive=args.waive, approve_file=args.approve_file,
+                             approve_clone=args.approve_clone, approve_security=args.approve_security, resume=not args.no_resume)
+        print(f"run {slug} is {run['state']}")
+    finally:
+        engine.close()
+
+
+def cmd_run_export(args):
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        slug = check_slug(args.slug)
+        user, _ = human_gate(engine, slug, "run export")
+        if not engine.is_v2(slug):
+            if not engine.reg.get_run(slug):
+                raise SentinelError("E_NOT_FOUND", f"no run named {slug}", {"slug": slug})
+            raise SentinelError("E_TRANSITION", f"run {slug} is a 0.1 run; only version 2 runs are exported", {"slug": slug})
+        if not args.yes and input(f"Export run {slug} as a scrubbed bundle? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("nothing exported")
+            sys.exit(1)
+        res = engine.export_run(slug, out_dir=args.out, user=user)
+        print(f"exported {slug} to {res['path']} (sha256 {res['sha256']}, {res['files']} files, {len(res['excluded'])} excluded)")
+    finally:
+        engine.close()
+
+
+def cmd_run_import(args):
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        name = Path(args.bundle).name
+        user, _ = human_gate(engine, None, "run import", target=name)
+        if not args.yes and input(f"Import the run in {args.bundle}? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("nothing imported")
+            sys.exit(1)
+        try:
+            run = engine.import_run(args.bundle, user=user)
+        except SentinelError as err:
+            engine.audit(user, "tty", "run_import_refused", name, reason=err.code)
+            raise
+        print(f"imported run {run['slug']} ({run['state']}, acceptance {run['acceptance_status']})")
+    finally:
+        engine.close()
+
+
 def port_arg(text):
     try:
         port = int(text)
@@ -763,6 +908,15 @@ def cmd_sync(args):
     if args.sync_cmd == "pull":
         shared.pull()
         return
+    if args.auto and not args.cont:
+        engine = open_registry(config_path, config)
+        try:
+            v2 = engine.is_v2(args.slug)
+        finally:
+            engine.close()
+        if v2:
+            print("version 2 runs never push by themselves: run `sentinel sync push <slug> --yes` after the requester approved")
+            return
     if args.cont:
         pass
     elif args.auto:
@@ -940,6 +1094,16 @@ def main():
     finish.add_argument("--outcome", choices=["passed", "stopped", "abandoned"], default="passed")
     finish.set_defaults(func=cmd_run_finish)
 
+    export = run_sub.add_parser("export", help="write a scrubbed bundle of a version 2 run (human, interactive terminal only)")
+    export.add_argument("slug")
+    export.add_argument("--yes", action="store_true", help="skip the confirmation question")
+    export.add_argument("--out", help="folder for the bundle (default: the workspace)")
+    export.set_defaults(func=cmd_run_export)
+    imp = run_sub.add_parser("import", help="import a run bundle (human, interactive terminal only)")
+    imp.add_argument("bundle")
+    imp.add_argument("--yes", action="store_true", help="skip the confirmation question")
+    imp.set_defaults(func=cmd_run_import)
+
     review = sub.add_parser("review", help="show the specification or Gherkin set in review (read-only)")
     review.add_argument("slug")
     review.add_argument("gate", nargs="?", choices=["spec", "gherkin"])
@@ -957,6 +1121,31 @@ def main():
     nxt.add_argument("slug")
     nxt.add_argument("--json", action="store_true")
     nxt.set_defaults(func=cmd_next)
+
+    accept = sub.add_parser("accept", help="confirm or reject the result of a completed run (human, interactive terminal only)")
+    accept.add_argument("slug")
+    accept.add_argument("--reject", action="store_true")
+    accept.add_argument("-m", "--comment")
+    accept.set_defaults(func=cmd_accept)
+
+    report = sub.add_parser("report", help="write report.json and report.md of a version 2 run")
+    report.add_argument("slug")
+    report.add_argument("--json", action="store_true")
+    report.set_defaults(func=cmd_report)
+
+    resolve = sub.add_parser("resolve", help="record a human decision on a parked run and resume it (human, interactive terminal only)")
+    resolve.add_argument("slug")
+    resolve.add_argument("--waive", metavar="FINDING", help="waive an open finding (the run then completes rejected)")
+    resolve.add_argument("--approve-file", metavar="PATH", help="approve a destructive migration file by its sha256")
+    resolve.add_argument("--approve-clone", action="store_true", help="approve QA on a clone of real data")
+    resolve.add_argument("--approve-security", action="store_true", help="approve the tier 4 security gate")
+    resolve.add_argument("--no-resume", action="store_true", help="record the decision but leave the run parked")
+    resolve.add_argument("-m", "--comment")
+    resolve.set_defaults(func=cmd_resolve)
+
+    verify = sub.add_parser("verify", help="run one verification round of a version 2 run (engine checks; exit 0 passed, 1 failed, 6 human)")
+    verify.add_argument("slug")
+    verify.set_defaults(func=cmd_verify)
 
     task = sub.add_parser("task", help="run a queued task, or complete a native task (orchestrator)")
     task_sub = task.add_subparsers(dest="task_cmd", required=True)

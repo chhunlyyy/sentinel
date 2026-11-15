@@ -174,7 +174,13 @@ def accept(eng, slug, body, user, git_name):
     fn = getattr(eng, "accept", None)
     if fn is None:
         raise SentinelError("E_PRECONDITION", "final acceptance needs the Phase E engine functions, which are not installed")
-    return fn(slug, decision, HUMAN, sha256=sha, comment=comment, approver=user, approver_name=git_name, channel=CHANNEL)
+    try:
+        return fn(slug, decision, HUMAN, sha256=sha, comment=comment, approver=user, approver_name=git_name, channel=CHANNEL)
+    except SentinelError as err:
+        if err.code == "E_PRECONDITION" and err.details.get("acceptance") in ("rejected", "confirmed"):
+            # a rejected or already confirmed run: the API reports it as a transition (Phase F contract); other refusals keep their code
+            raise SentinelError("E_TRANSITION", err.message, err.details) from err
+        raise
 
 
 # ---- controls

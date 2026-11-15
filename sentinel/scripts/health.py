@@ -27,6 +27,9 @@ def doctor_problems(config_path, config, state_dir, check_models=False, model_ch
                 continue
             problems.append(("storage", f"schema: {'/'.join(map(str, error.path))}: {error.message}"))
         problems.extend(("storage", f"schema: {text}") for _, text in scopes.config_problems(config))
+        import verify
+        problems = [x for x in problems if not x[1].startswith("schema: verification")]
+        problems.extend(("storage", f"schema: {text}") for _, text in verify.config_problems(config))
     except ImportError:
         notes.append("note: jsonschema not installed, schema check skipped")
     for tool in ("git", "python3"):

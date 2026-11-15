@@ -11,6 +11,7 @@ import artifacts as A
 import machines
 from errors import SentinelError
 from paths import ROOT, slug_problem
+from util import sha_bytes
 
 from .projects import scrub_obj
 
@@ -215,16 +216,23 @@ def tdd(reg, run):
     return {"cycles": cycles}
 
 
-def verification(reg, run):
-    events = reg.list_events(run["id"], "run.status_changed")
-    reasons = (events[-1]["payload"] or {}).get("reasons", []) if events else []
-    evidence = [{k: e[k] for k in ("id", "task_id", "cycle_id", "kind", "command", "exit_code", "classification",
-                                    "passed", "failed", "skipped", "output_artifact_id", "started_at", "finished_at", "repo_id", "provider",
-                                    "model")}
+def verification(eng, run):
+    """Evidence, the latest finished round, the checks that round planned but left no row for, the computed acceptance and
+    the human's decision on it (acceptance_record: decision, approver, channel, at, comment; null while pending)."""
+    reg = eng.reg
+    evidence = [{k: e[k] for k in ("id", "task_id", "cycle_id", "kind", "name", "repo_id", "round", "verdict", "command", "exit_code",
+                                    "classification", "passed", "failed", "skipped", "output_artifact_id", "started_at", "finished_at",
+                                    "provider", "model")}
                 for e in reg.rows("evidence", run_id=run["id"])]
-    # Phase E adds verification rounds and the list of missing evidence; until then they are reported as unknown.
-    return {"round": None, "missing": [], "evidence": evidence, "acceptance": {"execution_status": run["execution_status"],
-                                                 "acceptance_status": run["acceptance_status"], "reasons": reasons}}
+    latest = eng.latest_round(run)
+    done = latest if latest and latest["finished_at"] else None
+    missing = eng._missing_evidence(run, done, eng.round_rows(run, done["round"])) if done else []
+    human = eng.acceptance_rows(run)
+    record = ({"decision": human[-1]["decision"], "approver": human[-1]["approver"], "channel": human[-1]["channel"],
+               "at": human[-1]["decided_at"], "comment": human[-1]["comment"]} if human else None)
+    return {"evidence": evidence, "round": done["round"] if done else None, "missing": missing, "acceptance_record": record,
+            "acceptance": {"execution_status": run["execution_status"], "acceptance_status": run["acceptance_status"],
+                           "reasons": reg.last_status_reasons(run["id"])}}
 
 
 def trace(reg, run):
@@ -295,20 +303,25 @@ def _run_dir(state_dir, slug):
     return Path(state_dir) / "runs" / slug
 
 
-def report(state_dir, slug, fmt):
+def report(reg, state_dir, slug, run, fmt):
     if fmt not in ("json", "md"):
         raise validation("format must be json or md", "format")
     root = _run_dir(state_dir, slug)
     path = root / ("report.json" if fmt == "json" else "report.md")
     if _has_link(path, root) or not path.is_file():
         raise SentinelError("E_PRECONDITION", f"run {slug} has no report yet", {"slug": slug})
-    text = _read_regular(path).decode("utf-8", errors="replace")
+    raw = _read_regular(path)
+    text = raw.decode("utf-8", errors="replace")
     if fmt == "md":
         return {"format": "md", "content": text}
+    sha = sha_bytes(raw)  # the hash a human types the first 8 characters of to accept the run
+    registered = reg.rows("artifacts", run_id=run["id"], kind="report")
+    if registered and registered[-1]["sha256"] != sha:
+        raise SentinelError("E_INTEGRITY", "report.json does not match the report the engine registered", {"slug": slug})
     try:
-        return json.loads(text)
+        return {"sha256": sha, "report": json.loads(text)}
     except ValueError:
-        return {"format": "json", "content": text}
+        return {"sha256": sha, "format": "json", "content": text}
 
 
 def _has_link(path, root):

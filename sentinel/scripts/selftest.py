@@ -594,6 +594,43 @@ pathlib.Path(result).write_text(json.dumps({{"schema": "agent-result-v1", "task_
     check("AC-TRC-01a the chain links the AC to its scenario key and the cycle to its production file", rows("SELECT 1 FROM trace_links WHERE from_kind='ac' AND to_kind='scenario' AND to_id LIKE '% :: %'") != [] and rows("SELECT to_id FROM trace_links WHERE from_kind='cycle' AND to_kind='file'") == [{"to_id": "backend/src/main/java/LeaveBalance.java"}])
     check("AC-TDD-06a Red evidence holds the targeted command, exit code, output file and its sha256", all(rows("SELECT command, exit_code, output_sha256, repo_sha FROM evidence WHERE kind='red' AND verdict='accepted'")[0].values()))
 
+def phase_e_checks(tmp):
+    print("verification, acceptance, reports, export and import (phase E)")
+    w = tmp / "ws-e"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    git_repo(w / "frontend", "next.config.ts")
+    run(CLI + ["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    d = ["--dir", str(w)]
+    run(CLI + d + ["run", "new", "old-fix", "--tier", "2"])
+
+    def refused(args, code, text, env=None):
+        r = subprocess.run(CLI + d + args, stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env or ENV)
+        return r.returncode == code and text in r.stdout + r.stderr, (r.stdout + r.stderr)[-200:]
+    ok, why = refused(["verify", "old-fix"], 5, "release-check")
+    check("AC-VER-01n verify on a 0.1 run points to the release check", ok, why)
+    ok, why = refused(["report", "old-fix"], 5, "E_TRANSITION")
+    check("AC-ART-01i report is refused for a 0.1 run", ok, why)
+    ok, why = refused(["report", "no-such-run"], 5, "E_NOT_FOUND")
+    check("AC-ART-01i report of an unknown run is E_NOT_FOUND", ok, why)
+    ok, why = refused(["accept", "old-fix"], 5, "E_NOT_TTY")
+    check("AC-VER-04d accept without a terminal is refused (E_NOT_TTY)", ok, why)
+    ok, why = refused(["accept", "old-fix"], 5, "E_ACTOR", {**ENV, "SENTINEL_TASK_ID": "t-000000000000"})
+    check("AC-VER-04d accept inside a task process is refused (E_ACTOR)", ok, why)
+    ok, why = refused(["run", "export", "old-fix", "--yes"], 5, "E_NOT_TTY")
+    check("AC-ART-03g export without a terminal is refused (E_NOT_TTY)", ok, why)
+    ok, why = refused(["resolve", "old-fix", "-m", "x"], 5, "E_NOT_TTY")
+    check("resolve without a terminal is refused (E_NOT_TTY)", ok, why)
+    write_config(w, lambda c: c.update({"verification": {"disabled": ["test"], "mutation": "sometimes"}}))
+    code, out = run(CLI + d + ["doctor"])
+    check("AC-CFG-11e config that disables the test check or sets a bad mutation value is invalid",
+          code == 1 and "verification.disabled" in out and "verification.mutation" in out, out[-200:])
+    settings = json.loads((w / ".claude/settings.json").read_text()) if (w / ".claude/settings.json").exists() else {}
+    run(CLI + d + ["sync-adapters"])
+    deny = json.loads((w / ".claude/settings.json").read_text())["permissions"]["deny"]
+    check("AC-SEC-04b sync-adapters denies the accept command", "Bash(sentinel accept:*)" in deny and "Bash(sentinel --dir * accept *)" in deny, str(deny))
+
+
 def phase_f_checks(tmp):
     print("local api server (phase F)")
     import http.client
@@ -818,6 +855,7 @@ def main():
         phase_d_checks(tmp)
         phase_f_checks(tmp)
         phase_g_checks(tmp)
+        phase_e_checks(tmp)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))

@@ -10,7 +10,7 @@ describe('AC-DSH-06i the fixtures served by the fake API have the shapes recorde
   test('AC-DSH-06i keys and value types equal the recorded answers', () => {
     expect(problems).toEqual([]);
   });
-  test('AC-DSH-06i the one answer that is not compared has a stated reason', () => {
-    expect(Object.keys(NOT_COMPARED)).toEqual(['report']);
+  test('AC-DSH-06i every recorded answer is compared with the fake', () => {
+    expect(Object.keys(NOT_COMPARED)).toEqual([]);
   });
 });

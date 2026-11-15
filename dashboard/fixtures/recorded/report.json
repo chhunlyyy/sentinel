@@ -1,4 +1,7 @@
 {
-  "result": "pending",
-  "slug": "leave-balance"
+  "report": {
+    "result": "pending",
+    "slug": "leave-balance"
+  },
+  "sha256": "6792d5fbdce649456f15c51327ec9070d9fb5ad119ec324ee86e266a04bd6dba"
 }

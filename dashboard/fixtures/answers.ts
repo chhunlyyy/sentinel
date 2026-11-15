@@ -49,5 +49,6 @@ export function fakeAnswers(): Record<string, unknown> {
     changes_diff: E.diff('backend', 'src/main/Leave.java', fileDiff),
     log: E.log(task, lb.logs['t-green1'].lines, 40, 0, false),
     decision: E.run(decided.detail, decided.next),
+    report: db.runs['digital-hr/leave-form'].report,
   };
 }

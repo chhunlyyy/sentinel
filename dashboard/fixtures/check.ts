@@ -6,17 +6,16 @@ import { join } from 'node:path';
 import { fakeAnswers } from './answers.ts';
 
 // run from the dashboard folder (npm test, or tests/test_dashboard_fixtures.py with cwd set there)
-const RECORDED = join(process.cwd(), 'fixtures', 'recorded');
+// SENTINEL_FIXTURES_DIR points at a fresh recording (tests/test_dashboard_fixtures.py records into a temp folder)
+const RECORDED = process.env.SENTINEL_FIXTURES_DIR ?? join(process.cwd(), 'fixtures', 'recorded');
 
 /** Paths whose keys depend on the data (maps), or whose shape depends on a kind field; only their value types are compared. */
 const MAPS = [/\.approvals$/, /\.task_counts$/, /\.commands$/];
 /** The next step has fields that depend on its kind; only the kind is compared. Config values hold any JSON value. */
 const KIND_ONLY = [/\.next$/, /^next$/];
-const ANY = [/\.value$/, /\.overridden\[\]\.value$/];
+const ANY = [/\.value$/, /\.overridden\[\]\.value$/, /^report\.report$/];
 /** Recorded answers the fake does not reproduce, with the reason. */
-export const NOT_COMPARED: Record<string, string> = {
-  report: 'GET /report returns the bare report document until Phase E adds the { sha256, report } envelope the fake serves',
-};
+export const NOT_COMPARED: Record<string, string> = {};
 
 const kind = (v: unknown) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
 

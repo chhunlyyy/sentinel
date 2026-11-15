@@ -33,7 +33,6 @@ const runDetail = (slug: string, project: string, over: Partial<T.Run> = {}): T.
     gherkin: { gate: 'gherkin', state: 'APPROVED', version: 1, sha256: G1 },
   },
   task_counts: { COMPLETED: 2, RUNNING: 2 },
-  acceptance_record: null,
   ...over,
 });
 
@@ -139,11 +138,12 @@ const leaveBalance = (): RunData => ({
     round: { number: 2, at: '2026-11-14T09:20:00Z' },
     rows: [
       evidence('e-ver-test', { passed: 42, failed: 0, started_at: '2026-11-14T09:20:10Z', output_artifact: 'a-out2' }),
-      evidence('e-ver-lint', { kind: 'lint', status: 'not_configured', command: null, exit_code: null, passed: null, failed: null, output_artifact: null, files: [] }),
-      evidence('e-ver-build', { kind: 'build', status: 'disabled', command: null, exit_code: null, passed: null, failed: null, output_artifact: null, files: [] }),
+      evidence('e-ver-lint', { kind: 'lint', status: 'not_configured', command: null, exit_code: null, passed: null, failed: null, output_artifact: null, files: [], started_at: null, finished_at: null }),
+      evidence('e-ver-build', { kind: 'build', status: 'disabled', command: null, exit_code: null, passed: null, failed: null, output_artifact: null, files: [], started_at: null, finished_at: null }),
     ],
     missing: [{ repo: 'frontend', kind: 'test', reason: 'no evidence row' }],
     acceptance: { computed: 'pending', reasons: [] },
+    acceptance_record: null,
   },
   trace: {
     requirements: [

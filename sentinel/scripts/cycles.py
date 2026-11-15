@@ -276,7 +276,8 @@ class CycleOps:
         with self.reg.transaction():
             run = self._get_v2(slug)
             for c in todo:
-                made.append(self._phase_task(run, self._cycle(c["id"]), "red")["id"])
+                cyc = self._cycle(c["id"])
+                made.append(self._phase_task(run, cyc, "red", brief=self.cycle_finding_brief(run, cyc))["id"])
         self._finish_up(slug, run)
         return made
 
@@ -401,6 +402,8 @@ class CycleOps:
         """Before `task run` starts a TDD task: the baseline of its repo. Returns the refused outcome, or None."""
         if task["role"] in ("tdd_green", "tdd_refactor"):
             return self._check_approved_tests(run, task)
+        if task["role"] == "qa":
+            return self.qa_gate(run, task)
         if task["role"] != "tdd_red":
             return None
         klass = self.ensure_baseline(run, task["repo_id"])
@@ -1009,7 +1012,13 @@ class CycleOps:
         cyc_id = (sealed.get("input") or {}).get("cycle_id")
         cycle = self.reg.get_row("cycles", cyc_id) if cyc_id else None
         if not cycle:
-            return {}
+            if not sealed["role"].startswith("tdd_"):
+                return {}
+            perm = sealed["permissions"]  # a verification fix task belongs to no cycle
+            bullets = lambda items: "\n".join(f"- `{i}`" for i in items) or "(none)"  # noqa: E731
+            return {"cycle_behavior": "verification fix", "scenario_keys": "(none)", "scenario_texts": "(none)",
+                    "write_scope": ", ".join(perm["write"]) or "none", "readonly_files": bullets(perm.get("readonly_approved") or []),
+                    "failing_tests": "(see the brief below)", "related_tests": "(none)", "task_objective": sealed["objective"]}
         texts = {s["key"]: s["text"] for g in self._gherkin_groups(run) for s in g["scenarios"]}
         keys = self._scenario_keys(cycle)
         scenarios = "\n\n".join(f"### {k}\n\n```gherkin\n{texts.get(k, '')}\n```" for k in keys)

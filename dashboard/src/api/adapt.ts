@@ -94,9 +94,6 @@ export function run(w: W.WRun): T.Run {
     repos: (w.repos ?? []).map((r) => ({ id: r.repo_id, baseline_sha: r.baseline_sha ?? '', branch: r.branch ?? '', final_sha: r.final_sha })),
     approvals, task_counts: w.task_counts ?? {},
     config_snapshot: w.config_snapshot ? { version: w.config_snapshot.id, sha256: w.config_snapshot.sha256 } : null,
-    // The server has no acceptance record yet (Phase E). A run the engine accepted shows as confirmed; a rejected
-    // acceptance_status is the computed one, shown from the verification answer.
-    acceptance_record: w.acceptance_status === 'accepted' ? { decision: 'accept', approver: '', channel: '', at: w.updated_at, comment: null } : null,
     next: next(w.next, w.state),
   };
 }
@@ -166,6 +163,7 @@ export const workflow = (w: W.WWorkflow): T.Workflow => ({
 });
 
 function evidenceStatus(e: W.WEvidence): string {
+  if (e.verdict) return e.verdict === 'pass' ? 'passed' : e.verdict === 'fail' ? 'failed' : e.verdict;
   if (e.exit_code === null || e.exit_code === undefined) return 'not_run';
   return e.exit_code === 0 ? 'passed' : 'failed';
 }
@@ -202,22 +200,29 @@ export function tdd(w: W.WTdd, wf: W.WWorkflow, ver: W.WVerification): T.TddAnsw
   return { cycles, evidence: ev };
 }
 
-const VIEWS = ['tdd', 'verification', 'trace', 'changes'];
+/** The view that shows a reason the engine computed (reasons are plain text, e.g. "cycles incomplete: login"). */
+function reasonView(text: string): T.VerificationAnswer['acceptance']['reasons'][number]['view'] {
+  if (/^cycles incomplete/.test(text)) return 'tdd';
+  if (/^scope exceeded/.test(text)) return 'changes';
+  return 'verification';
+}
 
 export function verification(w: W.WVerification, tddAnswer: W.WTdd, wf: W.WWorkflow): T.VerificationAnswer {
-  const round = typeof w.round === 'number' ? { number: w.round, at: '' } : w.round;
+  const rows = w.evidence.filter((e) => !e.cycle_id && (e.round === null || e.round === undefined || e.round === w.round));
+  // the server gives the round number only; its time is when the first check of the round started
+  const started = rows.map((r) => r.started_at).filter((t): t is string => !!t).sort()[0] ?? '';
   return {
-    round,
-    rows: evidence(w.evidence.filter((e) => !e.cycle_id), tddAnswer, wf),
-    missing: (w.missing ?? []).map((m) => ({ repo: m.repo ?? null, kind: m.kind, reason: m.reason ?? 'missing' })),
+    round: typeof w.round === 'number' ? { number: w.round, at: started } : null,
+    rows: evidence(rows, tddAnswer, wf),
+    missing: (w.missing ?? []).map((m) => {
+      const [repo, ...kind] = m.split(' ');
+      return { repo, kind: kind.join(' '), reason: 'no evidence row' };
+    }),
     acceptance: {
       computed: w.acceptance.acceptance_status,
-      reasons: (w.acceptance.reasons ?? []).map((r) => {
-        if (typeof r === 'string') return { text: r, view: 'verification' as const };
-        const o = r as { text?: string; message?: string; view?: string };
-        return { text: o.text ?? o.message ?? JSON.stringify(r), view: (VIEWS.includes(o.view ?? '') ? o.view : 'verification') as T.VerificationAnswer['acceptance']['reasons'][number]['view'] };
-      }),
+      reasons: (w.acceptance.reasons ?? []).map((r) => ({ text: String(r), view: reasonView(String(r)) })),
     },
+    acceptance_record: w.acceptance_record ? { ...w.acceptance_record } : null,
   };
 }
 
@@ -283,7 +288,7 @@ export function decision(w: W.WRun, gate: Gate): T.ApprovalDecisionAnswer {
   return { approval: { ...rec, gate, state: a.state, version: a.version ?? 0, sha256: a.sha256 ?? '' }, run: r };
 }
 
-export function acceptance(w: W.WRun, decisionName: string, comment: string | null): T.AcceptanceAnswer {
-  const r = run(w);
-  return { acceptance: { decision: decisionName, approver: '', channel: 'dashboard', at: w.updated_at, comment }, run: r };
+/** The answer to POST acceptance is the run; the record of the decision is read from the verification answer. */
+export function acceptance(w: W.WRun): T.AcceptanceAnswer {
+  return { run: run(w) };
 }

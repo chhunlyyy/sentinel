@@ -258,13 +258,13 @@ route('POST', `${V}/projects/{pid}/tasks`, (c) => {
   template.detail = {
     ...template.detail, slug, project: pid, type: String(b.type), tier: typeof b.tier === 'number' ? b.tier : null, initial_tier: null, state: 'CREATED', reason: null,
     execution_status: 'running', acceptance_status: 'pending', request: String(b.request), priority: String(b.priority ?? 'normal'), ticket: typeof b.ticket === 'string' ? b.ticket : null,
-    created_at: now, updated_at: now, task_counts: {}, acceptance_record: null,
+    created_at: now, updated_at: now, task_counts: {},
     approvals: { specification: { gate: 'specification', state: 'NOT_REQUESTED', version: null, sha256: null }, gherkin: { gate: 'gherkin', state: 'NOT_REQUESTED', version: null, sha256: null } },
   };
   template.next = { kind: 'orchestrator', label: 'waiting for AI tool', command: `/sentinel resume ${slug}` };
   template.workflow = { nodes: [], edges: [], gates: [] };
   template.tdd = { cycles: [], evidence: [] };
-  template.verification = { round: null, rows: [], missing: [], acceptance: { computed: 'pending', reasons: [] } };
+  template.verification = { round: null, rows: [], missing: [], acceptance: { computed: 'pending', reasons: [] }, acceptance_record: null };
   template.trace = { requirements: [], gaps: [], failures: [], acceptance: null };
   template.changes = { repos: [] };
   template.logs = {};
@@ -384,13 +384,13 @@ route('POST', `${V}/tasks/{slug}/acceptance`, (c) => {
   const { run } = resolveRun(c.params[0], c.query);
   const b = body(c);
   for (const k of ['sha256_of_report', 'confirmation', 'decision']) if (!(k in b)) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
-  if (run.detail.state !== 'COMPLETED' || run.detail.acceptance_record?.decision === 'reject') throw new ApiErr(409, 'E_TRANSITION', 'the run cannot be accepted now');
+  if (run.detail.state !== 'COMPLETED' || run.verification.acceptance_record?.decision === 'reject') throw new ApiErr(409, 'E_TRANSITION', 'the run cannot be accepted now');
   if (!run.report || b.sha256_of_report !== run.report.sha256) throw new ApiErr(409, 'E_APPROVAL_STALE', 'report changed');
   if (b.confirmation !== String(b.sha256_of_report).slice(0, 8)) throw new ApiErr(400, 'E_VALIDATION', 'confirmation does not match', { field: 'confirmation' });
   if (b.decision === 'accept' && run.verification.acceptance.computed === 'rejected') throw new ApiErr(422, 'E_PRECONDITION', 'the engine rejected this run');
   const comment = typeof b.comment === 'string' ? b.comment : null;
   const record = { decision: String(b.decision), approver: 'dev', channel: 'dashboard', at: '2026-11-14T09:35:00Z', comment };
-  run.detail.acceptance_record = record;
+  run.verification.acceptance_record = record;
   run.detail.acceptance_status = b.decision === 'accept' ? 'accepted' : 'rejected';
   return [200, wrun(run)];
 });

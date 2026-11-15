@@ -19,6 +19,7 @@ import render_stage
 import scheduler
 from errors import SentinelError
 from paths import ROOT
+from review import SECURITY_GATE
 from tasks import DEFAULT_TIMEOUT, OPEN_STATES, _int, _seconds_since
 
 TASK_ID = re.compile(r"t-[0-9a-f]{12}")
@@ -201,6 +202,8 @@ class RuntimeOps:
         run = self._get_v2(slug)
         if run["state"] in machines.RUN_FINAL:
             return run
+        if self.check_imported_baseline(run):
+            return self._get_v2(slug)
         self._unblock(slug)
         self._recover(slug)
         run = self._get_v2(slug)
@@ -220,6 +223,11 @@ class RuntimeOps:
                 pass  # the run is parked with the reason; `next` reports it
         if self._get_v2(slug)["state"] not in machines.RUN_FINAL:
             self.schedule(slug)
+        if self._get_v2(slug)["state"] == "REVIEWING":
+            try:
+                self.check_r15(slug)
+            except SentinelError:
+                pass  # the run is parked with the reason; `next` reports it
         return self._get_v2(slug)
 
     def _unblock(self, slug):
@@ -363,6 +371,10 @@ class RuntimeOps:
             raise SentinelError("E_TRANSITION", f"task {task_id} is {t['state']}, only a QUEUED task runs"
                                 + (f"; open dependencies: {', '.join(deps)}" if deps else ""),
                                 {"state": t["state"], "open_dependencies": deps})
+        for r in self._vrounds(run):
+            if not r["finished_at"] and not r["interrupted"] and self._owner_alive(r, run):
+                raise SentinelError("E_LOCKED", f"verification round {r['round']} of {run['slug']} is in progress; tasks wait",
+                                    {"round": r["round"]})
         refused = self._before_dispatch(run, t)
         if refused:
             return refused
@@ -604,7 +616,11 @@ class RuntimeOps:
             return {**base, "kind": "human", "reason": f"review and approve {what}",
                     "commands": [f"sentinel review {slug} {gate}", f"sentinel approve {slug} {gate}"]}
         if state == "NEEDS_HUMAN":
-            return {**base, "kind": "human", "reason": self._state_reason(run, "NEEDS_HUMAN") or "a human decision is needed"}
+            reason = self._state_reason(run, "NEEDS_HUMAN") or "a human decision is needed"
+            step = {**base, "kind": "human", "reason": reason}
+            if reason.startswith(SECURITY_GATE):
+                step["command"] = f'sentinel resolve {slug} --approve-security -m "<why the security gate is accepted>"'
+            return step
         if state == "BLOCKED":
             reason = self._state_reason(run, "BLOCKED") or "blocked"
             m = re.match(r"runner not installed: (\S+)", reason)
@@ -612,7 +628,12 @@ class RuntimeOps:
                    if m else "resolve the blocker, then run `sentinel next` again")
             return {**base, "kind": "human", "reason": reason, "fix": fix}
         if state in machines.RUN_FINAL:
-            return {**base, "kind": "done", "execution": run["execution_status"], "acceptance": run["acceptance_status"]}
+            step = {**base, "kind": "done", "execution": run["execution_status"], "acceptance": run["acceptance_status"]}
+            if state == "COMPLETED":
+                step["human_acceptance"] = self.human_acceptance(run)
+                if step["human_acceptance"] == "pending" and run["acceptance_status"] == "accepted":
+                    step["command"] = f"sentinel accept {run['slug']}"
+            return step
         return self._task_steps(run, base)
 
     def _state_reason(self, run, to):
@@ -635,4 +656,7 @@ class RuntimeOps:
         if active or queued:
             return {**base, "kind": "wait", "tasks": active,
                     "reason": "waiting for running tasks" if active else "queued tasks cannot start yet"}
+        if run["state"] == "VERIFYING":
+            return {**base, "kind": "orchestrator", "action": "run the verification checks",
+                    "command": f"sentinel verify {run['slug']}"}
         return {**base, "kind": "human", "reason": f"no task planned for {run['state']}"}

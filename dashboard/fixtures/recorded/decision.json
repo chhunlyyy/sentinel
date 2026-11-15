@@ -5,7 +5,7 @@
       "approver": "dev",
       "channel": "dashboard",
       "comment": null,
-      "decided_at": "2026-11-15T05:54:07.318236Z",
+      "decided_at": "2026-11-15T06:36:55.708432Z",
       "decision": "approve",
       "sha256": "8a7d55df0fc2de520e35661173ddf627ca22b365b09c6d761cb2d356d492edcd",
       "state": "APPROVED",
@@ -13,12 +13,12 @@
     }
   },
   "config_snapshot": {
-    "created_at": "2026-11-15T05:54:07.097149Z",
+    "created_at": "2026-11-15T06:36:55.387150Z",
     "id": 1,
     "scope": "workspace",
-    "sha256": "6f362ca4c07e9c8b683b17e8044298f93ba23eaa06726632fe1fdb066b14f7b0"
+    "sha256": "12b19bf87ce77d3debc97b58593a16ab6f8fbe520cf192d4bce078e6ad9b768c"
   },
-  "created_at": "2026-11-15T05:54:07.161379Z",
+  "created_at": "2026-11-15T06:36:55.488607Z",
   "execution_status": "running",
   "finished_at": null,
   "initial_tier": 3,
@@ -50,6 +50,6 @@
   },
   "tier": 3,
   "type": "feature",
-  "updated_at": "2026-11-15T05:54:07.318329Z",
+  "updated_at": "2026-11-15T06:36:55.708579Z",
   "workflow_version": "2"
 }
