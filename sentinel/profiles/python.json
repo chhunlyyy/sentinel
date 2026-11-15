@@ -53,5 +53,52 @@
         ".*"
       ]
     }
+  ],
+  "test_globs": [
+    "tests/**",
+    "test/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/conftest.py"
+  ],
+  "production_globs": [
+    "**/*.py"
+  ],
+  "test_report": {
+    "kind": "junit-xml",
+    "path": "{report_dir}/junit.xml"
+  },
+  "targeted_test": "pytest -p no:cacheprovider --junitxml={report_dir}/junit.xml {selectors}",
+  "failure_patterns": {
+    "compile": [
+      "SyntaxError",
+      "IndentationError"
+    ],
+    "missing_dependency": [
+      "ModuleNotFoundError",
+      "No module named"
+    ],
+    "environment": [
+      "Connection refused",
+      "Permission denied"
+    ],
+    "assertion": [
+      "AttributeError"
+    ]
+  },
+  "scenario_ref": "@Scenario\\(\"([^\"]+)\"\\)",
+  "test_infra_globs": [
+    "conftest.py",
+    "**/conftest.py",
+    "pytest.ini",
+    "tox.ini",
+    "setup.cfg"
+  ],
+  "selector": "'{node}'",
+  "summary_patterns": [
+    "(?P<passed>\\d+) passed",
+    "(?P<failed>\\d+) failed",
+    "(?P<failed>\\d+) errors?\\b",
+    "(?P<skipped>\\d+) skipped"
   ]
 }

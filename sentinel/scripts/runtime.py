@@ -75,7 +75,10 @@ class RuntimeOps:
         return any(self._satisfied(r["id"]) for r in self.reg.rows("tasks", retry_of=task_id))
 
     def open_dependencies(self, task_id):
-        return [d for d in self.reg.task_deps(task_id) if not self._satisfied(d)]
+        """Open task dependencies, then "cycle <id>" for each earlier cycle of the repo a Red still waits for."""
+        task = self._task_row(task_id)
+        run = self.reg.get_run_by_id(task["run_id"])
+        return [d for d in self.reg.task_deps(task_id) if not self._satisfied(d)] + self._cycle_blockers(run, task)
 
     def _queue_ready(self, run, dependents_only=False):
         """Inside a transaction: CREATED tasks whose dependencies are all satisfied become QUEUED."""
@@ -84,7 +87,7 @@ class RuntimeOps:
             if t["state"] != "CREATED":
                 continue
             deps = self.reg.task_deps(t["id"])
-            if (dependents_only and not deps) or any(not self._satisfied(d) for d in deps):
+            if (dependents_only and not deps) or any(not self._satisfied(d) for d in deps) or self._cycle_blockers(run, t):
                 continue
             self._set_state(run, t, "QUEUED", machines.ENGINE, "task.queued")
             queued.append(t["id"])
@@ -208,6 +211,13 @@ class RuntimeOps:
                 self.advance(slug)
             except SentinelError:
                 pass  # the run is parked with the reason; `next` reports it
+        if self._get_v2(slug)["state"] == "EXECUTING":
+            try:
+                self.resume_verification(slug)
+                self.ensure_cycle_tasks(slug)
+                self.check_r13(slug)
+            except SentinelError:
+                pass  # the run is parked with the reason; `next` reports it
         if self._get_v2(slug)["state"] not in machines.RUN_FINAL:
             self.schedule(slug)
         return self._get_v2(slug)
@@ -280,6 +290,8 @@ class RuntimeOps:
                 ctx = render_stage.build_context(cfg, repo, self.workspace, role)
                 ctx.update(state_dir=str(self.state_dir), run_dir=str(self.run_dir(slug)),
                            shared_dir=str(self.state_dir / "shared"))
+                if role.startswith("tdd_"):
+                    ctx.update(self.tdd_prompt_context(run, sealed))
                 parts.append(render_stage.render(template, ctx).replace("<slug>", slug))
             except KeyError as missing:
                 raise SentinelError("E_PRECONDITION", f"stage template {role}.md has an unresolved placeholder: {missing}",
@@ -327,6 +339,8 @@ class RuntimeOps:
         else:
             code = 0
         retry = [t["id"] for t in self.reg.rows("tasks", retry_of=task_id)]
+        if code == 0 and retry and row["state"] == "COMPLETED" and row["role"].startswith("tdd_"):
+            code = 1  # a TDD phase the engine rejected: a retry is queued
         out = {"task_id": task_id, "state": row["state"], "error_code": row["error_code"], "reason": row["reason"],
                "provider": row["provider"], "adapter": row["adapter"], "run_state": run["state"],
                "retry": retry[0] if retry else None, "log": str(self.task_dir(run["slug"], task_id) / "output.log"),
@@ -349,6 +363,9 @@ class RuntimeOps:
             raise SentinelError("E_TRANSITION", f"task {task_id} is {t['state']}, only a QUEUED task runs"
                                 + (f"; open dependencies: {', '.join(deps)}" if deps else ""),
                                 {"state": t["state"], "open_dependencies": deps})
+        refused = self._before_dispatch(run, t)
+        if refused:
+            return refused
         if t["adapter"] == "native":
             return self._run_native(run, t)
         return self._run_cli(run, t)
@@ -487,7 +504,7 @@ class RuntimeOps:
 
     def _progress(self, run, task_id, elapsed, size, tdir):
         task = self._task_row(task_id)
-        changed, _ = self._changed_files(run, task, tdir)
+        changed = self._changed_files(run, task, tdir)[0]
         with self.reg.transaction():
             self._task_event(run, task_id, "task.progress", machines.ENGINE,
                              {"elapsed_seconds": elapsed, "output_bytes": size, "changed_files": changed[:50]})

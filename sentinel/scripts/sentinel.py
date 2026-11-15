@@ -4,6 +4,7 @@ import difflib
 import getpass
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -279,8 +280,12 @@ def cmd_doctor(args):
     try:
         import jsonschema
         schema = load_json("core/schema/config.schema.json")
+        import scopes
         for error in jsonschema.Draft202012Validator(schema).iter_errors(config):
+            if re.match(r"repos/\d+/(test|production)_globs", "/".join(map(str, error.path))):
+                continue
             problems.append(f"schema: {'/'.join(map(str, error.path))}: {error.message}")
+        problems.extend(f"schema: {text}" for _, text in scopes.config_problems(config))
     except ImportError:
         print("note: jsonschema not installed, schema check skipped")
     for tool in ("git", "python3"):

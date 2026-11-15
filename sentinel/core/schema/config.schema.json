@@ -77,6 +77,68 @@
           },
           "guidelines": {
             "type": "string"
+          },
+          "test_globs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+            }
+          },
+          "production_globs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+            }
+          },
+          "targeted_test": {
+            "type": "string"
+          },
+          "scenario_ref": {
+            "type": "string"
+          },
+          "test_report": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "junit-xml"
+                ]
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          },
+          "failure_patterns": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "test_infra_globs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+            }
+          },
+          "selector": {
+            "type": "string"
+          },
+          "selector_join": {
+            "type": "string"
+          },
+          "summary_patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
@@ -364,6 +426,21 @@
           "type": "integer",
           "minimum": 0,
           "default": 2
+        },
+        "red_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "green_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3
+        },
+        "refactor_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
         }
       }
     },
@@ -555,6 +632,24 @@
         },
         "default": {
           "type": "string"
+        }
+      }
+    },
+    "tdd": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "red_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "green_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refactor_retries": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }

@@ -389,7 +389,8 @@ def phase_c_checks(tmp):
     write_config(w, lambda c: c.update({"single_model": False, "agents": {"docs": {"runner": "fake"}, "qa": {"runner": "stray"}, "reviewer": {"runner": "gone"}},
                                          "runners": {"fake": {"command": runner("fake", "pathlib.Path(os.getcwd(), 'docs').mkdir(exist_ok=True)\npathlib.Path(os.getcwd(), 'docs/leave.md').write_text('x')\ndone()\n")},
                                                      "stray": {"command": runner("stray", "pathlib.Path(os.getcwd()).parent.joinpath('frontend/stray.txt').write_text('x')\ndone()\n")},
-                                                     "gone": {"command": "no-such-agent-cli"}}}))
+                                                     "gone": {"command": "no-such-agent-cli"},
+                                                     "inrepo": {"command": runner("inrepo", "pathlib.Path(os.getcwd(), 'build.gradle').write_text('changed')\ndone()\n")}}}))
     sys.path.insert(0, str(ROOT / "scripts"))
     from engine import Engine
 
@@ -421,6 +422,14 @@ def phase_c_checks(tmp):
     r = row(stray)
     check("AC-AGT-06b a write outside the task's repo fails it with exit 3 and E_SCOPE", code == 3 and r["state"] == "FAILED" and r["error_code"] == "E_SCOPE", out[-250:])
     (w / "frontend/stray.txt").unlink(missing_ok=True)
+    write_config(w, lambda c: c["agents"].update({"qa": {"runner": "inrepo"}}))
+    new_run("rt-scope")
+    scoped = task("rt-scope", "qa", ["backend/docs/**"])
+    code, out = run(CLI + d + ["task", "run", scoped])
+    kinds = [json.loads(e["payload"])["kind"] for e in db_all(w, "SELECT payload FROM events WHERE type='task.scope_violation' AND task_id=?", (scoped,))]
+    check("AC-AGT-06g a write in the task's repo but outside its write globs is E_SCOPE (exit 3, outside_write_scope)", code == 3 and row(scoped)["error_code"] == "E_SCOPE" and kinds == ["outside_write_scope"], out[-250:])
+    check("AC-CFG-10a shipped code profiles carry test and production globs, generic none", all(json.loads((ROOT / "profiles" / f"{n}.json").read_text()).get("test_globs") for n in ("spring-gradle", "python", "node", "nextjs", "flutter")) and "test_globs" not in json.loads((ROOT / "profiles/generic.json").read_text()))
+    run(["git", "checkout", "-q", "--", "."], cwd=w / "backend")
     write_config(w, lambda c: c.update({"single_model": True}))  # the run keeps the config it starts with (CFG-08)
     new_run("rt-native")
     nat = task("rt-native", "docs", ["backend/docs/**"])
@@ -448,6 +457,142 @@ def phase_c_checks(tmp):
     check("AC-ORC-08g stage run is refused on a version 2 run and names task run", code == 5 and "sentinel task run" in out, out[-200:])
     code, out = run(CLI + d + ["submit", "rt", "--role", "specifier"])
     check("the Phase B submit command is gone", code == 2, out[-200:])
+
+
+def phase_d_checks(tmp):
+    print("TDD engine (phase D part 2a)")
+    w = tmp / "ws-d"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    (w / "backend/.gitignore").write_text("build/\n")
+    run(["git", "add", "."], cwd=w / "backend")
+    run(["git", "commit", "-q", "-m", "ignore"], cwd=w / "backend")
+    run(CLI + ["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    d = ["--dir", str(w)]
+    bin_dir = w / "bin"
+    bin_dir.mkdir()
+    tool = bin_dir / "faketest"
+    tool.write_text(f"""#!{sys.executable}
+import json, os, pathlib, sys
+here = pathlib.Path(__file__).resolve().parent
+sc = json.loads((here / "faketest.json").read_text()).get(sys.argv[1], {{}})
+print(sc.get("stdout", ""))
+if sc.get("report") is not None:
+    out = pathlib.Path("build/test-results/test")
+    out.mkdir(parents=True, exist_ok=True)
+    cases = "".join('<testcase classname="x.%s" name="%s">%s</testcase>' % (c, n, '<failure message="m"/>' if st == "failure" else "") for c, n, st in sc["report"])
+    (out / "TEST-fake.xml").write_text("<testsuite>" + cases + "</testsuite>")
+sys.exit(sc.get("exit", 0))
+""")
+    tool.chmod(0o755)
+
+    def tool_says(**modes):
+        (bin_dir / "faketest.json").write_text(json.dumps(modes))
+    agent = bin_dir / "redagent"
+    agent.write_text(f"""#!{sys.executable}
+import json, os, pathlib, re, sys
+prompt = sys.argv[-1]
+result = re.search(r'Result file \\(absolute path\\): (\\S+)', prompt).group(1)
+keys = re.findall(r'^- `(features/[^`]+)`$', prompt, re.M)
+body = "class LeaveTest {{\\n" + "".join('  @Scenario("%s")\\n  void t%d() {{}}\\n' % (k, i) for i, k in enumerate(keys)) + "}}\\n"
+p = pathlib.Path(os.getcwd(), "src/test/java/LeaveTest.java")
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(body)
+pathlib.Path(result).write_text(json.dumps({{"schema": "agent-result-v1", "task_id": os.environ["SENTINEL_TASK_ID"], "status": "completed", "summary": "s"}}))
+""")
+    agent.chmod(0o755)
+    prod_agent = bin_dir / "prodagent"
+    prod_agent.write_text(f"""#!{sys.executable}
+import json, os, pathlib, re, sys
+prompt = sys.argv[-1]
+result = re.search(r'Result file \\(absolute path\\): (\\S+)', prompt).group(1)
+p = pathlib.Path(os.getcwd(), "src/main/java/LeaveBalance.java")
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text((p.read_text() if p.exists() else "") + "class LeaveBalance {{}}\\n")
+pathlib.Path(result).write_text(json.dumps({{"schema": "agent-result-v1", "task_id": os.environ["SENTINEL_TASK_ID"], "status": "completed", "summary": "s"}}))
+""")
+    prod_agent.chmod(0o755)
+    py = sys.executable
+
+    def configure():
+        def mutate(c):
+            c["repos"] = [r for r in c["repos"] if r["id"] == "backend"]
+            for repo in c["repos"]:
+                if repo["id"] == "backend":
+                    repo.update({"profile": "generic", "test_globs": ["src/test/**"], "production_globs": ["src/main/**"],
+                                 "commands": {"test": f"{py} {tool} full"}, "targeted_test": f"{py} {tool} targeted {{tests}}",
+                                 "test_report": {"kind": "junit-xml", "path": "build/test-results/test/*.xml"},
+                                 "scenario_ref": '@Scenario\\("([^"]+)"\\)', "failure_patterns": {"compile": ["error: cannot find symbol"]}})
+            c.update({"single_model": False, "runners": {"red": {"command": str(agent)}, "prod": {"command": str(prod_agent)}},
+                      "agents": {"tdd_red": {"runner": "red"}, "tdd_green": {"runner": "prod"}, "tdd_refactor": {"runner": "prod"}}})
+        write_config(w, mutate)
+    configure()
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from engine import Engine
+
+    def new_run(slug):
+        run(CLI + d + ["run", "new", slug])
+        db_set(w, slug, state="PLANNED", tier=1, initial_tier=1)
+        sd = w / ".sentinel/shared/specs" / slug
+        (sd / "features").mkdir(parents=True, exist_ok=True)
+        (sd / "spec.md").write_text(lite_spec(slug))
+        cfg = yaml.safe_load((w / "sentinel.config.yaml").read_text())
+        eng = Engine(w / ".sentinel", w, cfg)
+        try:
+            def submit(role, feats=None):
+                for n, t in (feats or {}).items():
+                    (sd / "features" / n).write_text(t)
+                tid = eng.create_task(slug, role, f"{role} work", ["backend"], queue=True)["id"]
+                eng.start_task(tid, schedule=False)
+                (w / ".sentinel/runs" / slug / "tasks" / tid / "result.json").write_text(json.dumps(
+                    {"schema": "agent-result-v1", "task_id": tid, "status": "completed", "summary": "done"}))
+                return eng.finish_task(tid)["completion"]
+
+            def approve(gate):
+                info = eng.pending_approval(slug, gate)
+                eng.decide(slug, gate, "approve", "human", prefix=info["sha256"][:8], approver="dev")
+            assert submit("specifier")["accepted"]
+            approve("spec")
+            assert submit("test_designer", FEATURES)["accepted"]
+            approve("gherkin")
+            eng.advance(slug)
+        finally:
+            eng.close()
+
+    def rows(sql, args=()):
+        return db_all(w, sql, args)
+
+    def cycles(slug):
+        return rows("SELECT behavior, state, reason, repo_id FROM cycles WHERE run_id=(SELECT id FROM runs WHERE slug=?) ORDER BY ordinal", (slug,))
+
+    new_run("tdd")
+    cs = cycles("tdd")
+    check("AC-TDD-01a R12 plans one PLANNED cycle per behavior group, one cycle.planned event each", [c["state"] for c in cs] == ["PLANNED", "PLANNED"] and [c["behavior"] for c in cs] == ["features/balance.feature", "features/form.feature"] and len(rows("SELECT 1 FROM events WHERE type='cycle.planned'")) == 2, str(cs))
+    code, out = run(CLI + d + ["next", "tdd", "--json"])
+    step = json.loads(out)
+    check("AC-TDD-01e next creates the Red task of the first cycle and queues it; the second cycle's Red waits for it", step.get("role") == "tdd_red" and [r["state"] for r in rows("SELECT state FROM tasks WHERE role='tdd_red' ORDER BY rowid")] == ["QUEUED", "CREATED"], out[-250:])
+    check("AC-AGT-01a the TDD stage templates exist with their write class", all((ROOT / "core/stages" / f"{n}.md").read_text().split("---\n")[1].count(f"writes: {k}") == 1 for n, k in (("tdd_red", "tests"), ("tdd_green", "production"), ("tdd_refactor", "production"), ("test_designer", "gherkin"))))
+    tool_says(full={"exit": 0, "report": []}, targeted={"exit": 1, "stdout": "error: cannot find symbol", "report": None})
+    code, out = run(CLI + d + ["task", "run", step["task"]])
+    ev = rows("SELECT kind, classification, verdict FROM evidence ORDER BY rowid")
+    check("AC-TDD-03a the baseline is stored once, before the first Red starts", [e["kind"] for e in ev][:1] == ["baseline"] and ev[0]["classification"] == "pass", str(ev))
+    check("AC-TDD-03d a compile error is classified by the engine, Red goes back to PLANNED with a retry (exit 1)", code == 1 and ev[-1]["classification"] == "compile" and cycles("tdd")[0]["state"] == "PLANNED" and len(rows("SELECT 1 FROM tasks WHERE role='tdd_red'")) == 3, out[-250:])
+    retry = rows("SELECT id FROM tasks WHERE role='tdd_red' AND retry_of IS NOT NULL")[0]["id"]
+    tool_says(full={"exit": 0, "report": []}, targeted={"exit": 1, "report": [["LeaveTest", "t0", "failure"]]})
+    code, out = run(CLI + d + ["task", "run", retry])
+    cyc = rows("SELECT * FROM cycles WHERE behavior='features/balance.feature'")[0]
+    check("AC-TDD-03c Red produces the expected assertion failure: exit 0, RED_VERIFIED, approved test file with sha256, Green task queued", code == 0 and cyc["state"] == "RED_VERIFIED" and json.loads(cyc["approved_tests"])[0]["path"] == "backend/src/test/java/LeaveTest.java" and [t["state"] for t in rows("SELECT state FROM tasks WHERE role='tdd_green'")] == ["QUEUED"], out[-250:])
+    check("AC-TDD-02a the scenario to test and cycle to test_file trace links are stored", rows("SELECT to_id FROM trace_links WHERE from_kind='scenario' AND to_kind='test'") == [{"to_id": "LeaveTest.t0"}] and rows("SELECT to_id FROM trace_links WHERE from_kind='cycle' AND to_kind='test_file'") == [{"to_id": "backend/src/test/java/LeaveTest.java"}])
+    green = rows("SELECT id FROM tasks WHERE role='tdd_green'")[0]["id"]
+    tool_says(full={"exit": 0, "report": []}, targeted={"exit": 0, "report": [["LeaveTest", "t0", "pass"]]})
+    code, out = run(CLI + d + ["task", "run", green])
+    cyc = rows("SELECT * FROM cycles WHERE behavior='features/balance.feature'")[0]
+    check("AC-TDD-04a Green is verified by the engine's own run: exit 0, GREEN_VERIFIED, green evidence, Refactor task queued", code == 0 and cyc["state"] == "GREEN_VERIFIED" and rows("SELECT verdict FROM evidence WHERE kind='green'") == [{"verdict": "accepted"}] and [t["state"] for t in rows("SELECT state FROM tasks WHERE role='tdd_refactor'")] == ["QUEUED"], out[-250:])
+    code, out = run(CLI + d + ["task", "run", rows("SELECT id FROM tasks WHERE role='tdd_refactor'")[0]["id"]])
+    cyc = rows("SELECT * FROM cycles WHERE behavior='features/balance.feature'")[0]
+    check("AC-TDD-05a a refactor that keeps the tests green is accepted: REFACTOR_VERIFIED to CYCLE_ACCEPTED with full evidence", code == 0 and cyc["state"] == "CYCLE_ACCEPTED" and cyc["accepted_at"] and len(rows("SELECT 1 FROM trace_links WHERE from_kind='cycle' AND to_kind='evidence'")) == 3, out[-250:])
+    check("AC-TRC-01a the chain links the AC to its scenario key and the cycle to its production file", rows("SELECT 1 FROM trace_links WHERE from_kind='ac' AND to_kind='scenario' AND to_id LIKE '% :: %'") != [] and rows("SELECT to_id FROM trace_links WHERE from_kind='cycle' AND to_kind='file'") == [{"to_id": "backend/src/main/java/LeaveBalance.java"}])
+    check("AC-TDD-06a Red evidence holds the targeted command, exit code, output file and its sha256", all(rows("SELECT command, exit_code, output_sha256, repo_sha FROM evidence WHERE kind='red' AND verdict='accepted'")[0].values()))
 
 
 def main():
@@ -556,6 +701,7 @@ def main():
         phase_a_checks(tmp, remote)
         phase_b_checks(tmp)
         phase_c_checks(tmp)
+        phase_d_checks(tmp)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))
@@ -590,6 +736,8 @@ def main():
         standalone_bad = []
         for stage_file in sorted((ROOT / "core" / "stages").glob("*.md")):
             stage_name = stage_file.stem
+            if (yaml.safe_load(stage_file.read_text().split("---\n")[1]) or {}).get("writes") in ("tests", "production", "gherkin"):
+                continue  # Phase D roles are driven by the engine, they have no standalone skill
             owners = [n for n in names if n != "sentinel" and f"--stage {stage_name}" in (skills_dir() / n / "SKILL.md").read_text()]
             if len(owners) != 1:
                 standalone_bad.append(f"{stage_name}:{owners}")

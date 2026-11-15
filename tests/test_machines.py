@@ -214,7 +214,9 @@ class CycleMachine(Base):
         self.assertIsNone(m.check_cycle("RED_RUNNING", "PLANNED", E))
         for s in ("RED_RUNNING", "GREEN_RUNNING", "REFACTOR_RUNNING"):
             self.assertIsNone(m.check_cycle(s, "REJECTED", E))
-        self.refused("E_TRANSITION", m.check_cycle, "RED_VERIFIED", "REJECTED", E)
+        for s in ("PLANNED", "RED_VERIFIED", "GREEN_VERIFIED", "REFACTOR_VERIFIED"):  # Phase D open point 10
+            self.assertIsNone(m.check_cycle(s, "REJECTED", E))
+        self.refused("E_TRANSITION", m.check_cycle, "CYCLE_ACCEPTED", "REJECTED", E)
 
 
 class Acceptance(Base):

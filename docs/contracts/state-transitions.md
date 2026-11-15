@@ -68,9 +68,11 @@ Docs-only runs skip R8 to R11: `SPECIFICATION_APPROVED -> EXECUTING` (R12d) with
 | RED_RUNNING | RED_VERIFIED | E | scope ok; classification = assertion on new tests; rest equals baseline |
 | RED_RUNNING | PLANNED (retry) | E | other classification, under cap |
 | RED_VERIFIED | GREEN_RUNNING | E | n/a |
-| GREEN_RUNNING | GREEN_VERIFIED | E | scope ok; no approved test file changed; targeted tests pass |
+| GREEN_RUNNING | GREEN_VERIFIED | E | scope ok; no approved test file changed; own and related tests all present and passing (none skipped) |
+| GREEN_RUNNING | RED_VERIFIED | E | the running Green task was cancelled (`on_cycle_task_cancelled`) |
 | GREEN_VERIFIED | REFACTOR_RUNNING | E | n/a |
-| REFACTOR_RUNNING | REFACTOR_VERIFIED | E | scope ok; targeted and related tests pass |
+| REFACTOR_RUNNING | REFACTOR_VERIFIED | E | scope ok; targeted and related tests all present and passing (none skipped) |
+| REFACTOR_RUNNING | GREEN_VERIFIED | E | the running Refactor task was cancelled (`on_cycle_task_cancelled`) |
 | REFACTOR_VERIFIED | CYCLE_ACCEPTED | E | evidence rows complete |
 | any running | REJECTED | E | cap reached; run goes to NEEDS_HUMAN |
 

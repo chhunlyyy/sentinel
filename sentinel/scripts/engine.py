@@ -13,8 +13,10 @@ from pathlib import Path
 
 import artifacts as A
 import machines
+import scopes
 from errors import SentinelError
 from registry import Registry, _now
+from cycles import CycleOps
 from runtime import RuntimeOps
 from tasks import TaskOps, retry_cap
 
@@ -42,7 +44,7 @@ R18_SOURCES = ("GHERKIN_APPROVED", "EXECUTING", "VERIFYING", "REVIEWING")
 UPSTREAM = "upstream specification approval invalidated"
 
 
-class Engine(RuntimeOps, TaskOps):
+class Engine(CycleOps, RuntimeOps, TaskOps):
     def __init__(self, state_dir, workspace, config, release_lock=None):
         self.state_dir = Path(state_dir)
         self.workspace = Path(workspace)
@@ -143,6 +145,7 @@ class Engine(RuntimeOps, TaskOps):
         self._event(run, "run.state_changed", actor, payload)
         if rule in ("R17", "R18"):
             self.cancel_open_tasks(run, "approval invalidated")
+            self._reject_open_cycles(run, "approval invalidated")
         elif to in ("CANCELLED", "FAILED"):
             self.cancel_open_tasks(run, f"run {to.lower()}")
         if rule == "R3":
@@ -218,6 +221,9 @@ class Engine(RuntimeOps, TaskOps):
                     run = self._detect(self.reg.get_run(slug))
                     if run["state"] in ("GHERKIN_APPROVED", "EXECUTING"):
                         deferred = self._park_if_unapproved(run)
+                    if rule == "R20" and self.reg.get_run(slug)["state"] == "EXECUTING" and run["type"] != "docs":
+                        self._replan_rejected(self.reg.get_run(slug))
+                        self._retry_stalled_cycles(self.reg.get_run(slug))
         result = self._finish_up(slug, run)
         if deferred:
             raise deferred
@@ -642,6 +648,15 @@ class Engine(RuntimeOps, TaskOps):
                 A.verify_stored(self.state_dir, slug, GATE_KIND[gate], ap["version"], ap["sha256"])
             except SentinelError:
                 return "E_INTEGRITY", "stored artifact does not match its hash"
+        if run["type"] != "docs":
+            cfg = self._run_config(run)
+            in_run = {r["repo_id"] for r in self.reg.run_repos(run["id"])}
+            for repo in cfg.get("repos") or []:
+                if isinstance(repo, dict) and repo.get("id") and (not in_run or repo["id"] in in_run):
+                    missing = scopes.missing_globs(cfg, repo["id"])
+                    if missing:
+                        return "E_PRECONDITION", f"repo {repo['id']} has no {missing}"
+            return self._planning_problem(run)
         return None
 
     def _start(self, run, reason=None):
@@ -649,6 +664,8 @@ class Engine(RuntimeOps, TaskOps):
         problem = self._start_problem(run)
         if problem is None:
             self._move(run, "EXECUTING", machines.ENGINE, reason=reason or "both approvals valid")
+            if run["type"] != "docs":
+                self._plan_cycles(self.reg.get_run_by_id(run["id"]))  # R12: all cycles or none
             return None
         return self._park(run, problem)
 

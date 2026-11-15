@@ -87,10 +87,12 @@ CYCLE_ROWS = [
     ("", ["RED_RUNNING"], ["PLANNED"], [E]),
     ("", ["RED_VERIFIED"], ["GREEN_RUNNING"], [E]),
     ("", ["GREEN_RUNNING"], ["GREEN_VERIFIED"], [E]),
+    ("", ["GREEN_RUNNING"], ["RED_VERIFIED"], [E]),       # the running Green task was cancelled (on_cycle_task_cancelled)
     ("", ["GREEN_VERIFIED"], ["REFACTOR_RUNNING"], [E]),
     ("", ["REFACTOR_RUNNING"], ["REFACTOR_VERIFIED"], [E]),
+    ("", ["REFACTOR_RUNNING"], ["GREEN_VERIFIED"], [E]),  # the running Refactor task was cancelled
     ("", ["REFACTOR_VERIFIED"], ["CYCLE_ACCEPTED"], [E]),
-    ("", _CYCLE_RUNNING, ["REJECTED"], [E]),
+    ("", _CYCLE_RUNNING + ["PLANNED", "RED_VERIFIED", "GREEN_VERIFIED", "REFACTOR_VERIFIED"], ["REJECTED"], [E]),  # Phase D point 10
 ]
 
 

@@ -290,13 +290,20 @@ class ModelCheck(PCX):
 
 class Templates(PCX):
     def test_role_without_a_stage_template_cannot_run_on_a_cli_runner(self):
+        """Phase D gave test_designer a template, so the missing template is simulated with an empty stage folder."""
+        import tempfile
+        from unittest import mock
+
+        import runtime
+        from errors import SentinelError
         self.boot({"fake": (GOOD, {})}, {"test_designer": "fake"})
         tid = self.make("test_designer", ["backend"], [f"specs/{SLUG}/features/**"])
         self.eng.queue_task(tid)
         self.eng.reg.update_run(SLUG, state="SPECIFICATION_APPROVED")
-        code, out, err = self.run_json(tid)
-        self.assertEqual(code, 5, out + err)
-        self.assertIn("E_PRECONDITION", err)
+        with tempfile.TemporaryDirectory() as empty, mock.patch.object(runtime, "STAGES", Path(empty)):
+            with self.assertRaises(SentinelError) as cm:
+                self.eng.run_task(tid)
+        self.assertEqual(cm.exception.code, "E_PRECONDITION")
         self.assertEqual(self.task(tid)["state"], "QUEUED")
 
 

@@ -14,7 +14,7 @@ from errors import SentinelError
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 _ID_PREFIX = {"runs": "r-", "tasks": "t-", "approvals": "a-", "cycles": "c-",
-              "evidence": "e-", "artifacts": "ar-", "findings": "f-"}
+              "evidence": "e-", "artifacts": "ar-", "findings": "f-", "changed_files": "cf-"}
 
 
 def _now():
@@ -349,6 +349,12 @@ class Registry:
         self._c.execute(f"DELETE FROM trace_links WHERE run_id=?{clause}", [run_id, *match.values()])
         for link in links:
             self.add_trace_link(run_id, *link)
+
+    def remove_trace_links(self, run_id, **match):
+        """Delete the run's links matching every column in `match` (from_kind, from_id, to_kind, to_id)."""
+        self._check_fields("trace_links", match)
+        clause = "".join(f' AND "{k}"=?' for k in match)
+        self._c.execute(f"DELETE FROM trace_links WHERE run_id=?{clause}", [run_id, *match.values()])
 
     def update_row(self, table, id, **fields):
         self._check_table(table)

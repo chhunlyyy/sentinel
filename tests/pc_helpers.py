@@ -18,8 +18,9 @@ from pb_helpers import PB, SLUG  # noqa: E402
 
 GIT_ENV = {**os.environ, "GIT_AUTHOR_NAME": "Dev", "GIT_AUTHOR_EMAIL": "d@example.com",
            "GIT_COMMITTER_NAME": "Dev", "GIT_COMMITTER_EMAIL": "d@example.com"}
-REPOS = [{"id": "backend", "path": "backend", "role": "backend", "profile": "generic"},
-         {"id": "frontend", "path": "frontend", "role": "frontend", "profile": "generic"}]
+GLOBS = {"test_globs": ["tests/**", "src/test/**"], "production_globs": ["src/main/**"]}
+REPOS = [{"id": "backend", "path": "backend", "role": "backend", "profile": "generic", **GLOBS},
+         {"id": "frontend", "path": "frontend", "role": "frontend", "profile": "generic", **GLOBS}]
 BASE_CONFIG = {"version": 1, "state": {"dir": ".sentinel", "shared_mode": "local"}, "repos": REPOS}
 
 
@@ -54,10 +55,16 @@ class PC(PB):
         """The CLI reads sentinel.config.yaml; the engine of the test uses the same content."""
         (self.ws / "sentinel.config.yaml").write_text(yaml.safe_dump(self.config, sort_keys=False))
 
-    def executing(self, slug=SLUG, tier=3):
+    def executing(self, slug=SLUG, tier=3, cycles=False):
+        """An EXECUTING run. Phase C tests exercise the task runtime on a bare run, so the cycles R12 planned (Phase D)
+        are removed unless `cycles` is true; Phase D tests use PD.boot_exec instead."""
         self.to_gherkin_approved(slug, tier)
         self.eng.advance(slug)
         assert self.state(slug) == "EXECUTING", self.state(slug)
+        if not cycles:
+            with self.eng.reg.transaction():
+                self.eng.reg._c.execute("DELETE FROM cycles")
+                self.eng.reg._c.execute("DELETE FROM trace_links WHERE to_kind='cycle'")
         return slug
 
     # ---- task helpers

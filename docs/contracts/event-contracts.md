@@ -36,10 +36,12 @@ Events are rows in the append-only `events` table (`docs/architecture/data-archi
 | `task.progress` | elapsed_seconds, output_bytes, changed_files (from the heartbeat) |
 | `task.waiting` | waiting_on (orchestrator, human), question |
 | `task.finished` | state, error_code, seconds, tokens, reason, details, exit_code |
-| `task.scope_violation` | paths, kind (`repo_not_allowed`, `head_moved`, `config_changed`, `state_in_repo`) |
+| `task.scope_violation` | paths, kind (`repo_not_allowed`, `outside_write_scope`, `approved_test_changed`, `ignore_rules_changed`, `head_moved`, `config_changed`, `state_in_repo`) |
 | `task.stop_requested` | (empty) `sentinel next` told the orchestrator once to stop the subagent of a cancelled or timed-out native task |
-| `cycle.state_changed` | cycle, behavior, from, to, classification |
-| `evidence.recorded` | kind, exit_code, passed, failed, classification |
+| `cycle.planned` | cycle, behavior, repo, scenarios (count), retry_of |
+| `cycle.state_changed` | cycle, behavior, from, to, classification, reason |
+| `green.rejected`, `refactor.rejected` | cycle, evidence, reason, failing |
+| `evidence.recorded` | kind, exit_code, passed, failed, classification, evidence, cycle, verdict |
 | `finding.created` / `finding.routed` / `finding.resolved` | severity, location, routed_to |
 | `config.saved` | scope, version, sha256 |
 | `project.created` / `project.updated` / `repository.added` / `repository.removed` | ids |

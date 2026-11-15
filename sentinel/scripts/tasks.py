@@ -8,6 +8,7 @@ Source: docs/architecture/agent-runtime.md, plan/v1.1/phaseC/README.md.
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 import yaml
@@ -15,6 +16,7 @@ import yaml
 import adapters
 import boundary
 import machines
+import scopes
 from errors import SentinelError
 from paths import ROOT
 from registry import _new_id, _now
@@ -27,6 +29,7 @@ RETRY_CODES = ("E_EXIT", "E_TIMEOUT", "E_RESULT_SCHEMA", "E_AGENT")
 STDERR_LINES, STDERR_LINE_CAP = 20, 500  # what a retry brief may carry of the last attempt
 WATCHED = ("sentinel.config.yaml", ".claude/agents", ".claude/skills", "AGENTS.md")
 _schemas = {}
+IGNORE_RULES = re.compile(r"(^|/)\.gitignore$|^\.git/(info/exclude|config)$")  # rules that decide which files git shows
 
 
 def load_schema(name):
@@ -79,10 +82,21 @@ def _int(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+TDD_DEFAULT_RETRIES = {"red": 2, "green": 3, "refactor": 2}
+
+
 def retry_cap(config, role, task_cap=None):
-    """Retries after the first attempt: task, agents.<role>.max_retries, limits.<role>_retries, then 2."""
+    """Retries after the first attempt: task, agents.<role>.max_retries, limits.<role>_retries, then 2. A TDD role
+    (tdd_red, ...) reads tdd.<phase>_retries, then limits.<phase>_retries, then 2, 3 or 2 (Phase D point 8); agents.<role>
+    does not apply to it."""
     if _int(task_cap) and task_cap >= 0:
         return task_cap
+    if role.startswith("tdd_"):
+        phase = role[4:]
+        for value in ((config.get("tdd") or {}).get(f"{phase}_retries"), (config.get("limits") or {}).get(f"{phase}_retries")):
+            if _int(value) and value >= 0:
+                return value
+        return TDD_DEFAULT_RETRIES.get(phase, DEFAULT_RETRIES)
     for value in (((config.get("agents") or {}).get(role) or {}).get("max_retries"),
                   (config.get("limits") or {}).get(f"{role}_retries")):
         if _int(value) and value >= 0:
@@ -140,6 +154,7 @@ class TaskOps:
     def create_task(self, slug, role, objective=None, repos=None, **kw):
         """Create a CREATED task and its task-v1 file. Keywords: write, read, timeout_seconds, max_retries,
         depends_on, cycle_id, retry_of, brief, must_follow_tdd, readonly_approved."""
+        self._tdd_precheck(slug, role, repos if isinstance(repos, list) else [])
         with self.reg.transaction():
             run = self._get_v2(slug)
             row = self._make_task(run, role, objective, repos, **kw)
@@ -172,6 +187,8 @@ class TaskOps:
             raise SentinelError("E_TRANSITION", f"run is {run['state']}; it takes no new tasks", {"state": run["state"]})
         cfg = self._run_config(run)
         names = [r for r in repos if isinstance(r, str)] if isinstance(repos, list) else []
+        if role in ("tdd_red", "tdd_green", "tdd_refactor") and names:
+            write, readonly_approved = self._tdd_permissions(run, cfg, role, names[0], write, readonly_approved)
         adapter, provider, model = select_adapter(cfg, role, names[0] if names else None)
         if timeout_seconds is None:
             policy = (cfg.get("policies") or {}).get("task_timeout_seconds")
@@ -181,8 +198,10 @@ class TaskOps:
         constraints = {"timeout_seconds": timeout_seconds, "max_retries": max_retries}
         if must_follow_tdd is not None:
             constraints["must_follow_tdd"] = bool(must_follow_tdd)
-        permissions = {"read": read if read is not None else [f"{r}/**" for r in names],
-                       "write": write if write is not None else ([] if role in READ_ONLY_ROLES else [f"{r}/**" for r in names])}
+        shared = {"specifier": [f"specs/{run['slug']}/spec.md"], "test_designer": [f"specs/{run['slug']}/features/**"]}
+        if write is None:
+            write = shared.get(role, [] if role in READ_ONLY_ROLES else [f"{r}/**" for r in names])
+        permissions = {"read": read if read is not None else [f"{r}/**" for r in names], "write": write}
         if readonly_approved:
             permissions["readonly_approved"] = list(readonly_approved)
         inp = self._spec_inputs(run)
@@ -289,11 +308,39 @@ class TaskOps:
             if isinstance(repo, dict) and repo.get("id"):
                 path = self.workspace / repo.get("path", repo["id"])
                 if path.is_dir():
-                    snap[repo["id"]] = boundary.changed_state(path)
+                    snap[repo["id"]] = boundary.changed_state(path, self._watch_globs(cfg, repo["id"]))
                     had_state[repo["id"]] = (path / self.state_dir.name).exists()
-        text = json.dumps({"repos": snap, "config": self._config_digests(), "had_state": had_state}, indent=2)
+        text = json.dumps({"repos": snap, "config": self._config_digests(), "had_state": had_state,
+                           "shared": self._shared_state(run["slug"])}, indent=2)
         (tdir / "before.json").write_text(text, encoding="utf-8")
         return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def _shared_state(self, slug):
+        """{path relative to the shared specs folder of the run: sha256} of the files the spec authors write."""
+        base = self.state_dir / "shared" / "specs" / slug
+        out = {}
+        if base.is_dir():
+            for p in sorted(base.rglob("*")):
+                if p.is_file():
+                    try:
+                        out[f"specs/{slug}/{p.relative_to(base).as_posix()}"] = hashlib.sha256(p.read_bytes()).hexdigest()
+                    except OSError:
+                        out[f"specs/{slug}/{p.relative_to(base).as_posix()}"] = None
+        return out
+
+    @staticmethod
+    def _watch_globs(cfg, repo_id):
+        """Predicate over repo-relative paths: true for a path that a glob of the repo (test, production, test
+        infrastructure) decides, so an ignored file matching one is still checked."""
+        globs = scopes.effective_globs(cfg, repo_id)
+        every = [g for key in globs for g in globs[key]]
+        return lambda path: any(scopes.glob_match(g, path) for g in every)
+
+    def repo_globs(self, run, repo_id):
+        """Effective test_globs and production_globs of a repo from the run's config snapshot (CFG-10, CFG-08)."""
+        if isinstance(run, str):
+            run = self.reg.get_run(run)
+        return scopes.effective_globs(self._run_config(run), repo_id)
 
     def _config_digests(self):
         return {name: boundary.config_state([self.workspace / name]) for name in WATCHED}
@@ -318,6 +365,7 @@ class TaskOps:
                 extra.update(provider=provider, model=None)
                 payload = {"provider": provider, "model": None, "fallback": {"from": t["provider"], "to": provider}}
             self._set_state(run, t, "RUNNING", machines.ENGINE, "task.started", extra, payload)
+            self._cycle_task_started(run, t)
         return self._in_task_tx(task_id, go)
 
     def set_process(self, task_id, pid, pid_started_at):
@@ -336,6 +384,8 @@ class TaskOps:
                         {"finished_at": _now(), "reason": reason, "waiting_on": None},
                         {"state": "CANCELLED", "error_code": None, "seconds": _seconds_since(t["started_at"]),
                          "tokens": None, "reason": reason, "exit_code": None})
+        if t["cycle_id"] and t["state"] in ("RUNNING", "WAITING_FOR_INPUT"):
+            self.on_cycle_task_cancelled(run, t)
         if t["adapter"] == "cli" and t["pid"] and t["state"] in ("RUNNING", "WAITING_FOR_INPUT"):
             self._kills.append((t["pid"], t["pid_started_at"]))
         if cascade:
@@ -444,28 +494,38 @@ class TaskOps:
             problems.append(f"task_id: {data['task_id']!r} is not this task ({task_id})")
         return (None if problems else data), raw, problems
 
-    @staticmethod
-    def _covered_repos(scope, repo_ids):
-        """Repos a write scope reaches: the first segment of a glob names a repo, a wildcard there reaches all."""
-        covered = set()
-        for glob in scope:
-            head = glob.strip("/").split("/")[0]
-            covered |= set(repo_ids) if any(ch in head for ch in "*?[") else ({head} & set(repo_ids))
-        return covered
+    def _owned_elsewhere(self, task, rid, name, cache):
+        """True when another task of the same run that ran at the same time in this repo has `name` in its write scope
+        (README point 15). The candidates are listed once per call and indexed by repo."""
+        if "others" not in cache:
+            by_repo = {}
+            for other in self.reg.rows("tasks", run_id=task["run_id"]):
+                if other["id"] == task["id"] or not other["started_at"] or other["state"] in ("CANCELLED", "CREATED", "QUEUED"):
+                    continue
+                if other["finished_at"] and task["started_at"] and other["finished_at"] < task["started_at"]:
+                    continue
+                scope = self.task_scope(other["id"])
+                for repo in self._task_repos(other, None):
+                    by_repo.setdefault(repo, []).append(scope)
+            cache["others"] = by_repo
+        return any(scopes.path_allowed(scope, rid, name) for scope in cache["others"].get(rid, ()))
 
     def _changed_files(self, run, task, tdir):
-        """(changed paths prefixed by repo id, violations [(kind, text)]) from git, compared with the snapshot stored at start.
-        Kinds: repo_not_allowed, head_moved, config_changed, state_in_repo."""
+        """(changed paths prefixed by repo id, violations [(kind, text)], change records) from git and content hashes,
+        compared with the snapshot stored at start. Kinds: repo_not_allowed, outside_write_scope, approved_test_changed,
+        ignore_rules_changed, head_moved, config_changed, state_in_repo."""
         cfg = self._run_config(run)
         try:
             doc = json.loads(task["before_snapshot"])
             before = doc["repos"]
         except (TypeError, ValueError, KeyError):
             doc, before = {}, None
-        repo_ids = [r["id"] for r in cfg.get("repos") or [] if isinstance(r, dict) and r.get("id")]
-        covered = self._covered_repos(self.task_scope(task["id"]), repo_ids)
+        scope = self.task_scope(task["id"])
+        sealed = self._sealed_doc(task) or {}
+        approved = (sealed.get("permissions") or {}).get("readonly_approved") or []
         task_repos = set(self._task_repos(task, tdir))
-        changed, violations = [], []
+        changed, violations, records, cache = [], [], [], {}
+        state_name = self.state_dir.name
         for repo in cfg.get("repos") or []:
             if not (isinstance(repo, dict) and repo.get("id")):
                 continue
@@ -473,23 +533,47 @@ class TaskOps:
             if not path.is_dir():
                 continue
             rid = repo["id"]
-            now = boundary.changed_state(path)
+            now = boundary.changed_state(path, self._watch_globs(cfg, rid))
             was = (before or {}).get(rid) or {"head": now["head"], "paths": {}}
             names = boundary.changed_between(was, now)
             changed += [f"{rid}/{n}" for n in names]
+            records += [{"repo_id": rid, "path": n, "before_sha256": was["paths"].get(n), "after_sha256": now["paths"].get(n)}
+                        for n in names]
             if before is None:
                 continue
             if now["head"] != was["head"]:
                 violations.append(("head_moved", f"{rid}: HEAD moved"))
-            if rid not in task_repos or rid not in covered:
-                violations += [("repo_not_allowed", f"{rid}/{n}") for n in names]
-            if (path / self.state_dir.name).exists() and not (doc.get("had_state") or {}).get(rid, False):
-                violations.append(("state_in_repo", f"{rid}/{self.state_dir.name}"))
+            for n in names:
+                if n == state_name or n.startswith(state_name + "/"):
+                    continue
+                full = f"{rid}/{n}"
+                if rid not in task_repos:
+                    if not self._owned_elsewhere(task, rid, n, cache):
+                        violations.append(("repo_not_allowed", full))
+                elif IGNORE_RULES.search(n):
+                    violations.append(("ignore_rules_changed", full))
+                elif any(scopes.glob_match(g, full) for g in approved):
+                    violations.append(("approved_test_changed", full))
+                elif task["role"] in ("tdd_green", "tdd_refactor") and (
+                        scopes.classify(cfg, rid, n) == "test" or scopes.is_test_infra(cfg, rid, n)):
+                    violations.append(("outside_write_scope", full))  # tests and test setup are Red's, even inside a scope glob
+                elif not scopes.path_allowed(scope, rid, n) and not self._owned_elsewhere(task, rid, n, cache):
+                    violations.append(("outside_write_scope", full))
+            if (path / state_name).exists() and not (doc.get("had_state") or {}).get(rid, False):
+                violations.append(("state_in_repo", f"{rid}/{state_name}"))
         if before is not None:
             now_cfg = self._config_digests()
             violations += [("config_changed", name) for name, digest in (doc.get("config") or {}).items()
                            if now_cfg.get(name) != digest]
-        return sorted(changed), violations
+            if doc.get("shared") is not None:
+                was_shared, now_shared = doc["shared"], self._shared_state(run["slug"])
+                for n in sorted(k for k in set(was_shared) | set(now_shared) if was_shared.get(k) != now_shared.get(k)):
+                    changed.append(n)
+                    records.append({"repo_id": None, "path": n, "before_sha256": was_shared.get(n),
+                                    "after_sha256": now_shared.get(n)})
+                    if not any(scopes.glob_match(g, n) for g in scope):
+                        violations.append(("outside_write_scope", f"{state_name}/shared/{n}"))
+        return sorted(changed), violations, records
 
     def _task_repos(self, task, tdir):
         doc = self._sealed_doc(task)
@@ -520,9 +604,10 @@ class TaskOps:
         role = task["role"]
         v = {"state": "COMPLETED", "code": None, "message": None, "details": None, "art": None,
              "changed": [], "flags": [], "park": None, "audit": None, "data": None, "violations": []}
-        changed, violations = self._changed_files(run, task, tdir)
+        changed, violations, records = self._changed_files(run, task, tdir)
         integrity = self._integrity_problems(task, tdir)
         v["changed"] = changed
+        v["records"] = records
         v["violations"] = violations
         data, raw, problems = self._read_result(task["id"], tdir)
         v["data"] = data
@@ -585,6 +670,9 @@ class TaskOps:
                      "result_artifact_id": art, "changed_files": json.dumps(v["changed"]), "waiting_on": None}
             if session_id:
                 extra["session_id"] = session_id
+            for rec in v["records"]:
+                self.reg.insert_row("changed_files", {"run_id": run["id"], "task_id": task_id, "cycle_id": task["cycle_id"],
+                                                      "phase": task["role"] if task["role"].startswith("tdd_") else None, **rec})
             for kind in sorted({k for k, _ in v["violations"]} if v["code"] == "E_SCOPE" else ()):
                 self._task_event(run, task_id, "task.scope_violation", machines.ENGINE,
                                  {"paths": [t for k, t in v["violations"] if k == kind], "kind": kind})
@@ -599,9 +687,13 @@ class TaskOps:
                 "out_of_lane": (v["data"] or {}).get("out_of_lane", [])}, indent=2), encoding="utf-8")
             if v["audit"]:
                 self.reg.add_audit("engine", "engine", *v["audit"][:2], reason=v["audit"][2])
+            state_before = run["state"]
+            if v["code"] == "E_SCOPE" and any(t.startswith(f"{self.state_dir.name}/shared/") for _, t in v["violations"]):
+                run = self._detect(self.reg.get_run_by_id(run["id"]))  # an edited approved file is R17 or R18 first
             if v["state"] == "FAILED" and v["code"] in RETRY_CODES:
                 retry = self._retry_or_park(run, self._task_row(task_id), v)
-            elif v["park"] and run["state"] not in machines.RUN_FINAL and run["state"] != "NEEDS_HUMAN":
+            elif v["park"] and run["state"] == state_before and run["state"] not in machines.RUN_FINAL \
+                    and run["state"] != "NEEDS_HUMAN":
                 self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=v["park"])
             if v["state"] == "COMPLETED":
                 self._queue_ready(run, dependents_only=True)
@@ -611,6 +703,8 @@ class TaskOps:
         row["retry"] = retry
         if v["state"] == "COMPLETED" and task["role"] in ("specifier", "test_designer"):
             row["completion"] = self.task_completed(run0["slug"], task["role"], task_id)
+        if v["state"] == "COMPLETED" and task["role"] in ("tdd_red", "tdd_green", "tdd_refactor"):
+            row["verification"] = self.verify_phase(task_id)
         return row
 
     # ---- retries (ORC-05)
@@ -620,9 +714,15 @@ class TaskOps:
         attempt = task["attempt"] or 1
         if run["state"] in machines.RUN_FINAL:
             return None
+        tdd = task["role"].startswith("tdd_") and task["cycle_id"]
         if attempt <= cap:
-            return self._make_retry(run, task, v, attempt)["id"]
-        if run["state"] != "NEEDS_HUMAN":
+            retry = self._make_retry(run, task, v, attempt)
+            if tdd:
+                self._after_retry_created(run, self._task_row(task["id"]), retry)
+            return retry["id"]
+        if tdd:
+            self._cap_reached(run, self._cycle(task["cycle_id"]), task["role"][4:], f"{v['code']}: {v['message']}")
+        elif run["state"] != "NEEDS_HUMAN":
             self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=f"{task['role']} task failed after {cap} retries")
         return None
 
@@ -653,7 +753,7 @@ class TaskOps:
             timeout_seconds=cons["timeout_seconds"], max_retries=cons.get("max_retries"),
             cycle_id=(sealed.get("input") or {}).get("cycle_id"), retry_of=task["id"], attempt=attempt + 1,
             brief="\n".join(lines) + "\n", must_follow_tdd=cons.get("must_follow_tdd"),
-            readonly_approved=perm.get("readonly_approved"), queue=True)
+            readonly_approved=None if task["role"].startswith("tdd_") else perm.get("readonly_approved"), queue=True)
 
     # ---- specifier / test_designer hook
     def _open_tasks(self, run, role):

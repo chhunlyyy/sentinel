@@ -1,0 +1,5 @@
+ALTER TABLE cycles ADD COLUMN ordinal INTEGER;
+ALTER TABLE cycles ADD COLUMN scenarios TEXT;
+ALTER TABLE cycles ADD COLUMN approved_tests TEXT;
+ALTER TABLE cycles ADD COLUMN tests TEXT;
+ALTER TABLE evidence ADD COLUMN repo_id TEXT;

@@ -23,15 +23,17 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 | PC-01 | Runtime | Task and result contracts; adapter interface | Completed | PA-02 | `tasks.py`, `adapters.py`, schemas, `migrations/0003_task_runtime.sql`, `tests/test_task_contracts.py`, `tests/test_adapter_interface.py`, `tests/test_tasks_engine.py` |
 | PC-02 | Runtime | CLI adapter (from run_stage), native adapter, scheduler, retries, cancel | Completed | PC-01 | `runtime.py`, `scheduler.py`, `run_stage.py` LiveProcess, `sentinel next`/`task run`/`task complete`, `tests/test_cli_adapter.py`, `test_native_adapter.py`, `test_scheduler.py`, `test_retries_cancel.py`, `test_next_cli.py`, `test_review_fixes.py` |
 | PD-00 | TDD | Phase D Gherkin (test plan) | Completed | PC review | approved 2026-11-14 at hash `3bb67c8c68cd911c7281b5cd2407d92b4f787274ead20d6f457a729031126441`, `plan/v1.1/phaseD/features/*.feature` |
-| PD-01 | TDD | Path-level scopes; test and production globs in profiles | In Progress | PC-02 | |
-| PD-02 | TDD | test_designer, tdd_red, tdd_green, tdd_refactor stages; failure classifier; cycle evidence | Pending | PD-01, PB-02 | |
+| PD-01 | TDD | Path-level scopes; test and production globs in profiles | Completed | PC-02 | auto-approved (delegated); `scopes.py`, `boundary.py`, `migrations/0004_write_scopes.sql`, profiles, `tests/test_write_scopes.py` |
+| PD-02 | TDD | test_designer, tdd_red, tdd_green, tdd_refactor stages; failure classifier; cycle evidence | Completed | PD-01, PB-02 | auto-approved (delegated); `cycles.py`, `classifier.py`, `binding.py`, `testsel.py`, stage templates, migrations 0005, 0006, 0008, tests `test_tdd_stages`, `test_cycle_planning`, `test_red_phase`, `test_green_refactor`, `test_cycle_evidence_trace`, `test_cycle_flow`, `test_phase_d_review` |
 | PE-00 | Verification | Phase E Gherkin (test plan) | Completed | PD review | approved 2026-11-14 at hash `dcbf28683ff5331af8e645ba4afb7c1e4f6437dab626d26a3d1785e03d320958`, `plan/v1.1/phaseE/features/*.feature` |
 | PE-01 | Verification | Verification runner, acceptance, reports, export and import | Pending | PD-02 | |
 | PE-02 | Skills | Rewrite orchestrator skill around `sentinel next`; regenerate adapters | Pending | PE-01 | |
 | PF-00 | Local API | Phase F Gherkin (test plan) | Completed | PE review | approved 2026-11-14 at hash `5ef93cdedf89f47d667c41d18e964070b18fbb79b5ddb8274a002d019865dfbc`, `plan/v1.1/phaseF/features/*.feature` |
 | PF-01 | Local API | Server, auth, allow-listed operations, SSE | Pending | PE-01 | |
+| PG-00 | Dashboard | Phase G Gherkin (test plan) | Completed | PF review | approved 2026-11-14 at hash `1d27ec935a4ef85ae51e33eca9f968423640e4d831b10912560ffc5b0299b257`, `plan/v1.1/phaseG/features/*.feature` |
 | PG-01 | Dashboard | Installation, projects, repos, configuration center, readiness | Pending | PF-01 | |
 | PG-02 | Dashboard | Tasks, approval center, monitoring, TDD, verification, diffs, trace | Pending | PG-01 | |
+| PH-00 | Release | Phase H Gherkin (test plan) | Completed | PG review | approved 2026-11-14 at hash `d61984bef91e27725b81c9d4723e298e7a5e2b94716e246c11b6b8d54e994012`, `plan/v1.1/phaseH/features/*.feature` |
 | PH-01 | Release | Notifications, analytics, audit, security tests, docs, version 1.1.0 | Pending | PG-02 | |
 
 ## Phase A notes
@@ -57,3 +59,14 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 - Opus review: 2 blockers (agent could bypass the scope check by deleting or editing before.json / task.sealed.json), 6 major (false process-lost, stage run hang regression, group children surviving cancel, glob false negative, exponential overlap, config schema rejecting documented keys), 8 minor; all fixed. Tampering with task files now yields E_INTEGRITY and NEEDS_HUMAN.
 - Behaviour to note: `sentinel submit` removed (use `task run` / `task complete`); `stage run` refused on v2 runs; cancel may block the caller up to 10 s; missing runner -> run BLOCKED.
 - Phase C accepted by human review 2026-11-14.
+- Phase G Gherkin approved 2026-11-14 with decision G-1: in 1.1.0 the dashboard shows projects, repos and configuration read-only and points to the CLI command or file for changes; mutating routes (project register, repo changes, config save/restore/import, provider tests, publish) move to a later release. Affected SPEC rows (parts of DSH-02, PRJ, REP, CFG, PRV, AGT-08) to be marked LATER in Phase H docs; DSH-07 (accessibility) and SEC-09 (XSS) to be added to SPEC.md.
+- Phase H Gherkin approved 2026-11-14 as drafted: G-1 LATER list accepted (1.1.0 ships without dashboard project creation/config editing, VIS-07 deferred); pyproject classifier stays Beta; audit hash chain with `sentinel audit verify`; release gate requires every AC id A-H in a passing test name; metric definitions as in the Phase H README.
+- 2026-11-14: the user delegated approval while away. From Phase D onward, phase reviews are approved by the orchestrating session after the Opus review findings are fixed and all tests pass; each auto-approval is marked "auto-approved (delegated)". Commits and pushes to `v1.1-core` carry no co-author lines.
+
+## Phase D notes
+
+- Evidence 2026-11-15: Red recorded for PD-01 (module missing), PD-02b (per feature) and review fixes (55 failures/errors); PD-02a recorded no RED, so the Opus review mutation-tested it (13 of 15 mutants killed, 2 equivalent). Green: unittest 526 OK in 111 s; selftest 164 passed, 0 failed. Phase D Gherkin hash unchanged (`3bb67c8c…`).
+- Opus review: 1 blocker (Green could write test files/conftest when globs overlap), 7 major (skipped tests passed, rest-unchanged not enforced with real runners, shipped profile commands unusable, ignore-rule hiding, renamed Rule deadlock, E_SCOPE dead end, Phase F retry not cycle-aware), 7 minor; all fixed except the optional cycles.py split.
+- Migration renumbered: Phase D review migration is `0008_cycle_review.sql` (Phase F owns 0007). Phase E takes 0009, Phase H 0010.
+- Known limits: flutter `tojunit` path untested offline; selector values must be quoted in profile templates (names with quotes/backslashes refused); cancelling a cycle task does not queue a retry by itself (Phase F ControlOps must call `retry_cycle_task`).
+- Phase D auto-approved (delegated) 2026-11-15.

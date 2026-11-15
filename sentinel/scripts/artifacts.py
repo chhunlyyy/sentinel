@@ -277,6 +277,12 @@ class Scenario:
     line: int
     path: str
     example_rows: int = 0
+    rule: object = None            # name of the Rule it sits in, None before the first Rule (Phase D)
+    feature_all_tags: list = field(default_factory=list)   # every tag of the Feature line(s), without "@"
+    rule_all_tags: list = field(default_factory=list)      # every tag of its Rule, without "@"
+    start: int = 0                 # first line of the scenario including its tags
+    end: int = 0
+    text: str = ""                 # the scenario's lines, for per-scenario change detection
 
 
 @dataclass
@@ -300,6 +306,8 @@ def parse_gherkin(text, path):
         return pf
     feature_seen = False
     feature_tags, rule_tags, pending = [], [], []
+    feature_all, rule_all, rule_name, pending_line, last = [], [], None, 0, None
+    lines = text.splitlines()
     ctx = None                     # "background" | "scenario" | "outline" | "examples" | None
     cur = None
     in_doc = None
@@ -336,6 +344,8 @@ def parse_gherkin(text, path):
                 err(n, "only English Gherkin is supported")
             continue
         if line.startswith("@"):
+            if not pending:
+                pending_line = n
             pending += [t[1:] for t in line.split() if t.startswith("@")]
             continue
         kw = re.match(r"^([A-Za-z][A-Za-z ]*?)\s*:", line)
@@ -350,11 +360,16 @@ def parse_gherkin(text, path):
             else:
                 feature_seen = True
                 feature_tags = [t for t in pending if t.startswith("REQ-")]
+                feature_all = list(pending)
             pending = []
             continue
         if word == "Rule":
             close_outline(); cur = None; ctx = None
+            if last is not None and not last.end:
+                last.end = (pending_line if pending else n) - 1
             rule_tags = [t for t in pending if t.startswith("REQ-")]
+            rule_all = list(pending)
+            rule_name = line.split(":", 1)[1].strip()
             pending = []
             continue
         if word == "Background":
@@ -364,7 +379,13 @@ def parse_gherkin(text, path):
         if word in ("Scenario", "Scenario Outline"):
             close_outline()
             kind = "outline" if word == "Scenario Outline" else "scenario"
-            cur = Scenario(line.split(":", 1)[1].strip(), kind, pending, feature_tags + rule_tags, n, path)
+            start = pending_line if pending else n
+            if last is not None and not last.end:
+                last.end = start - 1
+            cur = Scenario(line.split(":", 1)[1].strip(), kind, pending, feature_tags + rule_tags, n, path,
+                           rule=rule_name, feature_all_tags=feature_all, rule_all_tags=rule_all if rule_name else [],
+                           start=start)
+            last = cur
             pf.scenarios.append(cur)
             outline_line = n
             ctx = kind
@@ -395,11 +416,47 @@ def parse_gherkin(text, path):
             continue
         # description text: ignored
     close_outline()
+    for sc in pf.scenarios:
+        sc.end = sc.end or len(lines)
+        block = lines[sc.start - 1:sc.end]
+        indent = len(block[0]) - len(block[0].lstrip()) if block else 0
+        sc.text = "\n".join((l[indent:] if l[:indent].strip() == "" else l).rstrip() for l in block).strip()
     if not feature_seen:
         pf.errors.append(f"{path}: no Feature found")
     elif not pf.scenarios and not any(e.startswith(path + ":") and "step outside" in e for e in pf.errors):
         pf.errors.append(f"{path}: Feature has no scenarios")
     return pf
+
+
+def scenario_key(path, name):
+    return f"{path} :: {name}"
+
+
+def behavior_groups(features_dir):
+    """Behavior groups of an approved Gherkin set, in file order (Phase D point 1): one per Rule, or one per Feature
+    without Rules; scenarios before the first Rule of a file with Rules form a "(no rule)" group.
+    [{"path", "rule", "label", "repo_tags", "scenarios": [{"key", "name", "sha256", "line"}]}]"""
+    groups = []
+    for rel, p in _feature_files(Path(features_dir)):
+        pf = parse_gherkin(p.read_bytes().decode("utf-8", "replace"), rel)
+        has_rules = any(s.rule for s in pf.scenarios)
+        by_rule = {}
+        for sc in pf.scenarios:
+            if sc.rule is None and has_rules:
+                label, rule = f"{rel} :: (no rule)", "(no rule)"
+            elif sc.rule is None:
+                label, rule = rel, None
+            else:
+                label, rule = f"{rel} :: Rule {sc.rule}", sc.rule
+            g = by_rule.get(label)
+            if g is None:
+                tags = [t[5:] for t in (sc.rule_all_tags or []) if t.startswith("repo-")] or \
+                       [t[5:] for t in sc.feature_all_tags if t.startswith("repo-")]
+                g = by_rule[label] = {"path": rel, "rule": rule, "label": label, "repo_tags": tags, "scenarios": []}
+                groups.append(g)
+            g["scenarios"].append({"key": scenario_key(rel, sc.name), "name": sc.name, "line": sc.line, "text": sc.text,
+                                   "sha256": hashlib.sha256(sc.text.encode("utf-8")).hexdigest()})
+    return groups
 
 
 # ---------------------------------------------------------------- coverage table
@@ -492,7 +549,7 @@ def validate_gherkin(features_dir, spec_text, spec_version=None):
                 once(f"{a} is not in {vtext}")
                 continue
             covered.add(a)
-            links.append(("ac", a, "scenario", where))
+            links.append(("ac", a, "scenario", scenario_key(s.path, s.name)))
             for r in dict.fromkeys(reqs):
                 if r in spec["requirements"] and r not in criteria[a]:
                     w = f"{a} is not linked to {r} in the approved specification"
