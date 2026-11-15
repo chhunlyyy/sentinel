@@ -58,7 +58,8 @@ def model_for(config, stage):
     return route.get("model", "inherit")
 
 
-HUMAN_ONLY = "\n\nNever run `sentinel approve` or `sentinel accept`. Those are human decisions made at a terminal.\n"
+HUMAN_ONLY = ("\n\nNever run `sentinel approve` or `sentinel accept`. Those are human decisions made at a terminal.\n"
+              "You never read the dashboard token (~/.config/sentinel/server.json) and never call the local API.\n")
 
 
 def agent_file(name, description, tools, model, body):

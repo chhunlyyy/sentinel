@@ -244,7 +244,7 @@ class TaskOps:
                 "model": task["model"], "adapter": task["adapter"]}
 
     def _task_event(self, run, task_id, type, actor, payload):
-        self.reg.add_event(run["id"], type, actor, payload, task_id=task_id)
+        self.reg.add_event(run["id"], type, actor, payload, task_id=task_id, **self._actor_ctx(actor))
 
     def _auto_task(self, run, role):
         """R3 and R5: the engine creates the specifier or test_designer task and queues it."""

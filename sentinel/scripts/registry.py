@@ -87,7 +87,11 @@ class Registry:
         except Exception as e:
             conn.close()
             raise SentinelError("E_MIGRATION", f"cannot open registry: {e}") from e
-        reg._index_legacy()
+        try:
+            reg._index_legacy()
+        except BaseException:
+            conn.close()
+            raise
         return reg
 
     def close(self):
@@ -275,10 +279,11 @@ class Registry:
         return self._one("SELECT * FROM config_versions WHERE id=?", (id,))
 
     # ---- events / audit
-    def add_event(self, run_id, type, actor, payload=None, task_id=None):
+    def add_event(self, run_id, type, actor, payload=None, task_id=None, actor_name=None, channel=None):
         cur = self._c.execute(
-            "INSERT INTO events(run_id, task_id, type, actor, payload, at) VALUES (?,?,?,?,?,?)",
-            (run_id, task_id, type, actor, json.dumps(payload) if payload is not None else None, _now()))
+            "INSERT INTO events(run_id, task_id, type, actor, payload, at, actor_name, channel) VALUES (?,?,?,?,?,?,?,?)",
+            (run_id, task_id, type, actor, json.dumps(payload) if payload is not None else None, _now(),
+             actor_name, channel))
         return cur.lastrowid
 
     def list_events(self, run_id=None, type=None):

@@ -51,6 +51,8 @@ Events are rows in the append-only `events` table (`docs/architecture/data-archi
 - `GET /api/v1/events?project=<pid>&run=<slug>` (both optional filters).
 - Reconnect with `Last-Event-ID`; the server replays newer rows from the database.
 - Heartbeat comment every 15 s.
+- `Last-Event-ID` is `<project>:<id>`. An id that cannot be resumed exactly (unknown, malformed, unknown project), a restored database, and a project that becomes unavailable or available again produce a `resync` message `{project, reason}` (a stream control message, not a stored event): the client re-fetches the named project.
+- The actor `name` and `channel` of the envelope are stored with the event (`events.actor_name`, `events.channel`); older rows are served with name null and the channel derived from the kind.
 - After reconnect the client also re-fetches the resource it shows (state refresh), so a missed event can never leave the UI wrong.
 - The server polls each registered workspace database for new event ids (every 500 ms) because CLI and AI-tool processes write events too.
 

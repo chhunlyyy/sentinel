@@ -349,7 +349,9 @@ def cmd_sync_adapters(args):
 
 
 HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)",
-                       "Bash(sentinel --dir * approve *)", "Bash(sentinel --dir * accept *)"]
+                       "Bash(sentinel --dir * approve *)", "Bash(sentinel --dir * accept *)",
+                       "Read(~/.config/sentinel/**)", "Read(//**/.config/sentinel/server.json)",
+                       "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)"]
 
 
 def deny_human_commands(workspace):
@@ -733,6 +735,30 @@ def cmd_next(args):
         engine.close()
 
 
+def port_arg(text):
+    try:
+        port = int(text)
+    except ValueError:
+        port = 0
+    if not 1024 <= port <= 65535:
+        raise argparse.ArgumentTypeError("the port must be from 1024 to 65535")
+    return port
+
+
+def cmd_dashboard(args):
+    """Start the local dashboard server, or attach to the one that runs. A human at a terminal only: both
+    ways print a URL that holds the token."""
+    if os.environ.get("SENTINEL_TASK_ID"):
+        raise SentinelError("E_ACTOR", "a task process may not run `sentinel dashboard`",
+                            {"task": os.environ["SENTINEL_TASK_ID"], "command": "dashboard"})
+    if not is_tty():
+        raise refuse_without_tty("`sentinel dashboard`")
+    workspace = next((f for f in [Path(args.dir).resolve(), *Path(args.dir).resolve().parents]
+                      if (f / CONFIG_NAME).exists()), None)
+    from apiserver.lifecycle import run_dashboard
+    sys.exit(run_dashboard(workspace, args.port, args.no_open))
+
+
 def cmd_task(args):
     """task run | task complete. A task process (SENTINEL_TASK_ID set) is refused by the engine."""
     config_path, config = load_config(args.dir)
@@ -969,6 +995,11 @@ def main():
         member = task_sub.add_parser(name, help=text)
         member.add_argument("task_id")
         member.set_defaults(func=cmd_task)
+
+    dashboard = sub.add_parser("dashboard", help="start the local dashboard server, or attach to the running one (human, interactive terminal only)")
+    dashboard.add_argument("--port", type=port_arg, help="port to listen on, 1024 to 65535 (default: a free port)")
+    dashboard.add_argument("--no-open", action="store_true", help="do not open a browser")
+    dashboard.set_defaults(func=cmd_dashboard)
 
     triage = sub.add_parser("triage", help="submit triage factors for a version 2 run; the engine sets the tier")
     triage.add_argument("slug")

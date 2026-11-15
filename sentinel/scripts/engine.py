@@ -14,6 +14,7 @@ from pathlib import Path
 import artifacts as A
 import machines
 from errors import SentinelError
+from controls import ControlOps
 from registry import Registry, _now
 from runtime import RuntimeOps
 from tasks import TaskOps, retry_cap
@@ -42,8 +43,10 @@ R18_SOURCES = ("GHERKIN_APPROVED", "EXECUTING", "VERIFYING", "REVIEWING")
 UPSTREAM = "upstream specification approval invalidated"
 
 
-class Engine(RuntimeOps, TaskOps):
+class Engine(RuntimeOps, TaskOps, ControlOps):
     def __init__(self, state_dir, workspace, config, release_lock=None):
+        self.channel = None
+        self.actor_name = None
         self.state_dir = Path(state_dir)
         self.workspace = Path(workspace)
         self.config = config or {}
@@ -108,7 +111,7 @@ class Engine(RuntimeOps, TaskOps):
             Shared(self.workspace, self.config).release(slug)
 
     def _event(self, run, type, actor, payload):
-        self.reg.add_event(run["id"], type, actor, payload)
+        self.reg.add_event(run["id"], type, actor, payload, **self._actor_ctx(actor))
 
     def _move(self, run, to, actor, reason=None):
         """Inside a transaction: validate and apply a state change. Returns the rule and extra fields."""
@@ -166,7 +169,8 @@ class Engine(RuntimeOps, TaskOps):
         return run
 
     # ---- commands
-    def create_run(self, slug, actor, type=None, baseline=None, request=None, adhoc=False):
+    def create_run(self, slug, actor, type=None, baseline=None, request=None, adhoc=False,
+                   priority=None, requested_tier=None, origin=None):
         baseline = baseline or {}
         config_text = json.dumps(self.config, sort_keys=True)
         cfg_file = self.workspace / "sentinel.config.yaml"
@@ -180,6 +184,7 @@ class Engine(RuntimeOps, TaskOps):
                 "slug": slug, "request": request, "type": type, "tier": None, "initial_tier": None,
                 "state": "CREATED", "execution_status": "running", "acceptance_status": "pending",
                 "workflow_version": WORKFLOW_VERSION, "config_snapshot_id": snap, "adhoc": int(bool(adhoc)),
+                "priority": priority, "requested_tier": requested_tier, "origin": origin,
             })
             run = self.reg.get_run(slug)
             for repo_id, sha in sorted(baseline.items()):
@@ -194,6 +199,8 @@ class Engine(RuntimeOps, TaskOps):
         self._sync(slug)
         with self.reg.transaction():
             run = self._get_v2(slug)
+            if requested is None:
+                requested = run.get("requested_tier")  # a tier asked for at creation (dashboard) can only raise the matrix tier
             tier = machines.compute_tier(factors, requested)
             machines.check_tier_change(run["tier"], tier)
             self.reg.update_run(slug, tier=tier, initial_tier=tier)
@@ -556,6 +563,7 @@ class Engine(RuntimeOps, TaskOps):
         """A human decision on the artifact in review. Give the full `sha256` or the typed 8-character `prefix`."""
         gate = self._gate(gate)
         who = approver or actor
+        self.channel, self.actor_name = channel, who  # the events of this decision say who decided and through which door
         try:
             return self._decide(slug, gate, decision, actor, sha256, prefix, comment, who, approver_name, channel)
         except SentinelError as err:

@@ -29,7 +29,7 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 | PE-01 | Verification | Verification runner, acceptance, reports, export and import | Pending | PD-02 | |
 | PE-02 | Skills | Rewrite orchestrator skill around `sentinel next`; regenerate adapters | Pending | PE-01 | |
 | PF-00 | Local API | Phase F Gherkin (test plan) | Completed | PE review | approved 2026-11-14 at hash `5ef93cdedf89f47d667c41d18e964070b18fbb79b5ddb8274a002d019865dfbc`, `plan/v1.1/phaseF/features/*.feature` |
-| PF-01 | Local API | Server, auth, allow-listed operations, SSE | Pending | PE-01 | |
+| PF-01 | Local API | Server, auth, allow-listed operations, SSE | In Progress (acceptance endpoints wait for Phase E) | PE-01 | `sentinel/scripts/apiserver/`, `controls.py`, `migrations/0007_phase_f_api.sql`, `tests/test_server_*.py` (full suite 527 OK, 3 skipped for Phase E), selftest 167 passed |
 | PG-01 | Dashboard | Installation, projects, repos, configuration center, readiness | Pending | PF-01 | |
 | PG-02 | Dashboard | Tasks, approval center, monitoring, TDD, verification, diffs, trace | Pending | PG-01 | |
 | PH-01 | Release | Notifications, analytics, audit, security tests, docs, version 1.1.0 | Pending | PG-02 | |
