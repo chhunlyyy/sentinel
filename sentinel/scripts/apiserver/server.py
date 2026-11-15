@@ -46,6 +46,25 @@ PLACEHOLDER = """<!doctype html>
 """
 
 
+MAX_JSON_DEPTH = 32
+MAX_STREAMS_PER_SESSION = 32
+
+
+def _no_constant(name):
+    raise ValueError(f"{name} is not allowed in JSON")
+
+
+def _too_deep(doc):
+    stack = [(doc, 1)]
+    while stack:
+        value, depth = stack.pop()
+        if isinstance(value, (dict, list)):
+            if depth > MAX_JSON_DEPTH:
+                return True
+            stack.extend((v, depth + 1) for v in (value.values() if isinstance(value, dict) else value))
+    return False
+
+
 def setting(value, env_name, default):
     """A tuning value: the argument, else (only with SENTINEL_TEST_MODE=1) the environment in milliseconds, else the default."""
     if value is not None:
@@ -238,6 +257,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle(self):
         api = self.api
+        if len(self.headers.get_all("Host") or []) > 1:
+            raise HttpError("E_VALIDATION", "more than one Host header")
         if not api.host_ok(self.headers.get("Host")):
             raise HttpError("E_HOST", "the Host header must be 127.0.0.1 or localhost with this server's port")
         origin = self.headers.get("Origin")
@@ -265,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
         self.ctx = routes.Ctx(api, query, body, csrf, self.headers)
         status, result = route.handler(self.ctx, **params)
         if isinstance(result, routes.StreamRequest):
-            return self._stream(result)
+            return self._stream(result, csrf)
         self._json(status, result)
 
     # ---- auth
@@ -304,8 +325,10 @@ class Handler(BaseHTTPRequestHandler):
         if media != "application/json":
             raise HttpError("E_MEDIA_TYPE", "the body must be application/json")
         try:
-            doc = json.loads(raw.decode("utf-8")) if raw.strip() else None
-        except (ValueError, UnicodeDecodeError):
+            doc = json.loads(raw.decode("utf-8"), parse_constant=_no_constant) if raw.strip() else None
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            doc = None
+        if isinstance(doc, dict) and _too_deep(doc):
             doc = None
         if not isinstance(doc, dict):
             raise HttpError("E_VALIDATION", "the body must be a JSON object")
@@ -382,9 +405,11 @@ class Handler(BaseHTTPRequestHandler):
         for i in range(0, len(data), 65536):
             self.wfile.write(data[i:i + 65536])
 
-    def _stream(self, req):
+    def _stream(self, req, session):
         api = self.api
-        sub = api.hub.subscribe(req.project, req.run)
+        sub = api.hub.subscribe(req.project, req.run, session, MAX_STREAMS_PER_SESSION)
+        if sub is None:
+            raise HttpError("E_RATE_LIMIT", f"this session already has {MAX_STREAMS_PER_SESSION} event streams open")
         try:
             initial = self._resume(req, sub)
             self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 32768)

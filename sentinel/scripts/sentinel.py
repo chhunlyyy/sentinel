@@ -354,6 +354,16 @@ HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)",
                        "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)"]
 
 
+def _config_dir_rules():
+    """Deny rules for the folder `sentinel dashboard` really uses (it follows XDG_CONFIG_HOME)."""
+    from apiserver import userdir
+    folder = str(userdir.config_dir())
+    default = str(Path.home() / ".config" / "sentinel")
+    if folder == default:
+        return []
+    return [f"Read({folder}/**)", f"Bash(cat {folder}/*)"]
+
+
 def deny_human_commands(workspace):
     """Merge deny rules for the human-only commands into .claude/settings.json (keeps every other setting).
 
@@ -373,7 +383,7 @@ def deny_human_commands(workspace):
     deny = perms.setdefault("deny", [])
     if not isinstance(deny, list):
         sys.exit(f"{path}: \"permissions.deny\" must be a list; fix it and run sync-adapters again")
-    for rule in HUMAN_ONLY_COMMANDS:
+    for rule in HUMAN_ONLY_COMMANDS + _config_dir_rules():
         if rule not in deny:
             deny.append(rule)
     path.parent.mkdir(parents=True, exist_ok=True)

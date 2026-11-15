@@ -115,15 +115,44 @@ class Registry:
                 time.sleep(0.05 * (attempt + 1))
         raise SentinelError("E_MIGRATION", f"cannot switch registry to WAL: {last}")
 
+    def _applied(self):
+        """The set of applied migration numbers from `meta`, or None for a database that has no record yet."""
+        has = self._c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'").fetchone()
+        if not has:
+            return set()
+        row = self._c.execute("SELECT value FROM meta WHERE key='applied_migrations'").fetchone()
+        if not row:
+            return None if self.schema_version() >= 1 else set()
+        try:
+            return {int(v) for v in json.loads(row[0])}
+        except (ValueError, TypeError):
+            return None
+
+    def _record_applied(self, applied):
+        self._c.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('applied_migrations', ?)",
+                        (json.dumps(sorted(applied)),))
+        self._c.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
+                        (str(max(applied) if applied else 0),))
+
     def _migrate(self, migs):
-        if not [m for m in migs if m[0] > self.schema_version()]:
+        """Apply every migration file that is not recorded as applied, in numeric order (a lower-numbered file that
+        arrives later, for example from another branch, is applied too). A database from before the record existed
+        is treated as having applied every file numbered up to its schema_version, and that is written once."""
+        known = self._applied()
+        if known is not None and all(m[0] in known for m in migs):
             return
         self._c.execute("BEGIN IMMEDIATE")
         version, name = 0, ""
         try:
             current = self.schema_version()  # re-read under the lock: another process may have migrated
-            pending = [m for m in migs if m[0] > current]
+            applied = self._applied()
+            backfill = applied is None
+            if backfill:
+                applied = {m[0] for m in migs if m[0] <= current}
+            pending = [m for m in migs if m[0] not in applied]
             if not pending:
+                if backfill:
+                    self._record_applied(applied | ({current} if current else set()))
                 self._c.execute("COMMIT")
                 return
             if current >= 1:
@@ -135,11 +164,13 @@ class Registry:
                 finally:
                     src.close()
                     bak.close()
+            if current > max(applied, default=0):
+                applied.add(current)  # a version recorded without a file stays the high-water mark
             for version, name, sql in pending:
                 for stmt in _split_statements(sql):
                     self._c.execute(stmt)
-                self._c.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('schema_version', ?)",
-                                (str(version),))
+                applied.add(version)
+                self._record_applied(applied)
             self._c.execute("COMMIT")
         except Exception as e:
             try:

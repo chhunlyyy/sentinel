@@ -26,10 +26,39 @@ def resync(project, reason):
     return wire("resync", {"project": project, "reason": reason})
 
 
+QUEUE_MAX = 10000
+
+
 class Sub:
-    def __init__(self, project, run, snapshot):
-        self.project, self.run, self.snapshot = project, run, snapshot
-        self.q = queue.Queue()
+    def __init__(self, project, run, snapshot, session=None, queue_max=QUEUE_MAX):
+        self.project, self.run, self.snapshot, self.session = project, run, snapshot, session
+        self.q = queue.Queue(maxsize=queue_max)
+
+    def close(self):
+        try:
+            self.q.put_nowait(None)
+        except queue.Full:
+            try:
+                while True:
+                    self.q.get_nowait()
+            except queue.Empty:
+                pass
+            self.q.put_nowait(None)
+
+    def push(self, text, project_id):
+        """Queue a message. A client that falls too far behind loses its backlog and gets one resync instead."""
+        try:
+            self.q.put_nowait(text)
+        except queue.Full:
+            try:
+                while True:
+                    self.q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.q.put_nowait(resync(project_id, "client too slow"))
+            except queue.Full:
+                pass
 
     def wants(self, project, slug):
         return (self.project is None or self.project == project) and (self.run is None or slug == self.run)
@@ -51,8 +80,9 @@ EVENT_SQL = ("SELECT e.*, r.slug AS run_slug FROM events e LEFT JOIN runs r ON r
 
 
 class Hub:
-    def __init__(self, projects, interval=0.5, log=None):
+    def __init__(self, projects, interval=0.5, log=None, queue_max=QUEUE_MAX):
         self.projects = projects
+        self.queue_max = queue_max
         self.interval = interval
         self.log = log or (lambda msg: None)
         self.cursors, self.avail = {}, {}
@@ -73,7 +103,7 @@ class Hub:
             self._thread.join(5)
         with self.lock:
             for sub in list(self.subs):
-                sub.q.put(None)
+                sub.close()
 
     def count(self):
         with self.lock:
@@ -87,9 +117,11 @@ class Hub:
                 self.log(f"event poller: {type(e).__name__}: {e}")
 
     # ---- subscribers
-    def subscribe(self, project, run):
+    def subscribe(self, project, run, session=None, max_per_session=None):
         with self.lock:
-            sub = Sub(project, run, dict(self.cursors))
+            if max_per_session and session is not None and sum(1 for s in self.subs if s.session == session) >= max_per_session:
+                return None
+            sub = Sub(project, run, dict(self.cursors), session, self.queue_max)
             self.subs.add(sub)
             return sub
 
@@ -100,13 +132,13 @@ class Hub:
     def _broadcast(self, project_id, slug, text):
         for sub in self.subs:
             if sub.wants(project_id, slug):
-                sub.q.put(text)
+                sub.push(text, project_id)
 
     def _broadcast_resync(self, project_id, reason):
         with self.lock:
             for sub in self.subs:
                 if sub.project in (None, project_id):
-                    sub.q.put(resync(project_id, reason))
+                    sub.push(resync(project_id, reason), project_id)
 
     # ---- reading
     def _open(self, project):

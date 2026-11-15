@@ -1,10 +1,12 @@
 """`sentinel dashboard`: start the one server of this user, or attach to the one that runs (README point 7, 8)."""
 import errno
+import json
 import os
 import signal
 import sys
 import threading
 import time
+from pathlib import Path
 
 from paths import ROOT
 
@@ -20,6 +22,38 @@ def _say(text, err=False):
 
 def _url(port, token):
     return f"http://127.0.0.1:{port}/auth?t={token}"
+
+
+REDIRECT = "open.html"
+
+
+def open_browser(cfgdir, port, token):
+    """Open the browser on a private redirect file, so the token never appears in the browser's command line.
+
+    The file lives in the 0700 config folder with mode 0600 and holds the one-time /auth URL. Returns its path.
+    """
+    path = Path(cfgdir) / REDIRECT
+    remove_redirect(cfgdir)
+    url = _url(port, token)
+    page = ('<!doctype html><meta charset="utf-8"><meta name="referrer" content="no-referrer">'
+            f'<meta http-equiv="refresh" content="0;url={url}"><title>Sentinel</title>'
+            f'<script>location.replace({json.dumps(url)})</script>')
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(page)
+    import webbrowser
+    webbrowser.open(path.as_uri())
+    return path
+
+
+def remove_redirect(cfgdir):
+    path = Path(cfgdir) / REDIRECT
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
 
 
 def _version():
@@ -90,8 +124,7 @@ def _serve(cfgdir, lock, workspace, port, no_open):
         signal.signal(sig, lambda *_: stop.set())
     if not no_open:
         try:
-            import webbrowser
-            webbrowser.open(url)
+            open_browser(cfgdir, server.port, server.token)
         except Exception:
             pass
     try:
@@ -99,5 +132,6 @@ def _serve(cfgdir, lock, workspace, port, no_open):
             pass
     finally:
         server.stop()
+        remove_redirect(cfgdir)
         userdir.remove_server_json(cfgdir, os.getpid())
     return 0

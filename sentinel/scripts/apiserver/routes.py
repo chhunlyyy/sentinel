@@ -194,10 +194,7 @@ def h_approval_list(ctx):
 
 def h_audit(ctx):
     pid = ctx.query.get("project")
-    out = views.audit_rows(ctx.projects, pid, ctx.query)
-    if pid:
-        return 200, scrub_obj(ctx.projects.scrubber(ctx.projects.get(pid)), out)
-    return 200, out
+    return 200, views.audit_rows(ctx.projects, pid, ctx.query)
 
 
 def h_events(ctx):

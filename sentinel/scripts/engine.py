@@ -199,8 +199,10 @@ class Engine(RuntimeOps, TaskOps, ControlOps):
         self._sync(slug)
         with self.reg.transaction():
             run = self._get_v2(slug)
-            if requested is None:
-                requested = run.get("requested_tier")  # a tier asked for at creation (dashboard) can only raise the matrix tier
+            stored = run.get("requested_tier")  # a tier asked for at creation (dashboard)
+            if stored is not None:  # the higher of the two wins: an explicit value never lowers a dashboard request
+                ok = isinstance(requested, int) and not isinstance(requested, bool)
+                requested = stored if requested is None else (max(requested, stored) if ok else requested)
             tier = machines.compute_tier(factors, requested)
             machines.check_tier_change(run["tier"], tier)
             self.reg.update_run(slug, tier=tier, initial_tier=tier)

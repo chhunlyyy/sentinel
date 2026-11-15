@@ -3,6 +3,7 @@ import base64
 import hashlib
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 
@@ -11,8 +12,11 @@ import machines
 from errors import SentinelError
 from paths import ROOT, slug_problem
 
+from .projects import scrub_obj
+
 LIMIT_DEFAULT, LIMIT_MAX = 50, 200
 LOG_CHUNK = 1024 * 1024
+LINE_MAX = 8192  # a longer log line is shown cut (the scrubber is slow on very long strings)
 APPROVAL_STATES = ("DRAFT", "IN_REVIEW", "CHANGES_REQUESTED", "REJECTED", "APPROVED", "INVALIDATED")
 GATES = ("specification", "gherkin")
 
@@ -258,16 +262,51 @@ def _run_dir(state_dir, slug):
 def report(state_dir, slug, fmt):
     if fmt not in ("json", "md"):
         raise validation("format must be json or md", "format")
-    path = _run_dir(state_dir, slug) / ("report.json" if fmt == "json" else "report.md")
-    if not path.is_file():
+    root = _run_dir(state_dir, slug)
+    path = root / ("report.json" if fmt == "json" else "report.md")
+    if _has_link(path, root) or not path.is_file():
         raise SentinelError("E_PRECONDITION", f"run {slug} has no report yet", {"slug": slug})
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = _read_regular(path).decode("utf-8", errors="replace")
     if fmt == "md":
         return {"format": "md", "content": text}
     try:
         return json.loads(text)
     except ValueError:
         return {"format": "json", "content": text}
+
+
+def _has_link(path, root):
+    """True when `path` or any folder between `root` and it is a symbolic link (or the path leaves `root`)."""
+    try:
+        rel = Path(os.path.normpath(path)).relative_to(os.path.normpath(root))
+    except ValueError:
+        return True
+    cur = Path(os.path.normpath(root))
+    for part in rel.parts:
+        cur = cur / part
+        if cur.is_symlink():
+            return True
+    return False
+
+
+def _open_regular(path):
+    """Open a regular file for reading without following a final symbolic link."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as e:
+        raise SentinelError("E_NOT_FOUND", "no such file", {}) from e
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise SentinelError("E_NOT_FOUND", "no such file", {})
+    except BaseException:
+        os.close(fd)
+        raise
+    return os.fdopen(fd, "rb")
+
+
+def _read_regular(path):
+    with _open_regular(path) as f:
+        return f.read()
 
 
 def _inside(path, root):
@@ -286,25 +325,41 @@ def artifact(reg, state_dir, slug, run, aid):
     path = path if path.is_absolute() else Path(state_dir) / path
     if not _inside(path, _run_dir(state_dir, slug)):
         raise SentinelError("E_NOT_FOUND", f"no artifact {aid} in run {slug}", {"artifact": aid})
+    if _has_link(path, _run_dir(state_dir, slug)):
+        raise SentinelError("E_NOT_FOUND", f"no artifact {aid} in run {slug}", {"artifact": aid})
     if not path.exists():
         raise SentinelError("E_NOT_FOUND", f"artifact {aid} has no file", {"artifact": aid})
     stored = row["sha256"]
-    if row["kind"] in ("spec", "gherkin") and row["version"]:
-        actual = A.stored_hash(state_dir, slug, row["kind"], row["version"])
-    elif path.is_file():
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if path.is_dir():
+        content = _folder_content(path, row, state_dir, slug, aid)
     else:
-        actual = stored
+        data = _read_regular(path)
+        if row["kind"] in ("spec", "gherkin") and row["version"]:
+            actual = A.stored_hash(state_dir, slug, row["kind"], row["version"])
+        else:
+            actual = hashlib.sha256(data).hexdigest()
+        if stored and actual != stored:
+            raise SentinelError("E_INTEGRITY", f"artifact {aid} no longer matches its stored hash",
+                                {"artifact": aid, "stored_sha256": stored})
+        content = data.decode("utf-8", errors="replace")
+    return {"id": row["id"], "kind": row["kind"], "version": row["version"], "sha256": stored,
+            "path": str(Path(row["path"] or "")), "content": content}
+
+
+def _folder_content(path, row, state_dir, slug, aid):
+    """A folder artifact: no symbolic link anywhere in it, and only the files its stored hash covers are served."""
+    for dirpath, dirnames, filenames in os.walk(path, followlinks=False):
+        for name in dirnames + filenames:
+            if (Path(dirpath) / name).is_symlink():
+                raise SentinelError("E_INTEGRITY", f"artifact {aid} contains a symbolic link", {"artifact": aid})
+    stored = row["sha256"]
+    if row["kind"] != "gherkin" or not row["version"]:
+        raise SentinelError("E_NOT_FOUND", f"artifact {aid} is a folder that cannot be shown", {"artifact": aid})
+    actual, listed = A.gherkin_set_hash(path / "features")
     if stored and actual != stored:
         raise SentinelError("E_INTEGRITY", f"artifact {aid} no longer matches its stored hash",
                             {"artifact": aid, "stored_sha256": stored})
-    if path.is_dir():
-        content = "".join(f"### {p.relative_to(path).as_posix()}\n{p.read_text(encoding='utf-8', errors='replace')}\n"
-                          for p in sorted(path.rglob("*")) if p.is_file())
-    else:
-        content = path.read_text(encoding="utf-8", errors="replace")
-    return {"id": row["id"], "kind": row["kind"], "version": row["version"], "sha256": stored,
-            "path": str(Path(row["path"] or "")), "content": content}
+    return "".join(f"### {rel}\n{_read_regular(path / rel).decode('utf-8', errors='replace')}\n" for rel in listed)
 
 
 def log_tail(reg, state_dir, slug, run, task_id, query):
@@ -319,24 +374,51 @@ def log_tail(reg, state_dir, slug, run, task_id, query):
         raise validation("offset must be a non-negative integer", "offset")
     if offset < 0:
         raise validation("offset must be a non-negative integer", "offset")
-    log = _run_dir(state_dir, slug) / "tasks" / task["id"] / "output.log"
-    data = b""
+    root = _run_dir(state_dir, slug)
+    log = root / "tasks" / task["id"] / "output.log"
+    running = task["state"] == "RUNNING"
+    lines, nxt = [], offset
+    if _has_link(log, root):
+        raise SentinelError("E_NOT_FOUND", f"no log for task {task['id']}", {"task": task["id"]})
     if log.is_file():
-        size = log.stat().st_size
-        if offset > size:
-            raise validation("offset is past the end of the log", "offset")
-        with open(log, "rb") as f:
-            if offset:
+        with _open_regular(log) as f:
+            size = os.fstat(f.fileno()).st_size
+            if offset > size:
+                raise validation("offset is past the end of the log", "offset")
+            if offset and (offset < size or running):
                 f.seek(offset - 1)
                 if f.read(1) != b"\n":
                     raise validation("offset is not the start of a line", "offset")
+            elif offset:
+                f.seek(offset)
             data = f.read(LOG_CHUNK)
+            cut = data.rfind(b"\n") + 1
+            if not running and len(data) < LOG_CHUNK:
+                cut = len(data)  # the task is over: a last line without a newline is complete
+            if cut:
+                lines, nxt = data[:cut].decode("utf-8", errors="replace").splitlines(), offset + cut
+            elif len(data) >= LOG_CHUNK:
+                # one line longer than a chunk: show its start and move on to the line after it
+                end = _skip_line(f, offset + len(data))
+                if end is not None or not running:
+                    lines = [data.decode("utf-8", errors="replace")]
+                    nxt = end if end is not None else size
+            lines = [ln if len(ln) <= LINE_MAX else ln[:LINE_MAX] + " [line cut]" for ln in lines]
     elif offset:
         raise validation("offset is past the end of the log", "offset")
-    cut = data.rfind(b"\n") + 1
-    whole = data[:cut]
-    return {"task_id": task["id"], "lines": whole.decode("utf-8", errors="replace").splitlines(),
-            "next_offset": offset + len(whole), "running": task["state"] == "RUNNING"}
+    return {"task_id": task["id"], "lines": lines, "next_offset": nxt, "running": running}
+
+
+def _skip_line(f, pos):
+    """The offset just after the next newline at or after `pos` (the file is positioned at `pos`), or None."""
+    while True:
+        block = f.read(LOG_CHUNK)
+        if not block:
+            return None
+        i = block.find(b"\n")
+        if i >= 0:
+            return pos + i + 1
+        pos += len(block)
 
 
 # ---- approvals and audit across projects
@@ -374,7 +456,8 @@ def audit_rows(projects, pid, query):
                 sql += " WHERE id < ?"
                 args.append(cursor)
             sql += " ORDER BY id DESC LIMIT ?"
-            items += [{"project": project.id, **dict(r)} for r in conn.execute(sql, [*args, limit + 1])]
+            scrubber = projects.scrubber(project)  # each row is scrubbed with the secrets of its own project
+            items += [scrub_obj(scrubber, {"project": project.id, **dict(r)}) for r in conn.execute(sql, [*args, limit + 1])]
     items.sort(key=lambda r: (r["at"] or "", r["id"]), reverse=True)
     more = len(items) > limit
     items = items[:limit]

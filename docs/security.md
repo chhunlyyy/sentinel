@@ -54,6 +54,17 @@ It does not find secrets that have no recognizable shape, names, phone numbers, 
 - **The shared repo is code.** QA executes the regression tests from it, and runs merge into its main branch without review. Anyone with write access can run code on every teammate's machine. Keep it private, limit write access, and protect its main branch from force-pushes and deletion.
 - **Slugs are validated.** Run names are restricted to lowercase letters, digits, dots, dashes and underscores, so they cannot escape the runs folder or inject into git refs.
 
+## Dashboard token and residual risk R1
+
+`sentinel dashboard` starts a local server on 127.0.0.1 and prints a one-time URL that holds a start token. The same
+token is written to `server.json` in your Sentinel config folder (mode 0600, folder mode 0700). A coding agent that
+runs as your own user can read that file, take the token and open its own dashboard session, so it could call the
+dashboard approval routes. This is residual risk R1. Sentinel does not remove it. The deny rules that
+`sentinel sync-adapters` writes (for `server.json`, the config folder and the `approve`, `accept` and `dashboard`
+commands) are advisory: other spellings of a command can pass a pattern. The `dashboard` command itself runs only on
+a terminal (TTY). Run agents under a separate OS user if you need a hard boundary. The browser is opened on a private redirect file
+(mode 0600) so the token never appears in the browser's command line.
+
 ## Dependencies
 
 The release check prints a notice when a dependency manifest changes. A human must approve each new dependency: check the package, its maintainers, and its license. The reviewer stage is also told to look at new dependencies.

@@ -2,9 +2,12 @@
 import hmac
 import secrets
 import threading
+import time
 
 COOKIE = "sentinel_session"
 CSRF_HEADER = "X-Sentinel-CSRF"
+MAX_SESSIONS = 32
+IDLE_SECONDS = 12 * 3600
 
 
 def new_token():
@@ -38,20 +41,32 @@ class Sessions:
     def check_token(self, supplied):
         return same(supplied, self.token)
 
+    def _expire(self, now):
+        for session in [k for k, (_, seen) in self._sessions.items() if now - seen > IDLE_SECONDS]:
+            del self._sessions[session]
+
     def create(self):
         session, csrf = secrets.token_hex(32), secrets.token_hex(32)
+        now = time.monotonic()
         with self._lock:
-            self._sessions[session] = csrf
+            self._expire(now)
+            while len(self._sessions) >= MAX_SESSIONS:
+                del self._sessions[next(iter(self._sessions))]  # the oldest (dicts keep insertion order)
+            self._sessions[session] = (csrf, now)
         return session, csrf
 
     def lookup(self, cookie_value):
-        """The CSRF value of a valid session cookie, else None."""
+        """The CSRF value of a valid session cookie, else None. A session unused for 12 hours has ended."""
         found = None
+        now = time.monotonic()
         with self._lock:
-            for session, csrf in self._sessions.items():
+            self._expire(now)
+            for session, (csrf, _) in self._sessions.items():
                 if same(cookie_value, session):
-                    found = csrf
-        return found
+                    found = (session, csrf)
+            if found:
+                self._sessions[found[0]] = (found[1], now)
+        return found[1] if found else None
 
     def check_csrf(self, session_csrf, supplied):
         return same(supplied, session_csrf)
