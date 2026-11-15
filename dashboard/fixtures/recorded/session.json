@@ -1,0 +1,7 @@
+{
+  "csrf": "2c249ab9a8f99f6c396d35a11737307dc28f189da70d2862197d332d4a543d00",
+  "user": {
+    "name": "dev",
+    "role": "admin"
+  }
+}

@@ -1,0 +1,552 @@
+// Fake Sentinel API for the dashboard e2e tests. It follows plan/v1.1/phaseF (routes, envelopes, cookie, CSRF,
+// security headers, SSE) and answers from the hand-written fixtures. The /__control routes exist only here.
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { extname, join, normalize } from 'node:path';
+import { CSRF, SESSION, TOKEN } from '../fixtures/constants.ts';
+import type { Db, RunData } from '../fixtures/db.ts';
+import { freshInstall } from '../fixtures/fresh-install.ts';
+import * as E from '../fixtures/encode.ts';
+import { applyPreset } from '../fixtures/presets.ts';
+import { summary, twoProjects } from '../fixtures/two-projects.ts';
+
+
+const PORT = Number(process.env.FAKE_API_PORT ?? 47831);
+const ROOT = new URL('..', import.meta.url).pathname;
+const DIST = join(ROOT, process.env.DASHBOARD_OUT_DIR ?? '../sentinel/dashboard_dist');
+
+let db: Db = twoProjects();
+
+interface Rule {
+  method?: string;
+  path: string;
+  status?: number;
+  body?: unknown;
+  rawBody?: string;
+  contentType?: string;
+  delayMs?: number;
+  drop?: boolean;
+  hang?: boolean;
+  times?: number;
+  passthrough?: boolean;
+}
+let rules: Rule[] = [];
+let log: { n: number; t: number; method: string; path: string; search: string; headers: Record<string, string>; body: unknown }[] = [];
+let sentEvents: { id: string; t: number }[] = [];
+let streams = new Set<ServerResponse>();
+let refuseUntil = 0;
+let eventSeq = 100;
+let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+class ApiErr extends Error {
+  status: number;
+  code: string;
+  details: Record<string, unknown>;
+  constructor(status: number, code: string, message: string, details: Record<string, unknown> = {}) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+const SECURITY = { 'Content-Security-Policy': "default-src 'self'; frame-ancestors 'none'", 'X-Content-Type-Options': 'nosniff' };
+
+function send(res: ServerResponse, status: number, body: unknown, extra: Record<string, string> = {}) {
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY, ...extra });
+  res.end(text);
+}
+
+function sendError(res: ServerResponse, e: ApiErr) {
+  send(res, e.status, { error: { code: e.code, message: e.message, details: e.details } });
+}
+
+async function readBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  const text = Buffer.concat(chunks).toString('utf8');
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+// ---- control routes (test only) ----
+
+function setPath(root: unknown, path: (string | number)[], value: unknown) {
+  let cur = root as Record<string | number, unknown>;
+  for (let i = 0; i < path.length; i++) {
+    const seg = path[i];
+    const last = i === path.length - 1;
+    const sel = typeof seg === 'string' ? /^([\w-]+)=(.*)$/.exec(seg) : null;
+    if (sel && Array.isArray(cur)) {
+      let idx = (cur as Record<string, unknown>[]).findIndex((el) => String(el[sel[1]]) === sel[2]);
+      if (idx < 0) {
+        if (!last) throw new Error(`no element ${seg}`);
+        idx = cur.length;
+      }
+      if (last) (cur as unknown[])[idx] = value;
+      else cur = (cur as unknown as Record<number, Record<string, unknown>>)[idx] as Record<string, unknown>;
+      continue;
+    }
+    if (last) {
+      cur[seg] = value;
+      return;
+    }
+    if (cur[seg] === undefined || cur[seg] === null) cur[seg] = typeof path[i + 1] === 'number' ? [] : {};
+    cur = cur[seg] as Record<string | number, unknown>;
+  }
+}
+
+function pushEvent(event: string, data: unknown, raw = false, id?: string) {
+  const eid = id ?? `digital-hr:${++eventSeq}`;
+  const payload = raw ? String(data) : JSON.stringify(data);
+  const frame = `id: ${eid}\nevent: ${event}\ndata: ${payload}\n\n`;
+  sentEvents.push({ id: eid, t: Date.now() });
+  for (const s of streams) s.write(frame);
+}
+
+async function control(req: IncomingMessage, res: ServerResponse, path: string) {
+  const body = (await readBody(req)) as Record<string, unknown> | null;
+  const b = body ?? {};
+  switch (path) {
+    case 'ping':
+      return send(res, 200, { ok: true });
+    case 'reset': {
+      db = b.fixture === 'fresh-install' ? freshInstall() : twoProjects();
+      for (const p of (b.presets as string[] | undefined) ?? []) applyPreset(db, p);
+      rules = [];
+      log = [];
+      sentEvents = [];
+      refuseUntil = 0;
+      for (const s of streams) s.end();
+      streams = new Set();
+      return send(res, 200, { ok: true });
+    }
+    case 'preset':
+      applyPreset(db, String(b.name));
+      return send(res, 200, { ok: true });
+    case 'rule':
+      rules.push(b as unknown as Rule);
+      return send(res, 200, { ok: true });
+    case 'set':
+      setPath(db, b.path as (string | number)[], b.value);
+      return send(res, 200, { ok: true });
+    case 'event':
+      pushEvent(String(b.event), b.data, b.raw === true, typeof b.id === 'string' ? b.id : undefined);
+      return send(res, 200, { ok: true });
+    case 'events':
+      for (const e of b.events as { event: string; data: unknown }[]) pushEvent(e.event, e.data);
+      return send(res, 200, { ok: true });
+    case 'stream':
+      if (b.action === 'refuse') refuseUntil = Date.now() + Number(b.ms ?? 0);
+      if (b.action === 'drop') {
+        for (const s of streams) s.destroy();
+        streams = new Set();
+      }
+      return send(res, 200, { ok: true });
+    case 'requests':
+      return send(res, 200, log);
+    case 'sent-events':
+      return send(res, 200, sentEvents);
+    default:
+      return send(res, 404, { error: { code: 'E_NOT_FOUND', message: 'no such control', details: {} } });
+  }
+}
+
+// ---- API ----
+
+interface Ctx {
+  params: string[];
+  query: URLSearchParams;
+  body: unknown;
+}
+
+function resolveRun(slug: string, query: URLSearchParams): { key: string; run: RunData } {
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) throw new ApiErr(400, 'E_VALIDATION', 'invalid slug', { field: 'slug' });
+  const project = query.get('project');
+  if (project) {
+    const key = `${project}/${slug}`;
+    if (!db.runs[key]) throw new ApiErr(404, 'E_NOT_FOUND', 'run not found');
+    return { key, run: db.runs[key] };
+  }
+  const hits = Object.keys(db.runs).filter((k) => k.endsWith(`/${slug}`));
+  if (hits.length > 1) throw new ApiErr(400, 'E_VALIDATION', 'slug exists in more than one project', { projects: hits.map((k) => k.split('/')[0]) });
+  if (!hits.length) throw new ApiErr(404, 'E_NOT_FOUND', 'run not found');
+  return { key: hits[0], run: db.runs[hits[0]] };
+}
+
+function page<T>(items: T[], query: URLSearchParams): { items: T[]; next: string | null } {
+  const limit = query.has('limit') ? Number(query.get('limit')) : 50;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new ApiErr(400, 'E_VALIDATION', 'bad limit', { field: 'limit' });
+  const start = query.get('cursor') ? Number(query.get('cursor')) : 0;
+  const slice = items.slice(start, start + limit);
+  return { items: slice, next: start + limit < items.length ? String(start + limit) : null };
+}
+
+function proj(pid: string) {
+  const p = db.projects.find((x) => x.id === pid);
+  const data = db.projectData[pid];
+  if (!p) throw new ApiErr(404, 'E_NOT_FOUND', 'project not found');
+  if (p.status === 'unavailable' || !data) throw new ApiErr(422, 'E_PRECONDITION', p.reason ?? 'unavailable', { fix: 'run sentinel dashboard in the workspace' });
+  return data;
+}
+
+function syncApproval(run: RunData, gate: 'specification' | 'gherkin', state: string) {
+  run.detail.approvals[gate].state = state;
+  const g = run.workflow.gates.find((x) => x.gate === gate);
+  if (g) g.state = state;
+}
+
+function body(ctx: Ctx): Record<string, unknown> {
+  if (!ctx.body || typeof ctx.body !== 'object') throw new ApiErr(400, 'E_VALIDATION', 'a JSON object is required');
+  return ctx.body as Record<string, unknown>;
+}
+
+type Handler = (ctx: Ctx) => [number, unknown];
+const routes: [string, RegExp, Handler][] = [];
+const route = (method: string, pattern: string, h: Handler) => {
+  routes.push([method, new RegExp(`^${pattern.replace(/\{(\w+)\}/g, '([^/]+)')}$`), h]);
+};
+const V = '/api/v1';
+
+route('GET', `${V}/session`, () => [200, { csrf: CSRF, user: { name: 'dev', role: 'admin' } }]);
+route('GET', `${V}/installation`, () => [200, E.installation(db.installation)]);
+route('GET', `${V}/runtime`, () => [200, E.runtime(db.runtime)]);
+route('GET', `${V}/installation/health`, () => [200, E.health(db.health)]);
+route('GET', `${V}/projects`, () => [200, { items: E.projects(db.projects), next: null }]);
+route('GET', `${V}/projects/{pid}/readiness`, (c) => {
+  const d = proj(decodeURIComponent(c.params[0]));
+  const wf = c.query.get('workflow');
+  return [200, E.readiness(decodeURIComponent(c.params[0]), (wf && d.readiness.byWorkflow?.[wf]) || d.readiness.default)];
+});
+route('GET', `${V}/projects/{pid}/repositories`, (c) => {
+  const r = proj(c.params[0]).repositories;
+  return [200, { items: r.items.map(E.repository), next: r.next }];
+});
+route('GET', `${V}/projects/{pid}/configuration`, (c) => [200, E.configuration(c.params[0], proj(c.params[0]).configuration)]);
+route('GET', `${V}/projects/{pid}/configuration/history`, (c) => {
+  const h = proj(c.params[0]).history;
+  return [200, { items: h.items.map(E.configVersion), next: h.next }];
+});
+route('GET', `${V}/projects/{pid}/configuration/diff`, (c) => {
+  const d = proj(c.params[0]);
+  const a = c.query.get('a');
+  const b = c.query.get('b');
+  if (!a || !b) throw new ApiErr(400, 'E_VALIDATION', 'a and b are required');
+  const text = d.diffs[`${a}:${b}`] ?? `--- version ${a}\n+++ version ${b}\n@@ limits @@\n-limits.task_timeout: 900\n+limits.task_timeout: 1200\n limits.max_retries: 3\n`;
+  return [200, E.configDiff(a, b, text)];
+});
+route('GET', `${V}/projects/{pid}/tasks`, (c) => {
+  const p = page(proj(c.params[0]).runs, c.query);
+  return [200, { items: p.items.map(E.runSummary), next: p.next }];
+});
+route('POST', `${V}/projects/{pid}/tasks`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  const d = proj(pid);
+  const b = body(c);
+  const allowed = ['slug', 'request', 'type', 'repos', 'priority', 'tier', 'ticket'];
+  for (const k of Object.keys(b)) if (!allowed.includes(k)) throw new ApiErr(400, 'E_VALIDATION', `unknown field ${k}`, { field: k });
+  for (const k of ['slug', 'request', 'type']) if (!b[k]) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
+  const slug = String(b.slug);
+  if (db.runs[`${pid}/${slug}`]) throw new ApiErr(409, 'E_LOCKED', 'slug is in use', { field: 'slug' });
+  const template = JSON.parse(JSON.stringify(db.runs[Object.keys(db.runs).find((k) => k.startsWith(`${pid}/`)) ?? 'digital-hr/leave-balance'] ?? db.runs['digital-hr/leave-balance'])) as RunData;
+  const now = '2026-11-14T10:00:00Z';
+  template.detail = {
+    ...template.detail, slug, project: pid, type: String(b.type), tier: typeof b.tier === 'number' ? b.tier : null, initial_tier: null, state: 'CREATED', reason: null,
+    execution_status: 'running', acceptance_status: 'pending', request: String(b.request), priority: String(b.priority ?? 'normal'), ticket: typeof b.ticket === 'string' ? b.ticket : null,
+    created_at: now, updated_at: now, task_counts: {}, acceptance_record: null,
+    approvals: { specification: { gate: 'specification', state: 'NOT_REQUESTED', version: null, sha256: null }, gherkin: { gate: 'gherkin', state: 'NOT_REQUESTED', version: null, sha256: null } },
+  };
+  template.next = { kind: 'orchestrator', label: 'waiting for AI tool', command: `/sentinel resume ${slug}` };
+  template.workflow = { nodes: [], edges: [], gates: [] };
+  template.tdd = { cycles: [], evidence: [] };
+  template.verification = { round: null, rows: [], missing: [], acceptance: { computed: 'pending', reasons: [] } };
+  template.trace = { requirements: [], gaps: [], failures: [], acceptance: null };
+  template.changes = { repos: [] };
+  template.logs = {};
+  template.report = null;
+  db.runs[`${pid}/${slug}`] = template;
+  d.runs.unshift(summary(template.detail));
+  return [201, E.run(template.detail, template.next)];
+});
+
+const runGet = (suffix: string, pick: (r: RunData, c: Ctx) => unknown) =>
+  route('GET', `${V}/tasks/{slug}${suffix}`, (c) => [200, pick(resolveRun(c.params[0], c.query).run, c)]);
+const wrun = (r: RunData) => E.run(r.detail, r.next);
+route('GET', `${V}/tasks/{slug}`, (c) => [200, wrun(resolveRun(c.params[0], c.query).run)]);
+runGet('/next', (r) => E.next(r.next, r.detail));
+runGet('/specification', (r) => E.specification(r.specification.current, r.specification.versions, r.detail.state));
+route('GET', `${V}/tasks/{slug}/specification/versions/{v}`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  const v = c.params[1];
+  const answer = String(run.specification.current.version) === v ? run.specification.current : run.specification.oldVersions[v];
+  if (!answer) throw new ApiErr(404, 'E_NOT_FOUND', 'version not found');
+  return [200, E.specVersion(answer)];
+});
+runGet('/gherkin', (r) => E.gherkin(r.gherkin, r.detail.state));
+runGet('/workflow', (r) => E.workflow(r.workflow, r.detail));
+runGet('/tdd', (r) => E.tdd(r.tdd));
+runGet('/verification', (r) => E.verification(r));
+runGet('/trace', (r) => E.trace(r));
+route('GET', `${V}/tasks/{slug}/changes`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  return [200, E.changes(run.detail.slug, run.changes)];
+});
+route('GET', `${V}/tasks/{slug}/changes/diff`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  const repo = c.query.get('repo');
+  const path = c.query.get('path');
+  const mode = c.query.get('mode');
+  if (!repo || !path || (mode !== 'inline' && mode !== 'split')) throw new ApiErr(400, 'E_VALIDATION', 'repo, path and mode are required');
+  const d = run.diffs[`${repo}:${path}`];
+  if (!d) throw new ApiErr(404, 'E_NOT_FOUND', 'file has no diff');
+  return [200, E.diff(repo, path, d, mode)];
+});
+route('GET', `${V}/tasks/{slug}/artifacts/{aid}`, (c) => {
+  const a = resolveRun(c.params[0], c.query).run.artifacts[decodeURIComponent(c.params[1])];
+  if (!a) throw new ApiErr(404, 'E_NOT_FOUND', 'artifact not found');
+  return [200, a];
+});
+route('GET', `${V}/tasks/{slug}/logs/{tid}`, (c) => {
+  const l = resolveRun(c.params[0], c.query).run.logs[decodeURIComponent(c.params[1])];
+  if (!l) throw new ApiErr(404, 'E_NOT_FOUND', 'log not found');
+  const offsets: number[] = [];
+  let total = 0;
+  for (const line of l.lines) {
+    offsets.push(total);
+    total += Buffer.byteLength(line) + 1;
+  }
+  const off = Number(c.query.get('offset') ?? 0);
+  if (!Number.isInteger(off) || off < 0 || (off !== total && !offsets.includes(off))) throw new ApiErr(400, 'E_VALIDATION', 'offset is not a line start', { field: 'offset' });
+  const from = off === total ? l.lines.length : offsets.indexOf(off);
+  return [200, E.log(decodeURIComponent(c.params[1]), l.lines, total, from, l.running)];
+});
+route('GET', `${V}/tasks/{slug}/report`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  if (!run.report) throw new ApiErr(422, 'E_PRECONDITION', 'the run has no report yet');
+  return [200, run.report];
+});
+route('GET', `${V}/approvals`, (c) => {
+  const state = c.query.get('state');
+  if (state !== 'IN_REVIEW') throw new ApiErr(400, 'E_VALIDATION', 'state must be IN_REVIEW', { field: 'state' });
+  const items = [];
+  for (const [key, r] of Object.entries(db.runs)) {
+    for (const gate of ['specification', 'gherkin'] as const) {
+      const a = r.detail.approvals[gate];
+      if (a.state === 'IN_REVIEW') {
+        items.push({ artifact_id: `ar-${gate}`, state: 'IN_REVIEW', project: key.split('/')[0], slug: r.detail.slug, gate, version: a.version, sha256: a.sha256, requested_at: gate === 'specification' ? r.specification.current.requested_at : r.gherkin.requested_at });
+      }
+    }
+  }
+  return [200, { items, next: null }];
+});
+route('GET', `${V}/audit`, (c) => {
+  const pid = c.query.get('project');
+  if (pid && !db.projectData[pid]) throw new ApiErr(404, 'E_NOT_FOUND', 'project not found');
+  const rows = Object.entries(db.projectData)
+    .filter(([id]) => !pid || id === pid)
+    .flatMap(([id, d]) => d.audit.map((a) => E.audit(id, a)));
+  const pg = page(rows, c.query);
+  return [200, { items: pg.items, next: pg.next }];
+});
+
+route('POST', `${V}/tasks/{slug}/approvals`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  const b = body(c);
+  for (const k of ['gate', 'sha256', 'confirmation', 'decision']) if (!(k in b)) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
+  const gate = b.gate as 'specification' | 'gherkin';
+  if (gate !== 'specification' && gate !== 'gherkin') throw new ApiErr(400, 'E_VALIDATION', 'bad gate', { field: 'gate' });
+  const a = run.detail.approvals[gate];
+  if (a.state !== 'IN_REVIEW') throw new ApiErr(409, 'E_TRANSITION', `approval is ${a.state}`);
+  if (b.sha256 !== a.sha256) throw new ApiErr(409, 'E_APPROVAL_STALE', 'approval is stale', { current_sha256: a.sha256 });
+  if (b.confirmation !== String(b.sha256).slice(0, 8)) throw new ApiErr(400, 'E_VALIDATION', 'confirmation does not match', { field: 'confirmation' });
+  const decision = String(b.decision);
+  if (!['approve', 'changes', 'reject'].includes(decision)) throw new ApiErr(400, 'E_VALIDATION', 'bad decision', { field: 'decision' });
+  const comment = typeof b.comment === 'string' ? b.comment : null;
+  if ((decision === 'changes' || decision === 'reject') && !comment?.trim()) throw new ApiErr(400, 'E_VALIDATION', 'a comment is required', { field: 'comment' });
+  const record = { decision, approver: 'dev', channel: 'dashboard', at: '2026-11-14T09:30:00Z', comment };
+  run.detail.approvals[gate].record = record;
+  const newState = decision === 'approve' ? 'APPROVED' : decision === 'changes' ? 'CHANGES_REQUESTED' : 'REJECTED';
+  syncApproval(run, gate, newState);
+  const target = gate === 'specification' ? run.specification.current : run.gherkin;
+  target.state = newState;
+  target.decision = record;
+  run.detail.state =
+    decision === 'approve' ? (gate === 'specification' ? 'SPECIFICATION_APPROVED' : 'GHERKIN_APPROVED') : decision === 'changes' ? (gate === 'specification' ? 'SPECIFICATION_DRAFT' : 'GHERKIN_DRAFT') : 'CANCELLED';
+  return [200, wrun(run)];
+});
+
+route('POST', `${V}/tasks/{slug}/acceptance`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  const b = body(c);
+  for (const k of ['sha256_of_report', 'confirmation', 'decision']) if (!(k in b)) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
+  if (run.detail.state !== 'COMPLETED' || run.detail.acceptance_record?.decision === 'reject') throw new ApiErr(409, 'E_TRANSITION', 'the run cannot be accepted now');
+  if (!run.report || b.sha256_of_report !== run.report.sha256) throw new ApiErr(409, 'E_APPROVAL_STALE', 'report changed');
+  if (b.confirmation !== String(b.sha256_of_report).slice(0, 8)) throw new ApiErr(400, 'E_VALIDATION', 'confirmation does not match', { field: 'confirmation' });
+  if (b.decision === 'accept' && run.verification.acceptance.computed === 'rejected') throw new ApiErr(422, 'E_PRECONDITION', 'the engine rejected this run');
+  const comment = typeof b.comment === 'string' ? b.comment : null;
+  const record = { decision: String(b.decision), approver: 'dev', channel: 'dashboard', at: '2026-11-14T09:35:00Z', comment };
+  run.detail.acceptance_record = record;
+  run.detail.acceptance_status = b.decision === 'accept' ? 'accepted' : 'rejected';
+  return [200, wrun(run)];
+});
+
+route('POST', `${V}/tasks/{slug}/control`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  const b = body(c);
+  const nodes = run.workflow.nodes;
+  switch (b.action) {
+    case 'cancel': {
+      if (b.task_id) {
+        const n = nodes.find((x) => x.id === b.task_id);
+        if (!n) throw new ApiErr(404, 'E_NOT_FOUND', 'task not found');
+        n.state = 'CANCELLED';
+      } else {
+        if (['COMPLETED', 'CANCELLED'].includes(run.detail.state)) throw new ApiErr(409, 'E_TRANSITION', `not allowed in state ${run.detail.state}`);
+        run.detail.state = 'CANCELLED';
+        for (const n of nodes) if (n.state === 'RUNNING' || n.state === 'QUEUED') n.state = 'CANCELLED';
+      }
+      break;
+    }
+    case 'resume':
+      if (run.detail.state !== 'NEEDS_HUMAN') throw new ApiErr(409, 'E_TRANSITION', `not allowed in state ${run.detail.state}`);
+      if (!b.comment) throw new ApiErr(400, 'E_VALIDATION', 'a comment is required', { field: 'comment' });
+      run.detail.state = 'EXECUTING';
+      run.detail.reason = null;
+      break;
+    case 'retry': {
+      const n = nodes.find((x) => x.id === b.task_id);
+      if (!n || n.state !== 'FAILED') throw new ApiErr(409, 'E_TRANSITION', 'only a failed task can be retried');
+      nodes.push({ ...n, id: `${n.id}-r${n.attempt + 1}`, state: 'QUEUED', retry_of: n.id, attempt: n.attempt + 1, error_code: null, started_at: null, finished_at: null, seconds: null });
+      run.workflow.edges.push({ from: n.id, to: `${n.id}-r${n.attempt + 1}` });
+      break;
+    }
+    default:
+      throw new ApiErr(400, 'E_VALIDATION', 'unknown action', { field: 'action' });
+  }
+  return [200, wrun(run)];
+});
+
+// ---- request handling ----
+
+function matchRule(method: string, path: string, search: string): Rule | undefined {
+  for (const r of rules) {
+    if (r.method && r.method !== method) continue;
+    const full = path + search;
+    const ok = r.path.startsWith('re:') ? new RegExp(r.path.slice(3)).test(path) || new RegExp(r.path.slice(3)).test(full) : r.path === path;
+    if (!ok) continue;
+    if (r.times !== undefined) {
+      if (r.times <= 0) continue;
+      r.times -= 1;
+    }
+    return r;
+  }
+  return undefined;
+}
+
+function serveStatic(res: ServerResponse, path: string) {
+  const rel = normalize(decodeURIComponent(path)).replace(/^(\.\.[/\\])+/, '');
+  let file = join(DIST, rel === '/' || rel === '' ? 'index.html' : rel);
+  if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) {
+    if (rel === '/' || rel === '') file = join(DIST, 'index.html');
+    else {
+      res.writeHead(404, { 'Content-Type': 'text/plain', ...SECURITY });
+      return void res.end('not found');
+    }
+  }
+  const types: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
+  res.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream', ...SECURITY });
+  res.end(readFileSync(file));
+}
+
+function parseCookie(h: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of (h ?? '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  return out;
+}
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const path = url.pathname;
+  const method = req.method ?? 'GET';
+  if (path.startsWith('/__control/')) return void (await control(req, res, path.slice('/__control/'.length)));
+
+  const raw = method === 'POST' ? await readBody(req) : null;
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.headers)) headers[k] = Array.isArray(v) ? v.join(', ') : (v ?? '');
+  log.push({ n: log.length, t: Date.now(), method, path, search: url.search, headers, body: raw });
+
+  const rule = matchRule(method, path, url.search);
+  if (rule) {
+    if (rule.drop) return void req.socket.destroy();
+    if (rule.hang) {
+      req.on('close', () => undefined);
+      return;
+    }
+    if (rule.delayMs) await new Promise((r) => setTimeout(r, rule.delayMs));
+    if (!rule.passthrough) {
+      if (rule.rawBody !== undefined) {
+        res.writeHead(rule.status ?? 200, { 'Content-Type': rule.contentType ?? 'text/plain', ...SECURITY });
+        return void res.end(rule.rawBody);
+      }
+      return send(res, rule.status ?? 200, rule.body ?? {});
+    }
+  }
+
+  if (path === '/auth') {
+    if (url.searchParams.get('t') !== TOKEN) return sendError(res, new ApiErr(401, 'E_AUTH', 'bad token'));
+    res.writeHead(302, { Location: '/', 'Set-Cookie': `sentinel_session=${SESSION}; HttpOnly; SameSite=Strict; Path=/`, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', ...SECURITY });
+    return void res.end();
+  }
+
+  if (!path.startsWith('/api/')) return serveStatic(res, path);
+
+  // the checks of the real server: only the own Host and, when present, the own Origin
+  if (headers.host !== `127.0.0.1:${PORT}` && headers.host !== `localhost:${PORT}`) return sendError(res, new ApiErr(403, 'E_HOST', 'unexpected Host header'));
+  if (headers.origin && headers.origin !== `http://${headers.host}`) return sendError(res, new ApiErr(403, 'E_ORIGIN', 'unexpected Origin header'));
+
+  if (parseCookie(req.headers.cookie).sentinel_session !== SESSION) return sendError(res, new ApiErr(401, 'E_AUTH', 'authentication required'));
+
+  if (path === '/api/v1/events') {
+    if (Date.now() < refuseUntil) return sendError(res, new ApiErr(503, 'E_INTERNAL', 'stream refused'));
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', ...SECURITY });
+    res.write(': connected\n\n');
+    streams.add(res);
+    req.on('close', () => streams.delete(res));
+    return;
+  }
+
+  try {
+    if (method === 'POST') {
+      if (headers['x-sentinel-csrf'] !== CSRF) throw new ApiErr(403, 'E_CSRF', 'bad csrf value');
+      if (!/^application\/json/.test(headers['content-type'] ?? '')) throw new ApiErr(415, 'E_MEDIA_TYPE', 'JSON required');
+    }
+    for (const [m, re, h] of routes) {
+      if (m !== method) continue;
+      const match = re.exec(path);
+      if (!match) continue;
+      const [status, out] = h({ params: match.slice(1).map((s) => decodeURIComponent(s)), query: url.searchParams, body: raw });
+      return send(res, status, out);
+    }
+    throw new ApiErr(404, 'E_NOT_FOUND', 'no such route');
+  } catch (e) {
+    if (e instanceof ApiErr) return sendError(res, e);
+    return sendError(res, new ApiErr(500, 'E_INTERNAL', 'internal error'));
+  }
+});
+
+heartbeat = setInterval(() => {
+  for (const s of streams) s.write(': heartbeat\n\n');
+}, 5000);
+void heartbeat;
+
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`fake API on http://127.0.0.1:${PORT}`);
+});

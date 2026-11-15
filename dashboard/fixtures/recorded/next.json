@@ -1,0 +1,11 @@
+{
+  "adapter": "cli",
+  "command": "sentinel task run t-d40336feaa04",
+  "kind": "task",
+  "label": "ready to run",
+  "provider": "fake",
+  "role": "tdd_red",
+  "run": "leave-balance",
+  "state": "QUEUED",
+  "task": "t-d40336feaa04"
+}

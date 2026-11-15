@@ -274,58 +274,12 @@ def model_problems(config, stage, route, runner, live):
 
 
 def cmd_doctor(args):
+    import health
     config_path, config = load_config(args.dir)
-    workspace = config_path.parent
-    problems = []
-    try:
-        import jsonschema
-        schema = load_json("core/schema/config.schema.json")
-        import scopes
-        for error in jsonschema.Draft202012Validator(schema).iter_errors(config):
-            if re.match(r"repos/\d+/(test|production)_globs", "/".join(map(str, error.path))):
-                continue
-            problems.append(f"schema: {'/'.join(map(str, error.path))}: {error.message}")
-        problems.extend(f"schema: {text}" for _, text in scopes.config_problems(config))
-    except ImportError:
-        print("note: jsonschema not installed, schema check skipped")
-    for tool in ("git", "python3"):
-        if not shutil.which(tool):
-            problems.append(f"missing tool: {tool}")
-    for repo in config["repos"]:
-        path = workspace / repo["path"]
-        if not path.exists():
-            problems.append(f"repo path missing: {repo['id']} -> {path}")
-        elif not (path / ".git").exists():
-            problems.append(f"not a git repo: {repo['id']}")
-        profile = json.loads((ROOT / "profiles" / f"{repo['profile']}.json").read_text()) if (ROOT / "profiles" / f"{repo['profile']}.json").exists() else None
-        if profile is None:
-            problems.append(f"unknown profile for {repo['id']}: {repo['profile']}")
-            continue
-        commands = {**profile["commands"], **(repo.get("commands") or {})}
-        for key, command in commands.items():
-            if command and not shutil.which(command.split()[0]) and not command.startswith("./") and not command.startswith("npm") and not command.startswith("npx"):
-                problems.append(f"{repo['id']}: {key} command not found: {command.split()[0]}")
-    from run_stage import all_runners, single_model
-    for stage, route in ({} if single_model(config) else config.get("routing") or {}).items():
-        runner = all_runners(config).get(route["runner"])
-        if not runner:
-            problems.append(f"routing {stage}: runner not defined: {route['runner']}")
-            continue
-        if not shutil.which(runner["command"].split()[0]):
-            problems.append(f"runner CLI not installed: {runner['command'].split()[0]} (routing {stage})")
-        if route.get("model") and not single_model(config) and not runner.get("model_flag"):
-            problems.append(f"routing {stage}: runner {route['runner']} has no model_flag, so model {route['model']} cannot be set")
-        problems.extend(model_problems(config, stage, route, runner, args.check_models))
-    shared_url = (config.get("state") or {}).get("shared_repo")
-    if (config.get("state") or {}).get("shared_mode") == "local":
-        if not (state_dir_of(config_path, config) / "shared" / "invariants.md").exists():
-            problems.append("local-only shared folder is not set up: run `sentinel sync pull`")
-    elif not shared_url:
-        problems.append("state.shared_repo is required: ask your team for the URL of its private shared repo and run `sentinel shared set <url>`")
-    elif not (state_dir_of(config_path, config) / "shared" / ".git").exists():
-        problems.append(f"the shared repo ({shared_url}) is not cloned: run `sentinel sync pull`")
-    if (config.get("state") or {}).get("auto_sync_push"):
-        print("note: state.auto_sync_push is on, so finished runs publish to the shared repo without asking; set it to false to publish only on request")
+    found, notes = health.doctor_problems(config_path, config, state_dir_of(config_path, config), args.check_models, model_problems)
+    for note in notes:
+        print(note)
+    problems = [text for _, text in found]
     if problems:
         print("\n".join(f"- {p}" for p in problems))
         sys.exit(1)

@@ -1,0 +1,29 @@
+{
+  "repos": [
+    {
+      "base_sha": "aa78d8a9f289acbda15063ccfe1a4550e9f978d7",
+      "branch": null,
+      "files": [
+        {
+          "additions": 1,
+          "binary": false,
+          "cycles": [],
+          "deletions": 0,
+          "path": "src/Leave.java",
+          "status": "added",
+          "tasks": []
+        }
+      ],
+      "head_sha": "aa78d8a9f289acbda15063ccfe1a4550e9f978d7",
+      "repo": "backend"
+    },
+    {
+      "base_sha": "aa78d8a9f289acbda15063ccfe1a4550e9f978d7",
+      "branch": null,
+      "files": [],
+      "head_sha": "aa78d8a9f289acbda15063ccfe1a4550e9f978d7",
+      "repo": "frontend"
+    }
+  ],
+  "slug": "leave-balance"
+}

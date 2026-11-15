@@ -1,0 +1,29 @@
+{
+  "acceptance": {
+    "acceptance_status": "pending",
+    "execution_status": "running",
+    "reasons": []
+  },
+  "evidence": [
+    {
+      "classification": "valid_red",
+      "command": "faketest targeted",
+      "cycle_id": "c-1b2a89b9370f",
+      "exit_code": 1,
+      "failed": 2,
+      "finished_at": "2026-11-14T09:00:05.000000Z",
+      "id": "e-e286d42a605c",
+      "kind": "test",
+      "model": null,
+      "output_artifact_id": null,
+      "passed": 0,
+      "provider": null,
+      "repo_id": null,
+      "skipped": null,
+      "started_at": "2026-11-14T09:00:00.000000Z",
+      "task_id": null
+    }
+  ],
+  "missing": [],
+  "round": null
+}

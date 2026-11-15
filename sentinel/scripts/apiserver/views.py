@@ -177,6 +177,15 @@ def run_detail(eng, project, slug):
     detail["repos"] = [{"repo_id": r["repo_id"], "baseline_sha": r["baseline_sha"], "branch": r["branch"],
                         "final_sha": r["final_sha"]} for r in reg.run_repos(run["id"])]
     detail["approvals"] = approval_summary(reg, run) if v2 else {}
+    snap = reg.get_config_version(run["config_snapshot_id"]) if run.get("config_snapshot_id") else None
+    detail["config_snapshot"] = ({"id": snap["id"], "scope": snap["scope"], "sha256": snap["sha256"],
+                                  "created_at": snap["created_at"]} if snap else None)
+    detail["reason"] = None
+    if run["state"] == "NEEDS_HUMAN":
+        for ev in reversed(reg.list_events(run["id"], "run.state_changed")):
+            if (ev["payload"] or {}).get("to") == "NEEDS_HUMAN":
+                detail["reason"] = (ev["payload"] or {}).get("reason")
+                break
     detail["task_counts"] = counts
     detail["next"] = peek_step(eng, slug, run) if v2 else None
     return detail
@@ -200,7 +209,7 @@ def tdd(reg, run):
     evidence = reg.rows("evidence", run_id=run["id"])
     cycles = []
     for c in reg.rows("cycles", run_id=run["id"]):
-        cycles.append({"id": c["id"], "behavior": c["behavior"], "state": c["state"],
+        cycles.append({"id": c["id"], "repo": c.get("repo_id"), "behavior": c["behavior"], "state": c["state"],
                        "phase_tasks": {"red": c["red_task"], "green": c["green_task"], "refactor": c["refactor_task"]},
                        "evidence_ids": [e["id"] for e in evidence if e["cycle_id"] == c["id"]]})
     return {"cycles": cycles}
@@ -210,9 +219,11 @@ def verification(reg, run):
     events = reg.list_events(run["id"], "run.status_changed")
     reasons = (events[-1]["payload"] or {}).get("reasons", []) if events else []
     evidence = [{k: e[k] for k in ("id", "task_id", "cycle_id", "kind", "command", "exit_code", "classification",
-                                    "passed", "failed", "skipped", "output_artifact_id", "started_at", "finished_at")}
+                                    "passed", "failed", "skipped", "output_artifact_id", "started_at", "finished_at", "repo_id", "provider",
+                                    "model")}
                 for e in reg.rows("evidence", run_id=run["id"])]
-    return {"evidence": evidence, "acceptance": {"execution_status": run["execution_status"],
+    # Phase E adds verification rounds and the list of missing evidence; until then they are reported as unknown.
+    return {"round": None, "missing": [], "evidence": evidence, "acceptance": {"execution_status": run["execution_status"],
                                                  "acceptance_status": run["acceptance_status"], "reasons": reasons}}
 
 
@@ -225,12 +236,37 @@ def trace(reg, run):
     return {"links": links, "gaps": gaps}
 
 
+def _decision_record(ap):
+    if not ap or not ap["decision"]:
+        return None
+    return {"decision": ap["decision"], "approver": ap["approver"], "channel": ap["channel"],
+            "comment": ap["comment"], "decided_at": ap["decided_at"]}
+
+
+def _gate_extra(eng, slug, gate):
+    run = eng._get_v2(slug)
+    kind = "spec" if gate == "specification" else "gherkin"
+    arts = {a["id"]: a for a in eng.reg.rows("artifacts", run_id=run["id"], kind=kind)}
+    approvals = eng.reg.rows("approvals", run_id=run["id"], gate=gate)
+    versions = []
+    for a in sorted(arts.values(), key=lambda a: a["version"] or 0):
+        rec = _decision_record(_latest([x for x in approvals if x["version"] == a["version"]]))
+        versions.append({"version": a["version"], "sha256": a["sha256"], "created_at": a["created_at"],
+                         "decision": rec["decision"] if rec else None, "approver": rec["approver"] if rec else None,
+                         "channel": rec["channel"] if rec else None, "decided_at": rec["decided_at"] if rec else None,
+                         "comment": rec["comment"] if rec else None})
+    ap = _latest(approvals)
+    art = arts.get(ap["artifact_id"]) if ap else None
+    return {"versions": versions, "decision": _decision_record(ap),
+            "requested_at": art["created_at"] if art else None}
+
+
 def specification(eng, slug):
     info = eng.review(slug, "spec")
-    return {"version": info["version"], "sha256": info["sha256"], "approval_state": info["approval_state"],
+    return {**_gate_extra(eng, slug, "specification"), **{"version": info["version"], "sha256": info["sha256"], "approval_state": info["approval_state"],
             "run_state": info["run_state"], "text": info["text"],
             "validation": {"errors": info["errors"], "warnings": info["warnings"]},
-            "diff": info["diff"], "previous_version": info.get("previous_version")}
+            "diff": info["diff"], "previous_version": info.get("previous_version")}}
 
 
 def specification_version(eng, slug, version):
@@ -248,10 +284,10 @@ def specification_version(eng, slug, version):
 
 def gherkin(eng, slug):
     info = eng.review(slug, "gherkin")
-    return {"version": info["version"], "sha256": info["sha256"], "approval_state": info["approval_state"],
+    return {**_gate_extra(eng, slug, "gherkin"), **{"version": info["version"], "sha256": info["sha256"], "approval_state": info["approval_state"],
             "run_state": info["run_state"], "files": info["files"], "scenarios": info["scenarios"],
             "coverage": info["coverage"], "validation": {"errors": info["errors"], "warnings": info["warnings"]},
-            "diff": info["diff"], "previous_version": info.get("previous_version")}
+            "diff": info["diff"], "previous_version": info.get("previous_version")}}
 
 
 # ---- reports, artifacts, logs

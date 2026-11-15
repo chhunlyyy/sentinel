@@ -1,0 +1,9 @@
+export const CSRF = 'c0ffee'.repeat(10) + 'c0ff';
+export const SESSION = 'test-session';
+export const TOKEN = 'test-token';
+export const H1 = '1c1c1c1c' + '01'.repeat(28);
+export const H2 = '3f9a0c12' + 'ab'.repeat(28);
+export const H3 = '9b7e55d0' + 'cd'.repeat(28);
+export const G1 = '5a5a1e77' + 'ef'.repeat(28);
+export const GTAX = 'a1a1a1a1' + '22'.repeat(28);
+export const REPORT = '77ab01cd' + '12'.repeat(28);

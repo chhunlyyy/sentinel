@@ -1,0 +1,360 @@
+{
+  "global_file": null,
+  "items": [
+    {
+      "key": "agents.tdd_green.runner",
+      "overridden": [],
+      "source": "project",
+      "value": "fake"
+    },
+    {
+      "key": "agents.tdd_red.runner",
+      "overridden": [],
+      "source": "project",
+      "value": "fake"
+    },
+    {
+      "key": "agents.tdd_refactor.runner",
+      "overridden": [],
+      "source": "project",
+      "value": "fake"
+    },
+    {
+      "key": "limits.green_retries",
+      "overridden": [],
+      "source": "default",
+      "value": 3
+    },
+    {
+      "key": "limits.qa_rounds",
+      "overridden": [],
+      "source": "default",
+      "value": 3
+    },
+    {
+      "key": "limits.red_retries",
+      "overridden": [],
+      "source": "default",
+      "value": 2
+    },
+    {
+      "key": "limits.refactor_retries",
+      "overridden": [],
+      "source": "default",
+      "value": 2
+    },
+    {
+      "key": "limits.release_check_rounds",
+      "overridden": [],
+      "source": "default",
+      "value": 3
+    },
+    {
+      "key": "limits.review_rounds",
+      "overridden": [],
+      "source": "default",
+      "value": 2
+    },
+    {
+      "key": "limits.specifier_retries",
+      "overridden": [],
+      "source": "default",
+      "value": 2
+    },
+    {
+      "key": "limits.test_designer_retries",
+      "overridden": [],
+      "source": "default",
+      "value": 2
+    },
+    {
+      "key": "policies.max_parallel_tasks",
+      "overridden": [],
+      "source": "default",
+      "value": 1
+    },
+    {
+      "key": "policies.task_timeout_seconds",
+      "overridden": [],
+      "source": "default",
+      "value": 5400
+    },
+    {
+      "key": "repos.backend.commands.test",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": "/usr/bin/python3 $WORKSPACE/bin/faketest full"
+    },
+    {
+      "key": "repos.backend.failure_patterns.compile",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": [
+        "error: cannot find symbol"
+      ]
+    },
+    {
+      "key": "repos.backend.failure_patterns.environment",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": [
+        "Connection refused"
+      ]
+    },
+    {
+      "key": "repos.backend.failure_patterns.missing_dependency",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": [
+        "Could not resolve"
+      ]
+    },
+    {
+      "key": "repos.backend.path",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": "backend"
+    },
+    {
+      "key": "repos.backend.production_globs",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": [
+        "src/main/**"
+      ]
+    },
+    {
+      "key": "repos.backend.profile",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": "generic"
+    },
+    {
+      "key": "repos.backend.role",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": "backend"
+    },
+    {
+      "key": "repos.backend.scenario_ref",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": "@Scenario\\(\"([^\"]+)\"\\)"
+    },
+    {
+      "key": "repos.backend.targeted_test",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": "/usr/bin/python3 $WORKSPACE/bin/faketest targeted {tests}"
+    },
+    {
+      "key": "repos.backend.test_globs",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": [
+        "src/test/**"
+      ]
+    },
+    {
+      "key": "repos.backend.test_report.kind",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": "junit-xml"
+    },
+    {
+      "key": "repos.backend.test_report.path",
+      "overridden": [],
+      "source": "repo:backend",
+      "value": "build/test-results/test/*.xml"
+    },
+    {
+      "key": "repos.frontend.commands.test",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": "/usr/bin/python3 $WORKSPACE/bin/faketest full"
+    },
+    {
+      "key": "repos.frontend.failure_patterns.compile",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": [
+        "error: cannot find symbol"
+      ]
+    },
+    {
+      "key": "repos.frontend.failure_patterns.environment",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": [
+        "Connection refused"
+      ]
+    },
+    {
+      "key": "repos.frontend.failure_patterns.missing_dependency",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": [
+        "Could not resolve"
+      ]
+    },
+    {
+      "key": "repos.frontend.path",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": "frontend"
+    },
+    {
+      "key": "repos.frontend.production_globs",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": [
+        "src/main/**"
+      ]
+    },
+    {
+      "key": "repos.frontend.profile",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": "generic"
+    },
+    {
+      "key": "repos.frontend.role",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": "frontend"
+    },
+    {
+      "key": "repos.frontend.scenario_ref",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": "@Scenario\\(\"([^\"]+)\"\\)"
+    },
+    {
+      "key": "repos.frontend.targeted_test",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": "/usr/bin/python3 $WORKSPACE/bin/faketest targeted {tests}"
+    },
+    {
+      "key": "repos.frontend.test_globs",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": [
+        "src/test/**"
+      ]
+    },
+    {
+      "key": "repos.frontend.test_report.kind",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": "junit-xml"
+    },
+    {
+      "key": "repos.frontend.test_report.path",
+      "overridden": [],
+      "source": "repo:frontend",
+      "value": "build/test-results/test/*.xml"
+    },
+    {
+      "key": "rules.agents_never_run_git",
+      "overridden": [],
+      "source": "default",
+      "value": false
+    },
+    {
+      "key": "rules.no_coauthor_trailer",
+      "overridden": [],
+      "source": "default",
+      "value": false
+    },
+    {
+      "key": "rules.no_code_comments",
+      "overridden": [],
+      "source": "default",
+      "value": false
+    },
+    {
+      "key": "rules.no_em_dashes",
+      "overridden": [],
+      "source": "default",
+      "value": false
+    },
+    {
+      "key": "rules.no_permanent_frontend_tests",
+      "overridden": [],
+      "source": "default",
+      "value": false
+    },
+    {
+      "key": "runners.fake.command",
+      "overridden": [],
+      "source": "project",
+      "value": "$WORKSPACE/bin/fake"
+    },
+    {
+      "key": "shape",
+      "overridden": [],
+      "source": "project",
+      "value": "custom"
+    },
+    {
+      "key": "single_model",
+      "overridden": [
+        {
+          "source": "default",
+          "value": true
+        }
+      ],
+      "source": "project",
+      "value": false
+    },
+    {
+      "key": "state.auto_sync_push",
+      "overridden": [],
+      "source": "default",
+      "value": false
+    },
+    {
+      "key": "state.dir",
+      "overridden": [
+        {
+          "source": "default",
+          "value": ".sentinel"
+        }
+      ],
+      "source": "project",
+      "value": ".sentinel"
+    },
+    {
+      "key": "state.retention.logs_days",
+      "overridden": [],
+      "source": "default",
+      "value": 14
+    },
+    {
+      "key": "state.retention.runs",
+      "overridden": [],
+      "source": "default",
+      "value": 20
+    },
+    {
+      "key": "state.shared_mode",
+      "overridden": [
+        {
+          "source": "default",
+          "value": "git"
+        }
+      ],
+      "source": "project",
+      "value": "local"
+    },
+    {
+      "key": "version",
+      "overridden": [],
+      "source": "project",
+      "value": 1
+    }
+  ],
+  "project": "digital-hr",
+  "sha256": "6f362ca4c07e9c8b683b17e8044298f93ba23eaa06726632fe1fdb066b14f7b0"
+}

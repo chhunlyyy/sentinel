@@ -79,3 +79,9 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 - Merge integration: ControlOps retry/cancel of TDD cycle tasks go through Phase D cycle hooks.
 - Residual: scrubber is quadratic on very long strings (mitigated by 8 KiB log-line cut).
 - Phase F auto-approved (delegated) 2026-11-15.
+
+## Phase G notes
+
+- 2026-11-15: UI built (React 19, Vite 7, Vitest, Playwright), Opus review found contract drift with the real Phase F server (3 white-screen crashes), missing server read routes and fixtures recorded by hand. Fixes: 8 Phase G GET routes (`apiserver/readroutes.py`, `health.py` shared with `doctor`), fixtures recorded from the real server (AC-DSH-06i), UI adapted to server shapes, error boundary, a11y fixes, build output to `sentinel/dashboard_dist` (git-ignored, built at release, shipped as wheel artifact).
+- Evidence: unittest 742 OK (4 skipped), selftest 187 passed; dashboard lint clean, vitest 54 passed, Playwright 198 passed, 1 skipped (AC-DSH-06g needs user namespaces).
+- OPEN until Phase E merges: AC-VER-04o (already rejected) removed and AC-VER-04n/03g weakened because the server had no acceptance record; must be restored to the approved scenarios after Phase E. Wheel/release ACs (OPS-01b/c/e/f, DSH-06h, TST-01i/j) are Phase H. Phase G not yet approved.

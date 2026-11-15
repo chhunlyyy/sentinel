@@ -33,9 +33,12 @@ pattern = "(?P<version>\\S+)"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sentinel"]
+# the built dashboard is git-ignored; the release step runs `npm run build` in dashboard/ first
+artifacts = ["sentinel/dashboard_dist/**"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "skills" = "sentinel/skills"
 
 [tool.hatch.build.targets.sdist]
 include = ["sentinel", "skills", "docs", "README.md", "LICENSE", "pyproject.toml"]
+artifacts = ["sentinel/dashboard_dist/**"]

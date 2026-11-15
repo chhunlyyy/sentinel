@@ -1,0 +1,199 @@
+{
+  "approval_state": "IN_REVIEW",
+  "coverage": {
+    "rows": [
+      {
+        "category": "happy-path",
+        "reason": "",
+        "scenarios": 2,
+        "state": "covered",
+        "status": "covered by 2 scenarios"
+      },
+      {
+        "category": "invalid-input",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "missing-fields",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "boundary",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "empty-null",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "authn",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "authz",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "data-integrity",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "duplicate",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "concurrency",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "errors",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "external-failure",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "db-failure",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "regression",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      },
+      {
+        "category": "perf-security",
+        "reason": "",
+        "scenarios": 0,
+        "state": "missing",
+        "status": "missing"
+      }
+    ],
+    "summary": "coverage incomplete: 14 categories missing",
+    "warnings": [
+      "invalid-input: missing",
+      "missing-fields: missing",
+      "boundary: missing",
+      "empty-null: missing",
+      "authn: missing",
+      "authz: missing",
+      "data-integrity: missing",
+      "duplicate: missing",
+      "concurrency: missing",
+      "errors: missing",
+      "external-failure: missing",
+      "db-failure: missing",
+      "regression: missing",
+      "perf-security: missing"
+    ]
+  },
+  "decision": null,
+  "diff": null,
+  "files": [
+    {
+      "path": "features/balance.feature",
+      "text": "@REQ-1\nFeature: F\n\n  @AC-1 @unit @P1\n  Scenario: a\n    Given x\n    When y\n    Then z\n"
+    },
+    {
+      "path": "features/request_form.feature",
+      "text": "@REQ-2\nFeature: F\n\n  @AC-2 @integration @P1\n  Scenario: b\n    Given x\n    When y\n    Then z\n"
+    }
+  ],
+  "previous_version": null,
+  "requested_at": "2026-11-15T05:54:07.215147Z",
+  "run_state": "GHERKIN_REVIEW",
+  "scenarios": [
+    {
+      "line": 5,
+      "name": "a",
+      "path": "features/balance.feature",
+      "tags": [
+        "AC-1",
+        "unit",
+        "P1"
+      ]
+    },
+    {
+      "line": 5,
+      "name": "b",
+      "path": "features/request_form.feature",
+      "tags": [
+        "AC-2",
+        "integration",
+        "P1"
+      ]
+    }
+  ],
+  "sha256": "1f87455461d676fef9c8945cada797422777c900202c02b26c7e34ce367f966b",
+  "validation": {
+    "errors": [],
+    "warnings": [
+      "invalid-input: missing",
+      "missing-fields: missing",
+      "boundary: missing",
+      "empty-null: missing",
+      "authn: missing",
+      "authz: missing",
+      "data-integrity: missing",
+      "duplicate: missing",
+      "concurrency: missing",
+      "errors: missing",
+      "external-failure: missing",
+      "db-failure: missing",
+      "regression: missing",
+      "perf-security: missing"
+    ]
+  },
+  "version": 1,
+  "versions": [
+    {
+      "approver": null,
+      "channel": null,
+      "comment": null,
+      "created_at": "2026-11-15T05:54:07.215147Z",
+      "decided_at": null,
+      "decision": null,
+      "sha256": "1f87455461d676fef9c8945cada797422777c900202c02b26c7e34ce367f966b",
+      "version": 1
+    }
+  ]
+}

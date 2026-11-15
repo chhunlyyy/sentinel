@@ -6,7 +6,7 @@ from urllib.parse import unquote
 from errors import SentinelError
 from paths import slug_problem
 
-from . import ops, views
+from . import ops, readroutes, views
 from .projects import scrub_obj
 from .status import HttpError
 
@@ -164,6 +164,55 @@ def h_log(ctx, eng, project, slug, task_id):
     return views.log_tail(eng.reg, eng.state_dir, slug, eng._get(slug), task_id, ctx.query)
 
 
+@run_read
+def h_changes(ctx, eng, project, slug):
+    return readroutes.changes(eng, project, slug)
+
+
+@run_read
+def h_changes_diff(ctx, eng, project, slug):
+    return readroutes.changes_diff(eng, project, slug, ctx.query)
+
+
+# ---- Phase G read routes
+def h_health(ctx):
+    return 200, readroutes.health_view(ctx.projects, ctx.api.cfgdir)
+
+
+def _project_read(fn):
+    def handler(ctx, pid):
+        project = ctx.projects.get(pid)
+        ctx.project = project
+        return 200, ctx.clean(project, fn(ctx, project))
+    handler.__name__ = fn.__name__
+    return handler
+
+
+@_project_read
+def h_readiness(ctx, project):
+    return readroutes.readiness(ctx.projects, project, ctx.query)
+
+
+@_project_read
+def h_repositories(ctx, project):
+    return readroutes.repositories(ctx.projects, project)
+
+
+@_project_read
+def h_configuration(ctx, project):
+    return readroutes.configuration(ctx.projects, project, ctx.api.cfgdir)
+
+
+@_project_read
+def h_config_history(ctx, project):
+    return readroutes.configuration_history(ctx.projects, project)
+
+
+@_project_read
+def h_config_diff(ctx, project):
+    return readroutes.configuration_diff(ctx.projects, project, ctx.query)
+
+
 # ---- one run: decisions and controls
 def h_approvals(ctx, slug):
     project = ctx.locate(slug)
@@ -235,6 +284,14 @@ ROUTES = [
     Route("GET", "approval_list", "approvals", h_approval_list),
     Route("GET", "audit", "audit", h_audit),
     Route("GET", "events", "events", h_events),
+    Route("GET", "health", "installation/health", h_health),
+    Route("GET", "readiness", "projects/{pid}/readiness", h_readiness),
+    Route("GET", "repositories", "projects/{pid}/repositories", h_repositories),
+    Route("GET", "configuration", "projects/{pid}/configuration", h_configuration),
+    Route("GET", "config_history", "projects/{pid}/configuration/history", h_config_history),
+    Route("GET", "config_diff", "projects/{pid}/configuration/diff", h_config_diff),
+    Route("GET", "changes", "tasks/{slug}/changes", h_changes),
+    Route("GET", "changes_diff", "tasks/{slug}/changes/diff", h_changes_diff),
 ]
 
 for _r in ROUTES:
@@ -243,12 +300,12 @@ for _r in ROUTES:
 # Contract routes that Phase G and H build. Until then they answer 404, so this module is the only allow-list.
 UNBUILT = [(m, re.compile(p)) for m, p in [
     ("POST", r"projects"), ("POST", r"projects/register"), ("PATCH|DELETE", r"projects/[^/]+"),
-    ("POST", r"projects/[^/]+/archive"), ("GET", r"projects/[^/]+/readiness"),
+    ("POST", r"projects/[^/]+/archive"),
     ("GET|POST|PATCH|DELETE|PUT", r"projects/[^/]+/repositories(/.*)?"),
     ("GET|POST|PUT|PATCH|DELETE", r"projects/[^/]+/configuration(/.*)?"), ("GET|PUT", r"configuration/global"),
     ("GET", r"fs/dirs"), ("GET", r"providers"), ("POST", r"providers/[^/]+/test"), ("GET", r"agents"),
-    ("GET", r"workflows|policies|profiles"), ("GET", r"installation/health"),
-    ("GET", r"tasks/[^/]+/changes(/diff)?"), ("POST", r"tasks/[^/]+/publish"),
+    ("GET", r"workflows|policies|profiles"),
+    ("POST", r"tasks/[^/]+/publish"),
     ("GET|POST", r"notifications(/[^/]+/read)?"), ("GET", r"reports/analytics"),
 ]]
 

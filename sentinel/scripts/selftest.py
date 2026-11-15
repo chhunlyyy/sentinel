@@ -817,6 +817,7 @@ def main():
         phase_c_checks(tmp)
         phase_d_checks(tmp)
         phase_f_checks(tmp)
+        phase_g_checks(tmp)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))
@@ -1051,6 +1052,64 @@ def main():
     failed = [r for r in RESULTS if not r[1]]
     print(f"\n{len(RESULTS) - len(failed)} passed, {len(failed)} failed")
     sys.exit(1 if failed else 0)
+
+
+def phase_g_checks(tmp):
+    print("dashboard read routes (phase G)")
+    import http.client
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from apiserver import userdir
+    from apiserver.server import ApiServer
+    home = tmp / "home-g"
+    home.mkdir()
+    w = tmp / "ws-g"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    git_repo(w / "frontend", "next.config.ts")
+    run(CLI + ["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    cfgdir = home / ".config" / "sentinel"
+    userdir.ensure_dir(cfgdir)
+    data = userdir.load_projects(cfgdir)
+    data["projects"].append({"id": "ws-g", "name": "ws-g", "path": str(w.resolve()), "added_at": "2026-11-14T00:00:00Z"})
+    userdir.save_projects(cfgdir, data)
+    srv = ApiServer(cfgdir, port=0, user="dev", git_name="Dev User", dispatch=False)
+    srv.start()
+    try:
+        def call(path, cookie=None, method="GET"):
+            conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=20)
+            conn.putrequest(method, path, skip_host=True, skip_accept_encoding=True)
+            conn.putheader("Host", f"127.0.0.1:{srv.port}")
+            if cookie:
+                conn.putheader("Cookie", f"sentinel_session={cookie}")
+            conn.endheaders()
+            resp = conn.getresponse()
+            body = resp.read()
+            headers = dict(resp.getheaders())
+            conn.close()
+            return resp.status, headers, body
+        status, headers, _ = call(f"/auth?t={srv.token}")
+        cookie = headers["Set-Cookie"].split(";", 1)[0].split("=", 1)[1]
+        check("AC-INS-06b a new read route needs the session cookie", call("/api/v1/installation/health")[0] == 401)
+        status, _, body = call("/api/v1/installation/health", cookie)
+        health = json.loads(body)
+        names = [i["name"] for i in health["items"]]
+        check("AC-INS-03e the health answer lists the ten checks", status == 200 and names == ["installation", "version", "git", "python", "pyyaml", "jsonschema", "registry_writable", "provider", "storage", "repo_access"], body[:200].decode())
+        code, out = run(CLI + ["--dir", str(w), "doctor"])
+        doctor_fails = code != 0
+        api_fails = any(i["status"] == "failed" for i in health["items"] if i["name"] in ("storage", "repo_access"))
+        check("AC-INS-07a doctor and the health answer agree on whether the workspace has problems", doctor_fails == api_fails or (doctor_fails and "command not found" in out), out[-200:])
+        status, _, body = call("/api/v1/projects/ws-g/repositories", cookie)
+        repos = json.loads(body)
+        check("AC-REP-03a the repository list follows the config order", status == 200 and [r["id"] for r in repos["items"]] == [r["id"] for r in yaml.safe_load((w / "sentinel.config.yaml").read_text())["repos"]], body[:200].decode())
+        status, _, body = call("/api/v1/projects/ws-g/readiness", cookie)
+        ready = json.loads(body)
+        check("AC-DSH-03d readiness answers a state and items that carry checked_at", status == 200 and ready["state"] in ("ready", "ready_with_warnings", "needs_configuration", "invalid_configuration", "connection_unavailable") and all("checked_at" in i for i in ready["items"]), body[:200].decode())
+        status, _, body = call("/api/v1/projects/ws-g/configuration", cookie)
+        conf = json.loads(body)
+        check("AC-CFG-06a the configuration answer carries the sha256 of the file and sourced values", status == 200 and len(conf["sha256"]) == 64 and all("source" in i for i in conf["items"]), body[:200].decode())
+        check("AC-INS-06a a mutating contract route is still not offered", call("/api/v1/projects/ws-g/configuration/import", cookie, "POST")[0] in (403, 404))
+    finally:
+        srv.stop()
 
 
 if __name__ == "__main__":
