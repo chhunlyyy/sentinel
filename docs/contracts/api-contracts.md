@@ -64,7 +64,7 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/tasks/{slug}/specification` | current version, hash, validation, diff to previous |
 | GET | `/tasks/{slug}/specification/versions/{v}` | that version |
 | GET | `/tasks/{slug}/gherkin` | features, scenarios, tags, coverage table, hash |
-| POST | `/tasks/{slug}/approvals` | body `{gate, sha256, decision, comment}` -> `approvals.decide` (human only) |
+| POST | `/tasks/{slug}/approvals` | body `{gate, sha256, confirmation, decision, comment}` -> `approvals.decide` (human only). `sha256` is the full hash, `confirmation` its first 8 characters as typed |
 | GET | `/tasks/{slug}/workflow` | full graph: nodes (tasks, gates), edges, states |
 | GET | `/tasks/{slug}/tdd` | cycles with phases and evidence ids |
 | GET | `/tasks/{slug}/verification` | evidence list and acceptance computation |
@@ -73,8 +73,8 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/tasks/{slug}/changes/diff?repo=&path=&mode=inline|split` | scrubbed diff |
 | GET | `/tasks/{slug}/artifacts/{aid}` | content, hash verified, scrubbed |
 | GET | `/tasks/{slug}/logs/{task_id}?offset=` | live log tail |
-| POST | `/tasks/{slug}/control` | body `{action: pause|resume|cancel|retry, task_id?}` |
-| POST | `/tasks/{slug}/acceptance` | body `{sha256_of_report, decision, comment}` (human only) |
+| POST | `/tasks/{slug}/control` | body `{action: resume|cancel|retry, task_id?, comment?}` (`pause` and "request intervention" are dropped for 1.1.0; the API answers 400) |
+| POST | `/tasks/{slug}/acceptance` | body `{sha256_of_report, confirmation, decision, comment}` (human only) |
 | POST | `/tasks/{slug}/publish` | shared-repo push (human only, scrub-checked) |
 | GET | `/tasks/{slug}/report?format=json|md` | run report |
 
@@ -85,6 +85,16 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/notifications`, POST `/notifications/{id}/read` | notifications |
 | GET | `/reports/analytics?project=&from=&to=` | analytics (missing values reported as null with reason) |
 | GET | `/audit?project=` | audit log |
+
+### Added in Phase F
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/session` | `{csrf, user}` for the session cookie; the CSRF value is per session |
+| GET | `/approvals?state=` | approvals across projects (default `IN_REVIEW`) |
+| POST | `/projects/{pid}/tasks` | body `{slug, request, type, repos?, priority?, tier?, ticket?}`; the run is created for the AI tool (`origin = dashboard`) and authorizes nothing; `?project=<pid>` on `/tasks/{slug}` routes selects the project when a slug exists twice |
+
+Only Phase F routes exist; every other route above answers `404 E_NOT_FOUND` until Phase G or H builds it. Check order: Host, Origin, session cookie, route, CSRF, body. HTTP-only codes (not engine codes): `E_AUTH` 401, `E_CSRF` 403, `E_HOST` 403, `E_ORIGIN` 403, `E_METHOD` 405, `E_BODY_TOO_LARGE` 413, `E_MEDIA_TYPE` 415, `E_INTERNAL` 500. Engine codes map to one status each (`apiserver/status.py`).
 
 ## 3. CLI contract (new and changed commands)
 

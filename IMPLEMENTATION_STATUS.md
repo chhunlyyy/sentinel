@@ -29,9 +29,9 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 | PE-01 | Verification | Verification runner, acceptance, reports, export and import | Pending | PD-02 | |
 | PE-02 | Skills | Rewrite orchestrator skill around `sentinel next`; regenerate adapters | Pending | PE-01 | |
 | PF-00 | Local API | Phase F Gherkin (test plan) | Completed | PE review | approved 2026-11-14 at hash `5ef93cdedf89f47d667c41d18e964070b18fbb79b5ddb8274a002d019865dfbc`, `plan/v1.1/phaseF/features/*.feature` |
-| PF-01 | Local API | Server, auth, allow-listed operations, SSE | Pending | PE-01 | |
+| PF-01 | Local API | Server, auth, allow-listed operations, SSE | Completed (acceptance endpoints wired after PE-01) | PE-01 | auto-approved (delegated); `sentinel/scripts/apiserver/`, `controls.py`, `migrations/0007_phase_f_api.sql`, `tests/test_server_*.py`, `tests/test_security_review_f.py`, `tests/test_merge_df.py` |
 | PG-00 | Dashboard | Phase G Gherkin (test plan) | Completed | PF review | approved 2026-11-14 at hash `1d27ec935a4ef85ae51e33eca9f968423640e4d831b10912560ffc5b0299b257`, `plan/v1.1/phaseG/features/*.feature` |
-| PG-01 | Dashboard | Installation, projects, repos, configuration center, readiness | Pending | PF-01 | |
+| PG-01 | Dashboard | Installation, projects, repos, configuration center, readiness | Pending | PF-01 | Local API | Server, auth, allow-listed operations, SSE | Completed (acceptance endpoints wired after PE-01) | PE-01 | auto-approved (delegated); `sentinel/scripts/apiserver/`, `controls.py`, `migrations/0007_phase_f_api.sql`, `tests/test_server_*.py`, `tests/test_security_review_f.py`, `tests/test_merge_df.py` |
 | PG-02 | Dashboard | Tasks, approval center, monitoring, TDD, verification, diffs, trace | Pending | PG-01 | |
 | PH-00 | Release | Phase H Gherkin (test plan) | Completed | PG review | approved 2026-11-14 at hash `d61984bef91e27725b81c9d4723e298e7a5e2b94716e246c11b6b8d54e994012`, `plan/v1.1/phaseH/features/*.feature` |
 | PH-01 | Release | Notifications, analytics, audit, security tests, docs, version 1.1.0 | Pending | PG-02 | |
@@ -70,3 +70,12 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 - Migration renumbered: Phase D review migration is `0008_cycle_review.sql` (Phase F owns 0007). Phase E takes 0009, Phase H 0010.
 - Known limits: flutter `tojunit` path untested offline; selector values must be quoted in profile templates (names with quotes/backslashes refused); cancelling a cycle task does not queue a retry by itself (Phase F ControlOps must call `retry_cycle_task`).
 - Phase D auto-approved (delegated) 2026-11-15.
+
+## Phase F notes
+
+- Built in worktree branch `v1.1-phase-f` (322dd51, fixes 23c6721), merged into `v1.1-core` 2026-11-15.
+- Evidence: RED 36 failures + 128 errors before server code; review-fix tests red first. Merged tree: unittest 720 OK (3 skipped: dashboard acceptance waits for Phase E `accept`), selftest 180 passed, 0 failed.
+- Opus security review: 4 major (unscrubbed cross-project audit, tier floor override, migration gap, token in browser argv), 7 minor/nit; all fixed. Migration runner now records applied versions and fills gaps.
+- Merge integration: ControlOps retry/cancel of TDD cycle tasks go through Phase D cycle hooks.
+- Residual: scrubber is quadratic on very long strings (mitigated by 8 KiB log-line cut).
+- Phase F auto-approved (delegated) 2026-11-15.

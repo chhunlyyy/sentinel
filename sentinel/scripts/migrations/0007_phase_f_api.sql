@@ -1,0 +1,5 @@
+ALTER TABLE events ADD COLUMN actor_name TEXT;
+ALTER TABLE events ADD COLUMN channel TEXT;
+ALTER TABLE runs ADD COLUMN priority TEXT;
+ALTER TABLE runs ADD COLUMN requested_tier INTEGER;
+ALTER TABLE runs ADD COLUMN origin TEXT;

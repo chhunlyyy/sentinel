@@ -594,6 +594,120 @@ pathlib.Path(result).write_text(json.dumps({{"schema": "agent-result-v1", "task_
     check("AC-TRC-01a the chain links the AC to its scenario key and the cycle to its production file", rows("SELECT 1 FROM trace_links WHERE from_kind='ac' AND to_kind='scenario' AND to_id LIKE '% :: %'") != [] and rows("SELECT to_id FROM trace_links WHERE from_kind='cycle' AND to_kind='file'") == [{"to_id": "backend/src/main/java/LeaveBalance.java"}])
     check("AC-TDD-06a Red evidence holds the targeted command, exit code, output file and its sha256", all(rows("SELECT command, exit_code, output_sha256, repo_sha FROM evidence WHERE kind='red' AND verdict='accepted'")[0].values()))
 
+def phase_f_checks(tmp):
+    print("local api server (phase F)")
+    import http.client
+    import pty
+    import re
+    import select
+    import signal
+    import stat
+    home = tmp / "home-f"
+    home.mkdir()
+    w = tmp / "ws-f"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    git_repo(w / "frontend", "next.config.ts")
+    run(CLI + ["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    env = {k: v for k, v in ENV.items() if k not in ("XDG_CONFIG_HOME", "SENTINEL_TASK_ID")}
+    env.update({"HOME": str(home), "USER": "dev", "LOGNAME": "dev"})
+    cfg = home / ".config" / "sentinel"
+    base = CLI + ["--dir", str(w)]
+    r = subprocess.run(base + ["dashboard", "--no-open"], stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
+    check("AC-SEC-02c dashboard without a terminal is refused with E_NOT_TTY and prints no token", r.returncode == 5 and "E_NOT_TTY" in r.stdout + r.stderr and "auth?t=" not in r.stdout + r.stderr, r.stderr[-200:])
+    r = subprocess.run(base + ["dashboard", "--no-open"], stdin=subprocess.DEVNULL, capture_output=True, text=True, env={**env, "SENTINEL_TASK_ID": "t-abc123"})
+    check("AC-SEC-02b a task process cannot start the server (E_ACTOR)", r.returncode == 5 and "E_ACTOR" in r.stdout + r.stderr, r.stderr[-200:])
+    r = subprocess.run(base + ["dashboard", "--host", "0.0.0.0"], stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
+    check("AC-SEC-01c no option chooses another bind address", r.returncode == 2 and not cfg.exists(), r.stderr[-200:])
+
+    def tty_proc(args):
+        master, slave = pty.openpty()
+        proc = subprocess.Popen(CLI + args, stdin=slave, stdout=slave, stderr=slave, env=env, start_new_session=True)
+        os.close(slave)
+        return proc, master
+
+    def read_until(proc, fd, pattern, timeout=20):
+        out = b""
+        end = time.time() + timeout
+        while time.time() < end:
+            if re.search(pattern, out.decode(errors="replace")):
+                break
+            r, _, _ = select.select([fd], [], [], 0.2)
+            if r:
+                try:
+                    data = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not data:
+                    break
+                out += data
+            elif proc.poll() is not None:
+                break
+        return out.decode(errors="replace").replace("\r\n", "\n")
+
+    proc, fd = tty_proc(["--dir", str(w), "dashboard", "--no-open"])
+    try:
+        out = read_until(proc, fd, r"auth\?t=[0-9a-f]{64}")
+        m = re.search(r"http://127\.0\.0\.1:(\d+)/auth\?t=([0-9a-f]{64})", out)
+        check("AC-SEC-01a dashboard starts at a terminal and prints the auth URL", bool(m), out[-200:])
+        port, token = int(m.group(1)), m.group(2)
+        sj = cfg / "server.json"
+        check("AC-SEC-02e server.json is 0600 in a 0700 folder and holds the printed token", stat.S_IMODE(sj.stat().st_mode) == 0o600 and stat.S_IMODE(cfg.stat().st_mode) == 0o700 and json.loads(sj.read_text())["token"] == token)
+
+        def call(method, path, body=None, cookie=None, csrf=None, host=None):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=20)
+            conn.putrequest(method, path, skip_host=True, skip_accept_encoding=True)
+            conn.putheader("Host", host or f"127.0.0.1:{port}")
+            if cookie:
+                conn.putheader("Cookie", f"sentinel_session={cookie}")
+            if csrf:
+                conn.putheader("X-Sentinel-CSRF", csrf)
+            data = json.dumps(body).encode() if body is not None else None
+            if data is not None:
+                conn.putheader("Content-Type", "application/json")
+                conn.putheader("Content-Length", str(len(data)))
+            conn.endheaders(data)
+            resp = conn.getresponse()
+            payload = resp.read()
+            headers = dict(resp.getheaders())
+            conn.close()
+            return resp.status, headers, payload
+
+        status, headers, _ = call("GET", f"/auth?t={token}")
+        cookie = headers["Set-Cookie"].split(";", 1)[0].split("=", 1)[1]
+        check("AC-SEC-01p the token is exchanged for an HttpOnly SameSite=Strict cookie", status == 302 and "HttpOnly" in headers["Set-Cookie"] and "SameSite=Strict" in headers["Set-Cookie"], str(headers))
+        status, _, payload = call("GET", "/api/v1/runtime", cookie=cookie)
+        runtime = json.loads(payload)
+        check("AC-SEC-01a the runtime endpoint names the pid, port and project", status == 200 and runtime["port"] == port and [p["id"] for p in runtime["projects"]] == ["ws-f"] and runtime["user"]["role"] == "admin", payload[:200])
+        check("AC-SEC-01s an API route without the cookie answers 401", call("GET", "/api/v1/projects")[0] == 401)
+        check("AC-SEC-01l a foreign Host header answers 403", call("GET", "/api/v1/projects", cookie=cookie, host=f"attacker.example:{port}")[0] == 403)
+        csrf = json.loads(call("GET", "/api/v1/session", cookie=cookie)[2])["csrf"]
+        check("AC-SEC-01u a POST without the CSRF header answers 403", call("POST", "/api/v1/projects/ws-f/tasks", {"slug": "api-run", "request": "x", "type": "feature"}, cookie=cookie)[0] == 403)
+        status, _, payload = call("POST", "/api/v1/projects/ws-f/tasks", {"slug": "api-run", "request": "Show the balance", "type": "feature", "repos": ["backend"]}, cookie=cookie, csrf=csrf)
+        check("AC-TSK-01a a run created through the API starts CREATED with version 2", status == 201 and json.loads(payload)["state"] == "CREATED" and json.loads(payload)["workflow_version"] == "2", payload[:200].decode())
+        status, _, payload = call("GET", "/api/v1/tasks/api-run/next", cookie=cookie)
+        step = json.loads(payload)
+        code, out = run(CLI + ["--dir", str(w), "next", "api-run", "--json"])
+        check("AC-TSK-03b the new run waits for the AI tool and the CLI sees the same run", step.get("label") == "waiting for AI tool" and step["resume_command"] == "/sentinel resume api-run" and json.loads(out)["kind"] == "orchestrator", payload[:200].decode() + out[-100:])
+        status, _, payload = call("POST", "/api/v1/tasks/api-run/control", {"action": "cancel", "comment": "selftest"}, cookie=cookie, csrf=csrf)
+        row = db_row(w, "api-run")
+        check("AC-MON-02a a dashboard cancel moves the run to CANCELLED and is audited with channel dashboard", status == 200 and row["state"] == "CANCELLED" and db_all(w, "SELECT 1 FROM audit WHERE channel='dashboard' AND action='cancel' AND target='api-run'"), payload[:200])
+        proc2, fd2 = tty_proc(["--dir", str(w), "dashboard", "--no-open"])
+        out2 = read_until(proc2, fd2, r"auth\?t=[0-9a-f]{64}")
+        proc2.wait(timeout=20)
+        os.close(fd2)
+        check("AC-SEC-01e a second call attaches to the running server and exits 0", proc2.returncode == 0 and f"http://127.0.0.1:{port}/auth?t={token}" in out2, out2[-200:])
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=10)
+        check("AC-SEC-01i stopping the server exits 0 and removes server.json", proc.returncode == 0 and not sj.exists())
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        os.close(fd)
+    code, out = run(CLI + ["--dir", str(w), "next", "api-run", "--json"])
+    check("AC-TST-01g CLI commands work after the server stopped", code == 0)
+
 
 def main():
     tmp = Path(tempfile.mkdtemp(prefix="sentinel-selftest-"))
@@ -702,6 +816,7 @@ def main():
         phase_b_checks(tmp)
         phase_c_checks(tmp)
         phase_d_checks(tmp)
+        phase_f_checks(tmp)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))
