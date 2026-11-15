@@ -52,20 +52,42 @@ PLAIN_WORD = re.compile(r"[a-z][a-z._-]*")
 EXAMPLE_SUFFIXES = (".example", ".sample", ".template", ".dist")
 
 
-def env_values(workspace):
-    values = set()
-    for env_file in Path(workspace).glob("**/.env*"):
-        if any(part in SKIP_DIRS for part in env_file.parts) or env_file.name.endswith(EXAMPLE_SUFFIXES):
-            continue
+def env_roots(workspace, repos=None):
+    """The folders whose `.env*` files hold secrets to redact: the workspace root and the repo roots (`repos`: their
+    paths; default the workspace's child folders). Nothing deeper: a walk through node_modules would be slow, and the
+    secrets of a dependency are not ours."""
+    workspace = Path(workspace)
+    roots = [workspace]
+    if repos is None:
         try:
-            for line in env_file.read_text(errors="ignore").splitlines():
-                if "=" in line and not line.lstrip().startswith("#"):
-                    key, value = line.split("=", 1)
-                    value = value.strip().strip("'\"")
-                    if len(value) >= 6 and SECRET_KEY.search(key) and not PLAIN_WORD.fullmatch(value):
-                        values.add(value)
+            repos = [c for c in sorted(workspace.iterdir()) if c.is_dir() and not c.name.startswith(".") and c.name not in SKIP_DIRS]
+        except OSError:
+            repos = []
+    for r in repos:
+        r = Path(r)
+        roots.append(r if r.is_absolute() else workspace / r)
+    return roots
+
+
+def env_values(workspace, repos=None):
+    values = set()
+    for root in env_roots(workspace, repos):
+        try:
+            env_files = sorted(root.glob(".env*"))
         except OSError:
             continue
+        for env_file in env_files:
+            if not env_file.is_file() or env_file.name.endswith(EXAMPLE_SUFFIXES):
+                continue
+            try:
+                for line in env_file.read_text(errors="ignore").splitlines():
+                    if "=" in line and not line.lstrip().startswith("#"):
+                        key, value = line.split("=", 1)
+                        value = value.strip().strip("'\"")
+                        if len(value) >= 6 and SECRET_KEY.search(key) and not PLAIN_WORD.fullmatch(value):
+                            values.add(value)
+            except OSError:
+                continue
     return sorted(values, key=len, reverse=True)
 
 
@@ -113,6 +135,32 @@ class Scrubber:
             if not EMAIL_ALLOWED.search(match.group(0)):
                 found.append("email")
         return sorted(set(found))
+
+
+def clean_text(scrubber, text, config=None, base=None):
+    """The one scrub helper for text that leaves the registry or the run folders (task logs, audit exports): the
+    redact_env values of `config` and the dashboard token (adapters.redact_text), then the scrubber's patterns."""
+    import adapters
+    return scrubber.scrub_text(adapters.redact_text(config or {}, text, base))
+
+
+KEY_BEGIN = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+KEY_END = re.compile(r"-----END [A-Z ]*PRIVATE KEY-----")
+
+
+def clean_lines(scrubber, lines, config=None, base=None):
+    """clean_text for a sequence of lines (without their newlines). A private key spans lines, so what lies between its
+    BEGIN and END lines is dropped (a sequence that starts inside a key cannot know that)."""
+    in_key = False
+    for line in lines:
+        if in_key:
+            if KEY_END.search(line):
+                in_key = False
+            yield "[REDACTED:private key]"
+            continue
+        if KEY_BEGIN.search(line) and not KEY_END.search(line):
+            in_key = True
+        yield clean_text(scrubber, line, config, base)
 
 
 def iter_files(paths):

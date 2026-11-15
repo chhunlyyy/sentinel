@@ -15,7 +15,9 @@ from unittest import mock
 
 from pb_helpers import CLIBase, CLI, CLI_ENV, PtyProc, SLUG, run_plain
 from apiserver import userdir
+import auditlog
 import backup as backup_mod
+from registry import Registry
 
 
 def sha_file(p):
@@ -233,7 +235,13 @@ class VerifyRestore(BackupBase):
         code, out = self.cli("backup", "restore", info["path"])
         self.assertEqual(code, 5, out)
         self.assertIn("E_NOT_TTY", out)
-        self.assertEqual(sha_file(self.db), before)
+        reg = Registry.open(self.ws / ".sentinel")  # the refusal is the only change: one audit row
+        rows = reg.audit_rows()
+        reg.close()
+        self.assertEqual(rows[-1]["action"], "restore_refused")
+        self.assertEqual(rows[-1]["reason"], "E_NOT_TTY")
+        self.assertEqual(len(rows), 32)  # 30 + the backup row + the refusal
+        self.assertTrue(auditlog.verify_db(self.db)["ok"])
 
     def test_AC_OPS_05k_restore_refuses_while_something_runs(self):
         info = self.make()
@@ -296,15 +304,121 @@ class VerifyRestore(BackupBase):
 
         def boom(src, dst):
             calls.append(dst)
-            if len(calls) == 1:  # the pre-restore copy works, the copy into place fails half way
-                return real(src, dst)
-            Path(dst).write_bytes(b"half")
+            if len(calls) == 1:  # the pre-restore copy works, the copy into the live registry fails (a failed backup-API
+                return real(src, dst)  # copy is rolled back by SQLite, so the fault injected here writes nothing)
             raise sqlite3.OperationalError("disk I/O error")
         with mock.patch.object(backup_mod, "_copy_db", boom):
             with self.assertRaises(Exception):
                 backup_mod.restore(self.ws / ".sentinel", info["path"], user="dev")
         self.assertEqual(sha_file(self.db), before)
         self.assertEqual(len(list(self.bdir.glob("pre-restore-*.db"))), 1)
+
+    # ---- review fixes
+    def audit_actions(self):
+        reg = Registry.open(self.ws / ".sentinel")
+        try:
+            return [(r["action"], r["reason"]) for r in reg.audit_rows()]
+        finally:
+            reg.close()
+
+    def test_restore_checks_for_running_work_itself(self):
+        info = self.make()
+        tid = self.eng.reg.rows("tasks")[0]["id"]
+        cfg = self.home / "cfg"
+        cfg.mkdir()
+        for pid in (None, os.getpid()):  # a native task has no pid of its own; the other has a live process
+            with self.subTest(pid=pid):
+                self.eng.reg.update_row("tasks", tid, state="RUNNING", pid=pid)
+                with self.assertRaises(backup_mod.SentinelError) as cm:
+                    backup_mod.restore(self.ws / ".sentinel", info["path"], user="dev", config_dir=cfg)
+                self.assertEqual(cm.exception.code, "E_LOCKED")
+        self.eng.reg.update_row("tasks", tid, state="CREATED", pid=None)
+        self.assertEqual(list(self.bdir.glob("pre-restore-*.db")), [])
+
+    def test_restore_keeps_what_an_open_connection_writes_afterwards(self):
+        info = self.make()
+        cfg = self.home / "cfg"
+        cfg.mkdir()
+        backup_mod.restore(self.ws / ".sentinel", info["path"], user="dev", config_dir=cfg)
+        with self.eng.reg.transaction():  # the engine of setUp still holds its connection from before the restore
+            self.eng.reg.add_audit("dev", "tty", "approve", "after-restore")
+        c = sqlite3.connect(self.db)
+        self.assertEqual(c.execute("SELECT count(*) FROM audit WHERE target='after-restore'").fetchone()[0], 1)
+        c.close()
+        self.assertTrue(auditlog.verify_db(self.db)["ok"])
+
+    def test_restore_hashes_what_it_copies(self):
+        info = self.make()
+        other = self.make()
+        Path(other["path"] + ".sha256").unlink()
+        Path(info["path"]).write_bytes(Path(other["path"]).read_bytes())  # swapped after the user confirmed
+        Path(info["path"] + ".sha256").unlink()
+        cfg = self.home / "cfg"
+        cfg.mkdir()
+        with self.assertRaises(backup_mod.SentinelError) as cm:
+            backup_mod.restore(self.ws / ".sentinel", info["path"], user="dev", expected_sha=info["sha256"], config_dir=cfg)
+        self.assertEqual(cm.exception.code, "E_INTEGRITY")
+        self.assertEqual(list(self.bdir.glob("pre-restore-*.db")), [])
+
+    def test_an_unverified_copy_needs_a_second_confirmation(self):
+        info = self.make()
+        Path(info["path"] + ".sha256").unlink()
+        c = sqlite3.connect(info["path"])
+        c.execute("DELETE FROM meta WHERE key='registry_id'")
+        c.commit()
+        c.close()
+        info["sha256"] = sha_file(info["path"])
+        cfg = self.home / "cfg"
+        cfg.mkdir()
+        with self.assertRaises(backup_mod.SentinelError) as cm:
+            backup_mod.restore(self.ws / ".sentinel", info["path"], user="dev", config_dir=cfg)
+        self.assertEqual(cm.exception.code, "E_VALIDATION")
+        self.assertIn("not verified", cm.exception.message)
+        before = sha_file(self.db)
+        p = PtyProc(self.d + ["backup", "restore", info["path"]], self.env)
+        p.wait_for("first 8 characters", 10)
+        p.send(info["sha256"][:8] + "\n")
+        self.assertTrue(p.wait_for("restore anyway", 10))
+        p.send("yes\n")
+        code, out = p.finish()
+        self.assertEqual(code, 1, out)
+        self.assertEqual(sha_file(self.db), before)
+        p = PtyProc(self.d + ["backup", "restore", info["path"]], self.env)
+        p.wait_for("first 8 characters", 10)
+        p.send(info["sha256"][:8] + "\n")
+        p.wait_for("restore anyway", 10)
+        p.send("restore anyway\n")
+        code, out = p.finish()
+        self.assertEqual(code, 0, out)
+        self.assertIn("warning", out)
+        self.assertEqual(self.audit_actions()[-1][0], "restore")
+
+    def test_backup_and_sidecar_are_private_from_the_start(self):
+        old = os.umask(0o022)
+        self.addCleanup(os.umask, old)
+        seen = {}
+        real = backup_mod._copy_db
+
+        def spy(src, dst):
+            real(src, dst)
+            seen["tmp"] = stat.S_IMODE(os.stat(dst).st_mode)
+        with mock.patch.object(backup_mod, "_copy_db", spy), mock.patch.object(backup_mod.os, "chmod", lambda *a: None):
+            info = backup_mod.create_backup(self.ws / ".sentinel", self.home / "bk", audit=False)
+        self.assertEqual(seen["tmp"], 0o600)
+        self.assertEqual(stat.S_IMODE(os.stat(info["path"]).st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(os.stat(info["path"] + ".sha256").st_mode), 0o600)
+
+    def test_a_refused_export_backup_or_restore_is_audited(self):
+        info = self.make()
+        env = dict(self.env, SENTINEL_TASK_ID="t-1")
+        for args, action in ((("backup",), "backup_refused"), (("audit", "export", "--out", "x.jsonl"), "audit_export_refused"),
+                             (("backup", "restore", info["path"]), "restore_refused")):
+            with self.subTest(action=action):
+                code, out = self.cli(*args, env=env)
+                self.assertEqual(code, 5, out)
+                self.assertIn("E_ACTOR", out)
+                self.assertEqual(self.audit_actions()[-1], (action, "E_ACTOR"))
+        self.assertTrue(auditlog.verify_db(self.db)["ok"])
 
 
 if __name__ == "__main__":

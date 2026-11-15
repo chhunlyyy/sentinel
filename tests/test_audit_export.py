@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 from pb_helpers import CLIBase, CLI, CLI_ENV, SLUG, run_plain
+from sv_helpers import SV
 from registry import Registry
 
 ACTIONS = ["approve", "accepted", "cancel", "resume", "retry"]
@@ -79,15 +80,17 @@ class AppendOnly(AuditBase):
         old = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, old, True)
         from registry import _load_file_migrations
-        before = [m for m in _load_file_migrations() if m[0] < 10]
+        chain = Registry.CHAIN_VERSION
+        before = [m for m in _load_file_migrations() if m[0] < chain]
+        prior = max(m[0] for m in before)
         reg = Registry.open(old, migrations=before)
-        self.assertEqual(reg.schema_version(), 9)
+        self.assertEqual(reg.schema_version(), prior)
         for i in range(30):
             reg._c.execute("INSERT INTO audit(actor, channel, action, target, at) VALUES (?,?,?,?,?)",
                            ("dev", "tty", "approve", f"t{i}", f"2026-11-01T00:00:{i:02d}Z"))
         reg.close()
         reg = Registry.open(old)
-        self.assertTrue((old / "sentinel.db.bak-9").exists())
+        self.assertTrue((old / f"sentinel.db.bak-{prior}").exists())
         rows = reg.audit_rows()
         self.assertEqual(len(rows), 30)
         self.assertTrue(all(r["row_sha"] and r["chain_sha"] for r in rows))
@@ -250,6 +253,19 @@ class Export(AuditBase):
         self.assertIn(head["head_chain_sha"], [r["chain_sha"] for r in self.eng.reg.audit_rows()])
         self.assertEqual(self.verify("--file", str(self.ws / "a.jsonl"))[0], 0)
 
+    def test_verify_file_against_the_registry_from_the_command_line(self):
+        self.assertEqual(self.export("--out", "a.jsonl")[0], 0)
+        code, out = self.verify("--file", str(self.ws / "a.jsonl"), "--db", str(self.db))
+        self.assertEqual(code, 0, out)
+        self.assertIn("every row matches the registry", out)
+        lines = self.lines("a.jsonl")
+        del lines[7]
+        lines[0]["rows"] -= 1
+        (self.ws / "gap.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+        code, out = self.verify("--file", str(self.ws / "gap.jsonl"))
+        self.assertEqual(code, 1, out)
+        self.assertIn("E_INTEGRITY", out)
+
     def test_AC_SEC_07r_the_registry_is_locked_for_writing(self):
         lock = sqlite3.connect(self.db, isolation_level=None)
         lock.execute("BEGIN EXCLUSIVE")
@@ -260,12 +276,32 @@ class Export(AuditBase):
         self.assertFalse((self.ws / "a.jsonl").exists())
         self.assertEqual([p for p in self.ws.iterdir() if "audit" in p.name], [])
 
+
+class DashboardView(SV):
     def test_AC_SEC_07s_the_dashboard_audit_view_uses_the_same_rows(self):
+        self.executing(tier=3)
+        with self.eng.reg.transaction():
+            for i in range(25):
+                self.eng.reg.add_audit("dev", "tty", ACTIONS[i % 5], f"{SLUG}/spec", after_sha=sha(str(i)),
+                                       reason=f"password=hunter{i}-secret" if i % 7 == 0 else f"r{i}")
+        self.serve()
+        r = self.http.get("/api/v1/audit?project=digital-hr&limit=200")
+        self.assertEqual(r.status, 200, r.text)
+        env = {**CLI_ENV, "HOME": str(self.home)}
+        out = self.ws / "all.jsonl"
+        done = subprocess.run(CLI + ["--dir", str(self.ws), "audit", "export", "--out", str(out)], stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True, env=env, cwd=self.ws)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        exported = {x["id"]: x for x in (json.loads(t) for t in out.read_text().splitlines()[1:])}
+        # the export holds the rows of the registry plus its own `audit_exported` row, which is written after the snapshot
+        served = {x["id"]: x for x in r.json["items"]}
+        self.assertEqual(set(exported), set(served))
         from apiserver import views
-        rows = self.eng.reg._c.execute("SELECT id, row_sha, chain_sha FROM audit ORDER BY id").fetchall()
-        self.assertTrue(all(r["row_sha"] and r["chain_sha"] for r in rows))
-        self.assertIn("row_sha", views.AUDIT_COLUMNS)
-        self.assertIn("chain_sha", views.AUDIT_COLUMNS)
+        for rid, row in served.items():
+            for col in views.AUDIT_COLUMNS:
+                self.assertEqual(row[col], exported[rid][col], (rid, col))
+        self.assertTrue(all(x["row_sha"] and x["chain_sha"] for x in served.values()))
+        self.assertNotIn("hunter0-secret", r.text)
 
 
 if __name__ == "__main__":

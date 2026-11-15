@@ -729,22 +729,51 @@ def cmd_verify(args):
         engine.close()
 
 
+def gate_error(what, need_tty=True):
+    """The refusal of a human decision command: E_ACTOR inside a task process, E_NOT_TTY without a terminal (when
+    `need_tty`), else None."""
+    task = os.environ.get("SENTINEL_TASK_ID")
+    if task:
+        return SentinelError("E_ACTOR", f"a task process may not run `sentinel {what}` (called from task {task})",
+                             {"task": task, "command": what})
+    if need_tty and not is_tty():
+        return refuse_without_tty(f"`sentinel {what}`")
+    return None
+
+
 def human_gate(engine, slug, what, target=None):
     """A human decision command: refused inside a task process (E_ACTOR) and without a terminal (E_NOT_TTY); refusals are
     audited against the run, or against `target` when the command names no run yet (an import)."""
     user, git_name = human_identity()
-    task = os.environ.get("SENTINEL_TASK_ID")
-    err = None
-    if task:
-        err = SentinelError("E_ACTOR", f"a task process may not run `sentinel {what}` (called from task {task})", {"task": task})
-    elif not is_tty():
-        err = refuse_without_tty(f"`sentinel {what}`")
+    err = gate_error(what)
     if err:
         if target or engine.is_v2(slug):
             engine.audit(user, "tty" if is_tty() else "cli", f"{what.replace(' ', '_')}_refused" if what != "accept" else "acceptance_refused",
                          target or slug, reason=err.code)
         raise err
     return user, git_name
+
+
+def audited_gate(args, what, action, target, need_tty=False):
+    """The gate of `audit export`, `backup` and `backup restore` (no run to audit against): a refusal writes one
+    `<action>_refused` row to the workspace registry, when there is one, and is raised. R1: the task-process check reads
+    an environment variable, so a same-user process that clears it is not stopped (docs/security.md)."""
+    err = gate_error(what, need_tty)
+    if not err:
+        return
+    try:
+        config_path, config = load_config(args.dir)
+        if (state_dir_of(config_path, config) / "sentinel.db").is_file():
+            reg = open_audit_registry(config_path, config)
+            try:
+                with reg.transaction():
+                    reg.add_audit(human_identity()[0], "tty" if is_tty() else "cli", f"{action}_refused", str(target),
+                                  reason=err.code)
+            finally:
+                reg.close()
+    except Exception:  # the refusal itself must still reach the caller
+        pass
+    raise err
 
 
 def cmd_accept(args):
@@ -877,7 +906,7 @@ def cmd_audit_verify(args):
     import auditlog
     config_path, config = load_config(args.dir)
     if args.file:
-        res = auditlog.verify_file(args.file)
+        res = auditlog.verify_file(args.file, db=Path(args.db) if args.db else None)
     else:
         db = Path(args.db) if args.db else state_dir_of(config_path, config) / "sentinel.db"
         if not db.is_file():
@@ -885,14 +914,21 @@ def cmd_audit_verify(args):
         res = auditlog.verify_db(db)
     if not res["ok"]:
         raise SentinelError("E_INTEGRITY", res["message"], {"row": res["row"]}, exit_code=1)
-    print(f"audit ok: {res['rows']} rows, head chain_sha {res['head']}")
+    extra = []
+    if res.get("scrubbed"):
+        extra.append(f"{res['scrubbed']} scrubbed rows checked for their chain link only")
+    if res.get("imported"):
+        extra.append(f"{res['imported']} imported rows")
+    if res.get("registry_checked"):
+        extra.append("every row matches the registry")
+    print(f"audit ok: {res['rows']} rows, head chain_sha {res['head']}" + (f" ({'; '.join(extra)})" if extra else ""))
 
 
 def cmd_audit_export(args):
     import auditlog
     import scrub
     from datetime import datetime
-    task_process_refusal("audit export")
+    audited_gate(args, "audit export", "audit_export", args.out)
     config_path, config = load_config(args.dir)
     filters = {"from": auditlog.parse_day(args.date_from, "--from") if args.date_from else None,
                "to": auditlog.parse_day(args.date_to, "--to") if args.date_to else None,
@@ -929,8 +965,6 @@ def cmd_audit_export(args):
 def cmd_backup(args):
     import backup
     words = args.words
-    if args.verify is None and "--verify" in sys.argv[1:]:
-        usage_exit(args.parser, "--verify needs the backup file")
     if words and words[0] == "restore":
         if len(words) < 2:
             usage_exit(args.parser, "restore needs the backup file")
@@ -943,21 +977,23 @@ def cmd_backup(args):
         info = backup.verify_backup(args.verify)
         print(json.dumps({k: v for k, v in info.items() if k != "registry_id"}))
         return
-    task_process_refusal("backup")
+    audited_gate(args, "backup", "backup", args.out or ".sentinel/backups")
     config_path, config = load_config(args.dir)
     user, _ = human_identity()
-    print(json.dumps(backup.create_backup(state_dir_of(config_path, config), args.out, user=user)))
+    res = backup.create_backup(state_dir_of(config_path, config), args.out, user=user, allow_broken=args.force)
+    for w in res["warnings"]:
+        print(f"warning: {w}", file=sys.stderr)
+    print(json.dumps(res))
 
 
 def cmd_backup_restore(args, file):
     import backup
     from apiserver import userdir
-    task_process_refusal("backup restore")
-    if not is_tty():
-        raise refuse_without_tty("`sentinel backup restore`")
+    audited_gate(args, "backup restore", "restore", file, need_tty=True)
     config_path, config = load_config(args.dir)
     state = state_dir_of(config_path, config)
     info = backup.verify_backup(file)
+    backup.check_workspace(state, info, Path(file).name)
     busy = backup.running_conflicts(state, userdir.config_dir())
     if busy:
         raise SentinelError("E_LOCKED", "cannot restore while something runs: " + "; ".join(t for t, _ in busy),
@@ -966,6 +1002,13 @@ def cmd_backup_restore(args, file):
     print(f"sha256: {info['sha256']}")
     try:
         typed = input("Type the first 8 characters of the sha256 to confirm: ")
+        if len(typed.strip()) >= 8 and info["sha256"].startswith(typed.strip().lower()):
+            reasons = backup.unverified_reasons(info)
+            for r in reasons:
+                print(f"warning: {r}")
+            if reasons and input("This copy is not verified. Type `restore anyway` to go on: ").strip() != "restore anyway":
+                print("nothing restored", file=sys.stderr)
+                sys.exit(1)
     except (EOFError, KeyboardInterrupt):
         print("\ninput closed; nothing restored", file=sys.stderr)
         sys.exit(1)
@@ -973,7 +1016,9 @@ def cmd_backup_restore(args, file):
         print("the typed value does not match; nothing restored", file=sys.stderr)
         sys.exit(1)
     user, _ = human_identity()
-    backup.restore(state, file, user=user)
+    res = backup.restore(state, file, user=user, expected_sha=info["sha256"], allow_unverified=bool(backup.unverified_reasons(info)))
+    for w in res["warnings"]:
+        print(f"warning: {w}", file=sys.stderr)
     print(f"restored {file}; the previous registry is in {state / 'backups'}")
 
 
@@ -1349,7 +1394,7 @@ def main():
     audit_sub = audit.add_subparsers(dest="audit_cmd", required=True)
     a_verify = audit_sub.add_parser("verify", help="check the audit chain of the registry, a registry file or an export")
     a_verify.add_argument("--file", help="an exported audit file")
-    a_verify.add_argument("--db", help="a registry file (default: this workspace)")
+    a_verify.add_argument("--db", help="a registry file (default: this workspace); with --file, check every row of the file against it")
     a_verify.set_defaults(func=cmd_audit_verify)
     a_export = audit_sub.add_parser("export", help="write a scrubbed audit export (refused in a task process)")
     a_export.add_argument("--out", required=True)
@@ -1367,7 +1412,8 @@ def main():
     backup_cmd.add_argument("words", nargs="*", metavar="restore FILE")
     backup_cmd.add_argument("--out", help="folder for the copy (default: .sentinel/backups)")
     backup_cmd.add_argument("--verify", metavar="FILE", help="check an existing copy")
-    backup_cmd.add_argument("--yes", action="store_true", help="accepted for scripts; restore still needs the typed hash prefix")
+    backup_cmd.add_argument("--force", action="store_true", help="keep a copy whose audit chain is broken (recorded as chain_ok false)")
+    backup_cmd.add_argument("--yes", action="store_true", help="accepted and ignored: restore always asks for the typed hash prefix")
     backup_cmd.set_defaults(func=cmd_backup, parser=backup_cmd)
 
     add_passthrough_commands(sub)

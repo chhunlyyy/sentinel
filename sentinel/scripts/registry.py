@@ -69,6 +69,7 @@ def _load_file_migrations():
 
 class Registry:
     LATEST = max(v for v, _, _ in _load_file_migrations())
+    CHAIN_VERSION = next(v for v, n, _ in _load_file_migrations() if n == "audit_chain")  # the migration that adds the hash chain
 
     def __init__(self, conn, state_dir):
         self._c = conn
@@ -182,10 +183,14 @@ class Registry:
                     bak.close()
             if current > max(applied, default=0):
                 applied.add(current)  # a version recorded without a file stays the high-water mark
+            def audit_cols():
+                return {r[1] for r in self._c.execute('PRAGMA table_info("audit")')}
             for version, name, sql in pending:
+                had_chain = "chain_sha" in audit_cols()
                 for stmt in _split_statements(sql):
                     self._c.execute(stmt)
-                if version == 10:
+                self._cols.pop("audit", None)
+                if name == "audit_chain" or (not had_chain and "chain_sha" in audit_cols()):
                     auditlog.backfill(self._c)  # chain the rows written before the hash chain existed
                 applied.add(version)
                 self._record_applied(applied)
@@ -357,7 +362,13 @@ class Registry:
         return out
 
     def add_audit(self, actor, channel, action, target, before_sha=None, after_sha=None, reason=None, at=None):
-        """Append an audit row with its place in the hash chain, in the caller's transaction (or its own)."""
+        """Append an audit row with its place in the hash chain, in the caller's transaction (or its own). Every field
+        but the id is text or None: the chain hashes the JSON of the row, and SQLite would store another type differently."""
+        for field, value in (("actor", actor), ("channel", channel), ("action", action), ("target", target),
+                             ("before_sha", before_sha), ("after_sha", after_sha), ("reason", reason), ("at", at)):
+            if value is not None and not isinstance(value, str):
+                raise SentinelError("E_VALIDATION", f"audit field {field} must be text or null, got {type(value).__name__}",
+                                    {"field": field})
         if "chain_sha" not in self._columns("audit"):  # a registry opened with migrations older than 10
             cur = self._c.execute(
                 "INSERT INTO audit(actor, channel, action, target, before_sha, after_sha, at, reason) VALUES (?,?,?,?,?,?,?,?)",

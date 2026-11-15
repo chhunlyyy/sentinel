@@ -9,11 +9,13 @@ import csv
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import scrub
 from errors import SentinelError
 
 ZERO = "0" * 64
@@ -24,6 +26,9 @@ TRIGGERS = {
     "audit_no_delete": "CREATE TRIGGER audit_no_delete BEFORE DELETE ON audit\nBEGIN SELECT RAISE(ABORT, 'audit is append-only'); END",
     "audit_no_replace": "CREATE TRIGGER audit_no_replace BEFORE INSERT ON audit\nWHEN EXISTS (SELECT 1 FROM audit WHERE id = NEW.id)\nBEGIN SELECT RAISE(ABORT, 'audit is append-only'); END",
 }
+TEXT_FIELDS = ("actor", "channel", "action", "target", "before_sha", "after_sha", "reason")
+SCRUB_MARKS = ("[REDACTED", "$WORKSPACE", "$HOME", "[redacted]")  # what the scrubber leaves where it changed a value
+IMPORT_CHANNEL = "import"
 COLUMNS = FIELDS + ("row_sha", "prev_chain_sha", "chain_sha")
 
 
@@ -59,6 +64,14 @@ def backfill(conn):
         conn.execute(sql)
 
 
+def _norm_sql(sql):
+    return re.sub(r"\s+", " ", sql or "").strip().lower()
+
+
+def is_imported(row):
+    return row.get("channel") == IMPORT_CHANNEL
+
+
 def _problem(message, row_id=None):
     return {"ok": False, "row": row_id, "message": message}
 
@@ -73,7 +86,7 @@ def verify_db(path):
         return _problem(f"cannot open {path}: {e}")
     try:
         try:
-            names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='audit'")}
+            triggers = {r[0]: r[1] for r in c.execute("SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name='audit'")}
             cols = {r[1] for r in c.execute("PRAGMA table_info(audit)")}
             rows = c.execute("SELECT * FROM audit ORDER BY id").fetchall()
         except sqlite3.Error as e:
@@ -82,36 +95,54 @@ def verify_db(path):
         c.close()
     if "chain_sha" not in cols:
         return _problem("the audit table has no hash chain (registry older than schema 10)")
-    prev = ZERO
+    prev, imported = ZERO, 0
     for r in rows:
         d = dict(r)
+        imported += is_imported(d)
         if d["row_sha"] != row_sha(d):
             return _problem(f"audit chain broken at row {d['id']}: its content does not match its row_sha", d["id"])
         if d["chain_sha"] != chain_sha(prev, d["row_sha"]):
             return _problem(f"audit chain broken at row {d['id']}: its chain_sha does not follow the row before it", d["id"])
         prev = d["chain_sha"]
-    missing = sorted(set(TRIGGERS) - names)
+    missing = sorted(set(TRIGGERS) - set(triggers))
     if missing:
         return _problem(f"the append-only triggers are missing: {', '.join(missing)}")
-    return {"ok": True, "rows": len(rows), "head": prev}
+    changed = sorted(n for n, sql in TRIGGERS.items() if _norm_sql(triggers[n]) != _norm_sql(sql))
+    if changed:
+        return _problem(f"the append-only triggers were changed: {', '.join(changed)}")
+    return {"ok": True, "rows": len(rows), "head": prev, "imported": imported}
 
 
-def verify_file(path):
+def verify_file(path, db=None):
     """Check an exported file: each row against its own prev_chain_sha, and the link between neighbours that
-    are consecutive ids. Scrubbed rows are checked for their chain link only."""
+    are consecutive ids. An export without filters must hold ids 1..N. Scrubbed rows are checked for their chain link
+    only (their content is not the original), must show a mark of the scrubber, and are counted in `scrubbed`.
+    With `db` (a registry file) every row's chain_sha must equal the registry's row of the same id."""
     try:
         lines = [json.loads(x) for x in Path(path).read_text(encoding="utf-8").splitlines() if x.strip()]
     except (OSError, ValueError) as e:
         return _problem(f"cannot read {path}: {e}")
-    if not lines or lines[0].get("format") != FORMAT:
+    if not lines or not isinstance(lines[0], dict) or lines[0].get("format") != FORMAT:
         return _problem(f"{path} is not a {FORMAT} file")
     head, rows = lines[0], lines[1:]
     if head.get("rows") != len(rows):
         return _problem(f"header says {head.get('rows')} rows, file holds {len(rows)}")
-    last = None
-    for d in rows:
-        if not d.get("scrubbed") and d.get("row_sha") != row_sha(d):
+    if not all(isinstance(d, dict) and isinstance(d.get("id"), int) for d in rows):
+        return _problem("a row has no integer id")
+    unfiltered = not head.get("filters")
+    last, scrubbed, imported = None, 0, 0
+    for n, d in enumerate(rows, 1):
+        if unfiltered and d["id"] != n:
+            return _problem(f"audit chain broken at row {d['id']}: an export without filters must hold rows 1 to {len(rows)} in order", d["id"])
+        if unfiltered and n == 1 and d.get("prev_chain_sha") != ZERO:
+            return _problem(f"audit chain broken at row {d['id']}: the first row does not start the chain", d["id"])
+        if d.get("scrubbed"):
+            if d.get("scrubbed") is not True or not any(m in str(d.get(k) or "") for k in TEXT_FIELDS for m in SCRUB_MARKS):
+                return _problem(f"audit chain broken at row {d['id']}: it is marked scrubbed but shows no scrubbed value", d["id"])
+            scrubbed += 1
+        elif d.get("row_sha") != row_sha(d):
             return _problem(f"audit chain broken at row {d.get('id')}: its content does not match its row_sha", d.get("id"))
+        imported += is_imported(d)
         if d.get("chain_sha") != chain_sha(d.get("prev_chain_sha"), d.get("row_sha") or ""):
             return _problem(f"audit chain broken at row {d.get('id')}: its chain_sha does not follow its prev_chain_sha", d.get("id"))
         if last and d["id"] == last["id"] + 1 and d["prev_chain_sha"] != last["chain_sha"]:
@@ -119,7 +150,20 @@ def verify_file(path):
         last = d
     if rows and head.get("head_chain_sha") != rows[-1]["chain_sha"]:
         return _problem("the header head_chain_sha is not the last row's chain_sha", rows[-1]["id"])
-    return {"ok": True, "rows": len(rows), "head": rows[-1]["chain_sha"] if rows else None}
+    if db is not None:
+        try:
+            c = sqlite3.connect(f"file:{Path(db).resolve()}?mode=ro", uri=True, timeout=10)
+            try:
+                registry = dict(c.execute("SELECT id, chain_sha FROM audit"))
+            finally:
+                c.close()
+        except sqlite3.Error as e:
+            return _problem(f"cannot read the registry {db}: {e}")
+        for d in rows:
+            if registry.get(d["id"]) != d.get("chain_sha"):
+                return _problem(f"row {d['id']} of the file is not row {d['id']} of the registry {db}", d["id"])
+    return {"ok": True, "rows": len(rows), "head": rows[-1]["chain_sha"] if rows else None, "scrubbed": scrubbed,
+            "imported": imported, "registry_checked": db is not None}
 
 
 # ---- export
@@ -158,7 +202,7 @@ def snapshot(reg, filters):
 
 
 def _csv_safe(value):
-    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + value
     return value
 
@@ -175,13 +219,15 @@ def export(reg, out, fmt, filters, scrubber, version, project, workspace, force=
     for r in rows:
         item = {k: r.get(k) for k in COLUMNS}
         scrubbed = False
-        for k in ("actor", "channel", "action", "target", "before_sha", "after_sha", "reason"):
+        for k in TEXT_FIELDS:
             if isinstance(item[k], str):
-                clean = scrubber.scrub_text(item[k])
+                clean = scrub.clean_text(scrubber, item[k])
                 if clean != item[k]:
                     item[k], scrubbed = clean, True
         if scrubbed:
             item["scrubbed"] = True
+        if is_imported(r):
+            item["imported"] = True
         items.append(item)
     head_sha = items[-1]["chain_sha"] if items else None
     header = {"format": FORMAT, "project": project, "sentinel_version": version,
@@ -193,10 +239,10 @@ def export(reg, out, fmt, filters, scrubber, version, project, workspace, force=
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             if fmt == "csv":
                 w = csv.writer(f)
-                cols = COLUMNS + ("scrubbed",)
+                cols = COLUMNS + ("scrubbed", "imported")
                 w.writerow(cols)
                 for item in items:
-                    w.writerow([_csv_safe(item.get(k)) if k != "scrubbed" else item.get(k, False) for k in cols])
+                    w.writerow([_csv_safe(item.get(k)) if k not in ("scrubbed", "imported") else item.get(k, False) for k in cols])
             else:
                 f.write(json.dumps(header) + "\n")
                 for item in items:

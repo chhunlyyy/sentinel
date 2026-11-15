@@ -368,6 +368,48 @@ class Bundle(PE):
                 self.assertIsNone(eng.reg.get_run(SLUG))
                 self.assertEqual([r["slug"] for r in eng.reg.rows("runs")], ["victim"])
 
+    def test_import_refuses_audit_values_that_are_not_text(self):
+        self.exported()
+        orig = self.read_bundle()
+        ws, eng = self.second()
+        for field, value in (("reason", 12345), ("at", 1700000000), ("actor", ["x"])):
+            with self.subTest(field=field):
+                doc = json.loads(orig["rows.json"])
+                doc["audit"].append({"actor": "x", "channel": "tty", "action": "approve", "target": f"{SLUG}/spec",
+                                     "before_sha": None, "after_sha": None, "at": "2026-01-01T00:00:00Z", "reason": None, field: value})
+                files = dict(orig)
+                files["rows.json"] = json.dumps(doc).encode()
+                bad = self.ws / "bad.tar.gz"
+                self.write_bundle(self.fix_manifest(files), bad)
+                code, out = self.import_pty(ws, bad)
+                self.assertEqual(code, 5, out)
+                self.assertIn("E_VALIDATION", out)
+                self.assertIsNone(eng.reg.get_run(SLUG))
+
+    def test_imported_audit_rows_are_marked_as_imported(self):
+        bundle = self.exported()
+        orig_rows = json.loads(self.read_bundle()["rows.json"])["audit"]
+        self.assertTrue(orig_rows)
+        ws, eng = self.second()
+        code, out = self.import_pty(ws, bundle)
+        self.assertEqual(code, 0, out)
+        import auditlog
+        sha = hashlib.sha256(bundle.read_bytes()).hexdigest()
+        imported = [a for a in eng.reg.audit_rows() if a["channel"] == "import"]
+        self.assertEqual(len(imported), len(orig_rows))
+        for a, o in zip(imported, orig_rows):
+            note = json.loads(a["reason"])
+            self.assertEqual(note["imported_from"], sha)
+            self.assertEqual(note["orig"], {"actor": o["actor"], "channel": o["channel"], "at": o["at"]})
+            self.assertEqual((a["action"], a["target"]), (o["action"], o["target"]))
+        self.assertEqual(auditlog.verify_db(ws / ".sentinel" / "sentinel.db")["imported"], len(orig_rows))
+        out_file = ws / "a.jsonl"
+        r = subprocess.run(CLI + ["--dir", str(ws), "audit", "export", "--out", str(out_file)], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, env=CLI_ENV, cwd=ws)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rows = [json.loads(x) for x in out_file.read_text().splitlines()[1:]]
+        self.assertEqual(len([x for x in rows if x.get("imported")]), len(orig_rows))
+
     def test_AC_ART_03o_import_caps_and_unreadable_files_are_validation_errors(self):
         import gzip
         self.exported()

@@ -5,10 +5,13 @@ machines.check_task and stores its event. The engine decides COMPLETED or FAILED
 result file and its claims never decide anything (VER-02).
 Source: docs/architecture/agent-runtime.md, plan/v1.1/phaseC/README.md.
 """
+import collections
 import hashlib
 import json
 import os
 import re
+import tempfile
+import time
 from datetime import datetime, timezone
 
 import yaml
@@ -668,22 +671,59 @@ class TaskOps:
             "path": dest.relative_to(self.state_dir).as_posix(),
             "sha256": hashlib.sha256(raw).hexdigest(), "created_at": _now()})
 
-    def _scrub_task_logs(self, tdir):
-        """Redact secrets from the finished task's stdout and stderr logs on disk (SEC-06): values of the workspace
-        .env files, of policies.redact_env and of the dashboard token, plus the scrubber's patterns."""
+    def _log_scrubber(self, run=None):
+        """The scrubber for task logs, kept for 30 seconds (it reads the .env files of the workspace and its repos)."""
         import scrub
-        scrubber = scrub.Scrubber("/nonexistent-workspace", scrub.env_values(self.workspace))  # local paths stay readable
+        now = time.monotonic()
+        cached = getattr(self, "_log_scrubber_cache", None)
+        if cached and now - cached[0] < 30:
+            return cached[1]
+        cfg = self._run_config(run) if run else self.config
+        repos = [r.get("path") for r in (cfg.get("repos") or []) if isinstance(r, dict) and r.get("path")]
+        scrubber = scrub.Scrubber("/nonexistent-workspace", scrub.env_values(self.workspace, repos))  # local paths stay readable
+        self._log_scrubber_cache = (now, scrubber)
+        return scrubber
+
+    def _scrub_task_logs(self, tdir, run=None):
+        """Redact secrets from the finished task's stdout and stderr logs on disk (SEC-06): values of the workspace
+        .env files, of the redact_env variables of the run's own config snapshot and of the dashboard token, plus the
+        scrubber's patterns. The log is read line by line (whatever its size) into a temp file that replaces it."""
+        import scrub
+        scrubber = self._log_scrubber(run)
+        cfg = self._run_config(run) if run else self.config
         for name in ("output.log", "stderr.log"):
             path = tdir / name
+            tmp = None
             try:
-                if not path.is_file() or path.is_symlink() or path.stat().st_size > scrub.MAX_BYTES:
+                if not path.is_file() or path.is_symlink():
                     continue
-                text = path.read_text(encoding="utf-8", errors="replace")
-                clean = scrubber.scrub_text(adapters.redact_text(self.config, text))
-                if clean != text:
-                    path.write_text(clean, encoding="utf-8")
+                fd, tmp = tempfile.mkstemp(dir=tdir, prefix=f".{name}.")
+                changed = False
+                seen = collections.deque()
+
+                def bodies(src):
+                    for raw in src:
+                        text = raw.decode("utf-8", errors="replace")
+                        body = text.rstrip("\r\n")
+                        seen.append((text, text[len(body):]))
+                        yield body
+                with open(path, "rb") as src, os.fdopen(fd, "wb") as dst:
+                    for clean in scrub.clean_lines(scrubber, bodies(src), cfg):
+                        text, end = seen.popleft()
+                        changed = changed or clean + end != text
+                        dst.write((clean + end).encode("utf-8"))
+                if changed:
+                    os.chmod(tmp, path.stat().st_mode & 0o777)
+                    os.replace(tmp, path)
+                    tmp = None
             except OSError:
                 continue
+            finally:
+                if tmp:
+                    try:
+                        os.unlink(tmp)
+                    except OSError:
+                        pass
 
     def finish_task(self, task_id, exit_code=0, seconds=None, timed_out=False, lost=False, session_id=None):
         """Ingest the task's result.json and decide its state. `exit_code` is the process exit (0 for a native task).
@@ -730,7 +770,7 @@ class TaskOps:
                 self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=v["park"])
             if v["state"] == "COMPLETED":
                 self._queue_ready(run, dependents_only=True)
-        self._scrub_task_logs(self.task_dir(run0["slug"], task_id))
+        self._scrub_task_logs(self.task_dir(run0["slug"], task_id), run0)
         self._finish_up(run0["slug"], run0)
         row = self._task_row(task_id)
         row["error_details"] = v["details"]

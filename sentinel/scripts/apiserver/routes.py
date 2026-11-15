@@ -161,7 +161,9 @@ def h_artifact(ctx, eng, project, slug, aid):
 
 @run_read
 def h_log(ctx, eng, project, slug, task_id):
-    return views.log_tail(eng.reg, eng.state_dir, slug, eng._get(slug), task_id, ctx.query)
+    run = eng._get(slug)
+    return views.log_tail(eng.reg, eng.state_dir, slug, run, task_id, ctx.query,
+                          scrubber=ctx.projects.scrubber(project), config=eng._run_config(run))
 
 
 @run_read

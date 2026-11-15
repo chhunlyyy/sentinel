@@ -22,6 +22,7 @@ REQUIRED = [
     "stale-hash approval", "agent environment holds the token or secrets", "secrets in logs, evidence, reports and bundles",
     "secrets in prompts and task files", "untrusted content rendered as HTML (XSS)",
     "approval forgery by a same-user agent (R1)", "commands run by a provider during a task (R3)",
+    "clone URL injection", "picker traversal",
 ]
 _cache = {}
 
@@ -58,11 +59,15 @@ def problems(manifest, threats=None, run=True):
     entries = {t["threat"]: t for t in manifest.get("threats", [])}
     for name in threats if threats is not None else entries:
         entry = entries.get(name)
+        if entry and entry.get("status") == "not_applicable":  # a threat of a feature that is LATER: it must say so
+            if "LATER" not in (entry.get("reason") or ""):
+                found.append(f"{name}: not_applicable needs a reason that names LATER")
+            continue
         if not entry or not entry.get("checks"):
             found.append(f"{name}: no check listed")
             continue
         if entry.get("status") not in ("blocking", "residual"):
-            found.append(f"{name}: status must be blocking or residual")
+            found.append(f"{name}: status must be blocking, residual or not_applicable")
         for check in entry["checks"]:
             if load(check) is None:
                 found.append(f"{name}: check {check} does not exist")
@@ -91,6 +96,8 @@ class Manifest(unittest.TestCase):
         missing = {"threats": [{"threat": "y", "status": "blocking", "checks": ["test_threats.Nope.test_nothing"]}]}
         self.assertIn("y: check test_threats.Nope.test_nothing does not exist", problems(missing, run=False))
         self.assertEqual(problems({"threats": []}, ["z"], run=False), ["z: no check listed"])
+        later = {"threats": [{"threat": "w", "status": "not_applicable", "reason": "nothing"}]}
+        self.assertEqual(problems(later, run=False), ["w: not_applicable needs a reason that names LATER"])
 
 
 if __name__ == "__main__":

@@ -131,8 +131,19 @@
       "status": "residual",
       "checks": [
         "test_write_scopes.Violations.test_AC_AGT_06g_writes_inside_and_outside_the_scope",
-        "test_threats.DocsAndConfigs.test_AC_TST_05j_R3_is_stated_as_detected_not_prevented"
+        "test_threats.DocsAndConfigs.test_AC_TST_05j_R3_is_stated_as_detected_not_prevented",
+        "test_review_fixes.Tamper.test_deleting_before_json_cannot_hide_an_out_of_scope_commit"
       ]
+    },
+    {
+      "threat": "clone URL injection",
+      "status": "not_applicable",
+      "reason": "LATER (G-1): the dashboard has no clone endpoint in this release; the rule is in docs/architecture/security-architecture.md section 8 and gets its checks when the endpoint is built"
+    },
+    {
+      "threat": "picker traversal",
+      "status": "not_applicable",
+      "reason": "LATER (G-1): the dashboard has no directory picker in this release; the rule is in docs/architecture/security-architecture.md section 8 and gets its checks when the picker is built"
     }
   ]
 }

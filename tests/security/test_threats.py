@@ -14,10 +14,12 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sv_helpers import SV, SLUG, Http, SENTINEL  # noqa: E402
+from pc_helpers import wait_until  # noqa: E402
 from pb_helpers import PtyProc, CLI, CLI_ENV  # noqa: E402
 from adapters import child_env  # noqa: E402
 
@@ -66,11 +68,14 @@ class Requests(SV):
 
     def test_AC_TST_05e_path_traversal_in_every_path_like_argument(self):
         (self.cfgdir / "server.json").write_text(json.dumps({"token": self.T}))
-        for path in (f"/api/v1/tasks/{SLUG}/artifacts/..%2F..%2F..%2F..%2F.config%2Fsentinel%2Fserver.json",
-                     f"/api/v1/tasks/{SLUG}/logs/..%2F..%2Fsentinel.db", "/assets/%2e%2e/%2e%2e/VERSION"):
+        for path, code in ((f"/api/v1/tasks/{SLUG}/artifacts/..%2F..%2F..%2F..%2F.config%2Fsentinel%2Fserver.json", "E_NOT_FOUND"),
+                           (f"/api/v1/tasks/{SLUG}/logs/..%2F..%2Fsentinel.db", "E_NOT_FOUND"),
+                           ("/assets/%2e%2e/%2e%2e/VERSION", None)):
             with self.subTest(path=path):
                 r = self.http.get(path)
-                self.assertIn(r.status, (400, 404))
+                self.assertEqual(r.status, 404, r.text)  # security_suite.feature AC-TST-05e: 404 for each of the three
+                if code:
+                    self.assertEqual(r.code, code)
                 self.assertNotIn(self.T, r.text)
         with self.subTest("task id"):
             code, out, err = self.cli("task", "complete", "t-1/../../../x")
@@ -176,6 +181,62 @@ class Secrets(SV):
             self.assertEqual(v.encode() in data, v.encode() in reg)
 
 
+class EnvironmentOtherPaths(SV):
+    """security_suite.feature AC-SEC-02l, the two other rows: the server's Q2 dispatch and a native task."""
+
+    def body(self, rec):
+        return f"""
+            import json
+            fds = []
+            for n in os.listdir("/proc/self/fd"):
+                try:
+                    fds.append(os.readlink("/proc/self/fd/" + n))
+                except OSError:
+                    pass
+            open({str(rec)!r}, "w").write(json.dumps({{"env": dict(os.environ), "fds": fds}}))
+            write_result()
+        """
+
+    def test_AC_SEC_02l_the_servers_q2_dispatch_strips_the_environment(self):
+        rec = self.ws / "q2-env.json"
+        (self.ws / ".env").write_text("".join(f"{k}={v}\n" for k, v in CANARIES.items()))
+        self.boot({"fake": (self.body(rec), {})}, {"docs": "fake"}, policies={"redact_env": ["AWS_SECRET_ACCESS_KEY"]})
+        with self.eng.reg.transaction():
+            self.eng.reg.update_run(SLUG, origin="dashboard")  # only a dashboard run is started by the server
+        patch = mock.patch.dict(os.environ, {"AWS_SECRET_ACCESS_KEY": AWS, **CANARIES})
+        patch.start()
+        self.addCleanup(patch.stop)
+        tid = self.docs_task(queue=True)
+        self.serve(dispatch=True, dispatch_interval=0.1)
+        self.assertTrue(wait_until(lambda: rec.exists() and self.task(tid)["state"] in ("COMPLETED", "FAILED"), 30),
+                        self.task(tid)["state"])
+        data = json.loads(rec.read_text())
+        text = json.dumps(data["env"])
+        for secret in (self.srv.token, AWS):
+            self.assertNotIn(secret, text)
+        self.assertNotIn("SENTINEL_DASHBOARD_TOKEN", data["env"])
+        self.assertNotIn("AWS_SECRET_ACCESS_KEY", data["env"])
+        for link in data["fds"]:
+            for name in ("server.json", "server.lock", "user.db"):
+                self.assertNotIn(name, link)
+
+    def test_AC_SEC_02l_the_files_a_native_subagent_reads_hold_no_secret(self):
+        (self.ws / ".env").write_text("".join(f"{k}={v}\n" for k, v in CANARIES.items()))
+        self.executing(tier=3)
+        patch = mock.patch.dict(os.environ, {"AWS_SECRET_ACCESS_KEY": AWS, **CANARIES})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.serve()
+        tid = self.make("docs", ["backend"], ["backend/docs/**"], objective="write the docs")
+        self.assertEqual(self.task(tid)["adapter"], "native")
+        files = [p for p in (self.ws / ".sentinel" / "runs" / SLUG / "tasks" / tid).rglob("*") if p.is_file()]
+        self.assertTrue(files)
+        for f in files:
+            data = f.read_text(errors="replace")
+            for v in [*CANARIES.values(), AWS, self.srv.token]:
+                self.assertNotIn(v, data, str(f))
+
+
 class Residual(SV):
     def setUp(self):
         super().setUp()
@@ -279,7 +340,8 @@ class SyncDeny(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_AC_SEC_04d_generated_configs_deny_the_human_commands(self):
-        for tool in ("claude", "codex", "gemini", "cursor"):
+        # `agy` (Antigravity) is not a `sync-adapters --tool` value: it reads the AGENTS.md that `--tool agents` writes
+        for tool in ("claude", "agents", "codex", "gemini", "cursor"):
             with self.subTest(tool=tool):
                 self.sync(tool)
                 if tool == "claude":

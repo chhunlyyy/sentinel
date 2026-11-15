@@ -361,6 +361,66 @@ class Scrubbing(ReadBase):
                 self.assertNotIn(SECRET, r.text)
                 self.assertIn("[REDACTED", r.text)
 
+    def snapshot_redacting(self, name):
+        """The run's own config snapshot names a redact_env variable that the workspace config does not."""
+        import yaml
+        cfg = {**self.config, "policies": {**(self.config.get("policies") or {}), "redact_env": [name]}}
+        with self.eng.reg.transaction():
+            cid = self.eng.reg.store_config_version("workspace", yaml.safe_dump(cfg), author="dev", comment="test")
+            self.eng.reg.update_run(SLUG, config_snapshot_id=cid)
+
+    def test_a_log_of_a_running_task_is_scrubbed_line_by_line(self):
+        canary, secret_name = "canary-zz-98765-value", "CANARY_FROM_SNAPSHOT"
+        os.environ[secret_name] = canary
+        self.addCleanup(os.environ.pop, secret_name, None)
+        self.snapshot_redacting(secret_name)
+        tid = self.make("docs", queue=False)
+        self.set_task(tid, state="RUNNING")
+        long_line = "y" * 9000 + " " + canary + " tail"
+        key = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAxxxxxxxxxxxxxxxxxxxxxxxxx\nkeybodyline2\n-----END RSA PRIVATE KEY-----"
+        (self.tdir(tid) / "output.log").write_text(f"start\nvalue {canary} here\n{long_line}\n{key}\npassword={SECRET}\nend\n")
+        self.serve()
+        r = self.http.get(f"/api/v1/tasks/{SLUG}/logs/{tid}")
+        self.assertEqual((r.status, r.json["running"]), (200, True), r.text)
+        for leaked in (canary, SECRET, "MIIEowIBAAKCAQEA", "keybodyline2"):
+            self.assertNotIn(leaked, r.text)
+        self.assertIn("[redacted]", r.text)
+        self.assertTrue(all(len(ln) <= 8192 + 16 for ln in r.json["lines"]))
+
+    def test_the_log_on_disk_is_scrubbed_from_the_runs_snapshot_without_a_size_limit(self):
+        canary, name = "canary-disk-55555-value", "CANARY_DISK_SNAPSHOT"
+        os.environ[name] = canary
+        self.addCleanup(os.environ.pop, name, None)
+        self.snapshot_redacting(name)
+        tid = self.make("docs", queue=False)
+        log = self.tdir(tid) / "output.log"
+        with open(log, "w") as f:
+            f.write(f"head {canary}\n")
+            chunk = ("z" * 1023 + "\n") * 1024
+            for _ in range(21):  # more than the 20 MiB the old pass skipped
+                f.write(chunk)
+            f.write(f"tail {canary}\nno newline {canary}")
+        inode = os.stat(log).st_ino
+        self.eng._scrub_task_logs(self.tdir(tid), self.eng.reg.get_run(SLUG))
+        text = log.read_text()
+        self.assertNotIn(canary, text)
+        self.assertEqual(text.count("[redacted]"), 3)
+        self.assertNotEqual(os.stat(log).st_ino, inode)  # replaced through a temp file, not rewritten in place
+        self.assertEqual([p.name for p in self.tdir(tid).iterdir() if p.name.startswith(".")], [])
+
+    def test_env_files_are_read_from_the_workspace_and_repo_roots_only(self):
+        import scrub
+        (self.ws / "backend" / "node_modules" / "dep").mkdir(parents=True)
+        (self.ws / "backend" / "node_modules" / "dep" / ".env").write_text("API_SECRET=in-node-modules-1\n")
+        (self.ws / "backend" / "deep").mkdir()
+        (self.ws / "backend" / "deep" / ".env").write_text("API_SECRET=too-deep-for-us-1\n")
+        (self.ws / "backend" / ".env.local").write_text("API_SECRET=repo-root-secret-1\n")
+        values = scrub.env_values(self.ws, ["backend"])
+        self.assertIn(SECRET, values)
+        self.assertIn("repo-root-secret-1", values)
+        self.assertNotIn("in-node-modules-1", values)
+        self.assertNotIn("too-deep-for-us-1", values)
+
     def test_AC_SEC_06d_an_artifact_changed_on_disk_is_not_served_as_valid(self):
         art = self.artifacts("spec")[0]
         stored = self.rd / "artifacts" / "spec-v1.md"

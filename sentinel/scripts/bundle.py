@@ -16,6 +16,7 @@ import tempfile
 import zlib
 from pathlib import Path
 
+import auditlog
 import machines
 import scrub
 from errors import SentinelError
@@ -311,6 +312,9 @@ class BundleOps:
             if foreign(e):
                 bad(f"an event names {foreign(e)} of another run")
         for a in rows["audit"]:
+            for field in auditlog.TEXT_FIELDS + ("at",):
+                if a.get(field) is not None and not isinstance(a.get(field), str):
+                    bad(f"an audit row has a {field} that is not text")
             target = a.get("target") or ""
             if target != slug and not target.startswith(slug + "/"):
                 bad(f"an audit row is about {target!r}, not about the run")
@@ -386,8 +390,14 @@ class BundleOps:
                                     (run["id"], e.get("task_id"), e["type"], e["actor"], json.dumps(payload), e["at"],
                                      e.get("actor_name"), e.get("channel")))
             for a in doc.get("audit", []):
-                self.reg.add_audit(a["actor"], a["channel"], a["action"], a["target"], a["before_sha"], a["after_sha"],
-                                   a.get("reason"), at=a["at"])
+                # an imported row is not a native one: it is written now, by the importer, on the channel `import`, and
+                # keeps who and when it came with (and its own reason) as data, so the chain never vouches for them
+                orig = {"actor": a.get("actor"), "channel": a.get("channel"), "at": a.get("at")}
+                note = {"imported_from": bundle_sha, "orig": orig}
+                if a.get("reason") is not None:
+                    note["orig_reason"] = a["reason"]
+                self.reg.add_audit(user, auditlog.IMPORT_CHANNEL, a["action"], a["target"], a.get("before_sha"), a.get("after_sha"),
+                                   json.dumps(note, sort_keys=True))
             self.reg.add_event(run["id"], "run.imported", machines.ENGINE, {"bundle_sha256": bundle_sha, "imported_at": _now()})
             self.reg.add_audit(user, channel, "run_imported", slug, after_sha=bundle_sha)
 
