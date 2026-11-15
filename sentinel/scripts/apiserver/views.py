@@ -411,7 +411,27 @@ def _folder_content(path, row, state_dir, slug, aid):
     return "".join(f"### {rel}\n{_read_regular(path / rel).decode('utf-8', errors='replace')}\n" for rel in listed)
 
 
-def log_tail(reg, state_dir, slug, run, task_id, query):
+def clean_log_lines(lines, scrubber=None, config=None):
+    """Log lines as they may leave the server: the redact_env values of the run's config and the dashboard token
+    out of the whole line, the line cut at LINE_MAX (back to a blank, so a token is not cut in half), then the project
+    scrubber on each line."""
+    import adapters
+    import scrub
+    scrubber = scrubber or scrub.Scrubber("/nonexistent-workspace", [])
+    capped = []
+    for ln in lines:
+        ln = adapters.redact_text(config or {}, ln)
+        if len(ln) > LINE_MAX:
+            head = ln[:LINE_MAX]
+            if not ln[LINE_MAX].isspace():
+                blank = max(head.rfind(" "), head.rfind("\t"))
+                head = head[:blank] if blank > LINE_MAX - 256 else head[:LINE_MAX - 256]
+            ln = head + " [line cut]"
+        capped.append(ln)
+    return list(scrub.clean_lines(scrubber, capped, config))
+
+
+def log_tail(reg, state_dir, slug, run, task_id, query, scrubber=None, config=None):
     ok = isinstance(task_id, str) and task_id.replace("-", "").replace("_", "").isalnum()
     task = reg.get_row("tasks", task_id) if ok else None
     if not task or task["run_id"] != run["id"]:
@@ -452,7 +472,7 @@ def log_tail(reg, state_dir, slug, run, task_id, query):
                 if end is not None or not running:
                     lines = [data.decode("utf-8", errors="replace")]
                     nxt = end if end is not None else size
-            lines = [ln if len(ln) <= LINE_MAX else ln[:LINE_MAX] + " [line cut]" for ln in lines]
+            lines = clean_log_lines(lines, scrubber, config)
     elif offset:
         raise validation("offset is past the end of the log", "offset")
     return {"task_id": task["id"], "lines": lines, "next_offset": nxt, "running": running}
@@ -489,6 +509,9 @@ def approvals_in(projects, state):
     return {"items": items, "next": None}
 
 
+AUDIT_COLUMNS = ("id", "actor", "channel", "action", "target", "before_sha", "after_sha", "reason", "at", "row_sha", "chain_sha")
+
+
 def audit_rows(projects, pid, query):
     limit = parse_limit(query)
     cursor = decode_cursor(query["cursor"], 1)[0] if query.get("cursor") else None
@@ -499,7 +522,7 @@ def audit_rows(projects, pid, query):
         with projects.reader(project) as conn:
             if conn is None:
                 continue
-            sql = "SELECT id, actor, channel, action, target, before_sha, after_sha, reason, at FROM audit"
+            sql = f"SELECT {', '.join(AUDIT_COLUMNS)} FROM audit"
             args = []
             if cursor is not None:
                 sql += " WHERE id < ?"

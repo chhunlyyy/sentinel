@@ -128,7 +128,7 @@ def sources_from_registry(cfgdir, scrubber_for=None):
         except (OSError, yaml.YAMLError, AttributeError):
             out.append(Source(pid, None, unavailable="invalid configuration"))
             continue
-        clean = (lambda text, entry=entry: scrubber_for(entry).scrub_text(text)) if scrubber_for else _lazy_scrubber(path)
+        clean = (lambda text, entry=entry: scrub.clean_text(scrubber_for(entry), text)) if scrubber_for else _lazy_scrubber(path)
         out.append(Source(pid, path / state / "sentinel.db", clean))
     return out
 
@@ -145,7 +145,7 @@ def sources_from_projects(projects, scrubber_for):
             out.append(Source(project.id, None, unavailable=reason))
             continue
         out.append(Source(project.id, projects.db_path(project, config),
-                          lambda text, project=project: scrubber_for(project).scrub_text(text)))
+                          lambda text, project=project: scrub.clean_text(scrubber_for(project), text)))
     return out
 
 
@@ -155,7 +155,7 @@ def _lazy_scrubber(path):
     def clean(text):
         if not holder:
             holder.append(scrub.Scrubber(path, scrub.env_values(path)))
-        return holder[0].scrub_text(text)
+        return scrub.clean_text(holder[0], text)
     return clean
 
 

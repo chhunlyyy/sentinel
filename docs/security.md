@@ -65,6 +65,67 @@ commands) are advisory: other spellings of a command can pass a pattern. The `da
 a terminal (TTY). Run agents under a separate OS user if you need a hard boundary. The browser is opened on a private redirect file
 (mode 0600) so the token never appears in the browser's command line.
 
+R1 has two known cases, and the security suite (`tests/security/`) asserts both so that a silent change in either
+direction fails the build:
+
+- **Pseudo-terminal.** An agent running as your user can open a pseudo-terminal (Python `pty`), start
+  `sentinel approve` in it, read the printed hash and type the prefix. The approval then succeeds with channel `tty` and
+  your OS user as the approver. The terminal check stops a pipe, not a program that creates a terminal.
+- **Token file.** An agent running as your user can read `server.json`, exchange the token at `/auth` and call the
+  approval routes. The approval is recorded with channel `dashboard`.
+
+Both are visible afterwards in the audit (channel and identity), not prevented. Only a separate OS user or a sandbox
+closes them.
+
+## Residual risk R3: provider commands during a task
+
+Sentinel cannot stop a provider CLI from running a command while a task runs. It detects file and git effects
+afterwards: a write outside the task's write scope or a `git commit` fails the task with `E_SCOPE` and parks the run
+for a human. It does not undo them. Review the diff of a failed task before you continue.
+
+## Audit log and backups
+
+- The audit table is append-only: SQLite triggers refuse `UPDATE` and `DELETE`, and every row carries `row_sha` and
+  `chain_sha`, a hash chain written in the same transaction as the row. `sentinel audit verify` checks the chain,
+  checks that each trigger still has the exact text Sentinel wrote (a trigger of the same name that does nothing is
+  reported), and names the first broken row. Every audit field except the id is text or null; anything else is refused
+  when the row is written and when a bundle is imported, because SQLite would store it differently from the text that was
+  hashed.
+- **Exports.** `sentinel audit verify --file export.jsonl` checks the file against itself: each row's hashes, the link
+  between neighbours, and, when the export had no filters, that it holds rows 1 to N with none missing. A row the
+  scrubber changed cannot be hashed again, so it is checked for its chain link only; it must show a scrubbed value
+  (`[REDACTED...]`, `$WORKSPACE` or `$HOME`), and the answer counts these rows. Add `--db sentinel.db` to compare every row
+  of the file with the registry's row of the same id.
+- **Imported rows.** The audit rows of an imported run bundle are written when you import it, on the channel `import`,
+  by the importing user. Who did it and when (and the original reason) stay as data in the row's `reason`
+  (`imported_from` is the bundle's sha256). Exports show them as `"imported": true`, and verify counts them.
+- **Limit.** The chain and the triggers detect a changed, deleted or inserted row. They do not stop a process that runs
+  as your OS user: it can drop the triggers and rewrite every row and the whole chain, and verify will then pass. This is
+  the same boundary as R1. Keep an exported copy (`sentinel audit export --out file`) somewhere the agent user cannot
+  write if you need proof against that. A deleted last row leaves a chain that still verifies: it is found only by
+  comparing against an earlier export or an earlier head (`verify --file earlier.jsonl --db sentinel.db` finds rows
+  that disappeared or changed since that export).
+- `sentinel audit export`, `sentinel backup` and `sentinel backup restore` are for humans. They are refused inside a
+  task process (`E_ACTOR`) and denied in the configs that `sync-adapters` writes; each refusal is written to the audit
+  as `audit_export_refused`, `backup_refused` or `restore_refused`. The task-process check reads the
+  `SENTINEL_TASK_ID` variable, so a process that runs as your OS user and clears it is not stopped (R1 again; the
+  terminal and the typed hash are the real gate for `restore`).
+- `restore` needs a terminal and the typed first 8 characters of the backup's hash, because it replaces the registry.
+  `--yes` is accepted for scripts and ignored: it never skips that prompt. The copy is read once into a private temp file
+  that is hashed and checked (against the typed hash, its `.sha256` file and its audit chain) before anything changes.
+  A copy with no registry id or no `.sha256` file cannot be tied to this workspace: `restore` warns and asks for a
+  second confirmation. It refuses while a task runs or a Sentinel server holds the lock. The data goes into the live
+  registry with the SQLite backup API, so a connection that is open does not lose later writes. Before that, the
+  current registry is copied to `backups/pre-restore-<time>.db`, even when its audit chain is broken (the copy and the
+  `restore` audit row then say `chain_ok: false`), so a damaged registry can still be replaced. `sentinel backup --force`
+  keeps a copy of a registry whose chain is broken the same way.
+- The audit export is scrubbed with the same rules as task logs (the `.env` values of the workspace and its repo
+  roots, `policies.redact_env`, the dashboard token, and the pattern list); rows changed by the scrubber are marked
+  `"scrubbed": true`. A backup is a copy of the registry, so it is as sensitive as the registry (mode 0600 from the
+  moment it is created, inside the git-ignored `.sentinel` folder). Old backups are never deleted for you.
+- Task logs are scrubbed before they leave the server, line by line (a line is cut at 8192 characters), and again on disk
+  when the task ends. A private key that starts before the first line of a live tail is not recognised in that tail.
+
 ## Dependencies
 
 The release check prints a notice when a dependency manifest changes. A human must approve each new dependency: check the package, its maintainers, and its license. The reviewer stage is also told to look at new dependencies.

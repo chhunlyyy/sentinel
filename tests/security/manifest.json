@@ -1,0 +1,150 @@
+{
+  "description": "Threats of docs/architecture/security-architecture.md section 8 and residual risks R1 and R3. Every check is a unittest id; the suite fails when a threat has no check, a check does not exist, or a check fails. A residual threat is not prevented: its checks assert the recorded outcome and the documented text.",
+  "threats": [
+    {
+      "threat": "wrong Host (DNS rebinding)",
+      "status": "blocking",
+      "checks": [
+        "test_server_security.Sec.test_AC_SEC_01l_host_header_is_checked_on_every_request",
+        "test_server_security.Sec.test_AC_SEC_01o_a_rebinding_page_cannot_read_the_api",
+        "test_threats.Requests.test_AC_TST_05c_dns_rebinding_gets_nothing"
+      ]
+    },
+    {
+      "threat": "wrong Origin",
+      "status": "blocking",
+      "checks": [
+        "test_server_security.Sec.test_AC_SEC_01m_origin_header_when_present_must_match",
+        "test_threats.Requests.test_AC_TST_05d_cross_site_requests_change_nothing"
+      ]
+    },
+    {
+      "threat": "missing session cookie",
+      "status": "blocking",
+      "checks": [
+        "test_server_security.Sec.test_AC_SEC_01s_every_api_route_needs_the_session_cookie",
+        "test_server_security.Sec.test_AC_SEC_01t_401_before_revealing_whether_a_route_exists"
+      ]
+    },
+    {
+      "threat": "missing or wrong CSRF value",
+      "status": "blocking",
+      "checks": [
+        "test_server_security.Sec.test_AC_SEC_01u_a_post_without_the_right_csrf_value_is_refused",
+        "test_threats.Requests.test_AC_TST_05d_cross_site_requests_change_nothing"
+      ]
+    },
+    {
+      "threat": "token left in the URL after /auth",
+      "status": "blocking",
+      "checks": [
+        "test_server_security.Sec.test_AC_SEC_01p_exchanging_the_token_sets_a_strict_cookie",
+        "test_threats.Requests.test_AC_TST_05f_the_token_never_stays_in_the_url"
+      ]
+    },
+    {
+      "threat": "path traversal in artifact, log and static routes",
+      "status": "blocking",
+      "checks": [
+        "test_server_security.Sec.test_AC_SEC_02i_path_traversal_cannot_reach_other_files",
+        "test_threats.Requests.test_AC_TST_05e_path_traversal_in_every_path_like_argument"
+      ]
+    },
+    {
+      "threat": "path traversal in notification and backup arguments",
+      "status": "blocking",
+      "checks": [
+        "test_threats.Requests.test_AC_TST_05e_path_traversal_in_every_path_like_argument"
+      ]
+    },
+    {
+      "threat": "oversized body",
+      "status": "blocking",
+      "checks": [
+        "test_server_security.Sec.test_AC_API_01l_body_size_limit"
+      ]
+    },
+    {
+      "threat": "non-TTY approval and acceptance",
+      "status": "blocking",
+      "checks": [
+        "test_review_cli.ApproveTty.test_AC_SEC_03a_non_tty_refused_and_audited",
+        "test_review_cli.ApproveTty.test_AC_SEC_03a_stdin_tty_but_stdout_piped_refused",
+        "test_acceptance.Accept.test_AC_VER_04d_acceptance_outside_a_human_terminal_is_refused",
+        "test_threats.Residual.test_AC_TST_05g_simple_forgery_attempts_by_an_agent_fail"
+      ]
+    },
+    {
+      "threat": "stale-hash approval",
+      "status": "blocking",
+      "checks": [
+        "test_approvals.Stale.test_AC_SPA_08a_spec_edited_after_review_is_stale",
+        "test_server_approvals.Approvals.test_AC_SEC_03i_a_hash_from_an_older_version_is_stale"
+      ]
+    },
+    {
+      "threat": "agent environment holds the token or secrets",
+      "status": "blocking",
+      "checks": [
+        "test_cli_adapter.Isolation.test_AC_SEC_02a_secrets_and_dashboard_token_are_not_passed",
+        "test_server_lifecycle.Lifecycle.test_AC_SEC_02d_the_token_never_enters_an_environment",
+        "test_threats.Secrets.test_AC_SEC_02l_the_agent_environment_is_stripped",
+        "test_threats.Secrets.test_AC_SEC_02l_child_env_drops_token_and_redacted_names"
+      ]
+    },
+    {
+      "threat": "secrets in logs, evidence, reports and bundles",
+      "status": "blocking",
+      "checks": [
+        "test_verification_evidence.Evidence.test_AC_SEC_06a_secrets_never_reach_stored_output",
+        "test_export_import.Bundle.test_AC_ART_03b_secrets_and_qa_data_never_enter_the_bundle",
+        "test_server_security.Sec.test_AC_SEC_02j_the_server_log_holds_no_token_or_cookie_value",
+        "test_threats.Secrets.test_AC_SEC_06j_canary_sweep_of_run_files_and_api_answers",
+        "test_threats.Secrets.test_AC_SEC_06j_canary_in_a_long_needs_human_reason_stays_out_of_notifications",
+        "test_threats.Secrets.test_AC_SEC_06l_a_backup_is_as_sensitive_as_the_registry"
+      ]
+    },
+    {
+      "threat": "secrets in prompts and task files",
+      "status": "blocking",
+      "checks": [
+        "test_threats.Secrets.test_AC_SEC_06k_prompts_and_task_files_hold_no_secret"
+      ]
+    },
+    {
+      "threat": "untrusted content rendered as HTML (XSS)",
+      "status": "blocking",
+      "checks": [
+        "test_threats.DocsAndConfigs.test_AC_TST_05_dashboard_source_builds_no_html_from_content"
+      ]
+    },
+    {
+      "threat": "approval forgery by a same-user agent (R1)",
+      "status": "residual",
+      "checks": [
+        "test_threats.Residual.test_AC_TST_05h_an_agent_driving_a_pseudo_terminal_is_recorded_not_stopped_R1",
+        "test_threats.Residual.test_AC_TST_05i_an_agent_reading_server_json_can_call_the_api_R1",
+        "test_threats.SyncDeny.test_AC_SEC_04d_generated_configs_deny_the_human_commands"
+      ]
+    },
+    {
+      "threat": "commands run by a provider during a task (R3)",
+      "status": "residual",
+      "checks": [
+        "test_write_scopes.Violations.test_AC_AGT_06g_writes_inside_and_outside_the_scope",
+        "test_threats.DocsAndConfigs.test_AC_TST_05j_R3_is_stated_as_detected_not_prevented",
+        "test_review_fixes.Tamper.test_deleting_before_json_cannot_hide_an_out_of_scope_commit"
+      ]
+    },
+    {
+      "threat": "clone URL injection",
+      "status": "not_applicable",
+      "reason": "LATER (G-1): the dashboard has no clone endpoint in this release; the rule is in docs/architecture/security-architecture.md section 8 and gets its checks when the endpoint is built"
+    },
+    {
+      "threat": "picker traversal",
+      "status": "not_applicable",
+      "reason": "LATER (G-1): the dashboard has no directory picker in this release; the rule is in docs/architecture/security-architecture.md section 8 and gets its checks when the picker is built"
+    }
+  ]
+}

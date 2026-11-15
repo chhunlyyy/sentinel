@@ -9,11 +9,11 @@
     {
       "classification": "valid_red",
       "command": "faketest targeted",
-      "cycle_id": "c-34ead5ee9a71",
+      "cycle_id": "c-1d1274a830d9",
       "exit_code": 1,
       "failed": 2,
       "finished_at": "2026-11-14T09:00:05.000000Z",
-      "id": "e-0b061bb85ec9",
+      "id": "e-12aa024b55c6",
       "kind": "test",
       "model": null,
       "name": null,

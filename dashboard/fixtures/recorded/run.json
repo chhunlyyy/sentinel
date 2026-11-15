@@ -5,7 +5,7 @@
       "approver": "dev",
       "channel": "tty",
       "comment": null,
-      "decided_at": "2026-11-15T06:36:55.467082Z",
+      "decided_at": "2026-11-15T15:32:23.676005Z",
       "decision": "approve",
       "sha256": "23bb456fd291554a03625ccfba91486af8eb8c177aa1a8e3ec2959db071f6b68",
       "state": "APPROVED",
@@ -15,7 +15,7 @@
       "approver": "dev",
       "channel": "tty",
       "comment": null,
-      "decided_at": "2026-11-15T06:36:55.441742Z",
+      "decided_at": "2026-11-15T15:32:23.650938Z",
       "decision": "approve",
       "sha256": "45d2bab7f7200d35d73e8a16fd0d441005d4fdf9d4dd8748de7cbb753ee4e740",
       "state": "APPROVED",
@@ -23,25 +23,25 @@
     }
   },
   "config_snapshot": {
-    "created_at": "2026-11-15T06:36:55.387150Z",
+    "created_at": "2026-11-15T15:32:23.596418Z",
     "id": 1,
     "scope": "workspace",
-    "sha256": "12b19bf87ce77d3debc97b58593a16ab6f8fbe520cf192d4bce078e6ad9b768c"
+    "sha256": "54ac6122d3c9bface162d56d9840c64c9bc9bb04a04fda47ab1eb4cb0e68cfa0"
   },
-  "created_at": "2026-11-15T06:36:55.387308Z",
+  "created_at": "2026-11-15T15:32:23.596577Z",
   "execution_status": "running",
   "finished_at": null,
   "initial_tier": 3,
   "next": {
     "adapter": "cli",
-    "command": "sentinel task run t-ef62d2285033",
+    "command": "sentinel task run t-537f6cf93426",
     "kind": "task",
     "label": "ready to run",
     "provider": "fake",
     "role": "tdd_red",
     "run": "leave-balance",
     "state": "QUEUED",
-    "task": "t-ef62d2285033"
+    "task": "t-537f6cf93426"
   },
   "origin": null,
   "priority": null,
@@ -49,13 +49,13 @@
   "reason": null,
   "repos": [
     {
-      "baseline_sha": "6632eec2b0449b3375568cd8a33056e329e94cf3",
+      "baseline_sha": "70ad45b98425772880974b46bd22708176f36f29",
       "branch": null,
       "final_sha": null,
       "repo_id": "backend"
     },
     {
-      "baseline_sha": "6632eec2b0449b3375568cd8a33056e329e94cf3",
+      "baseline_sha": "70ad45b98425772880974b46bd22708176f36f29",
       "branch": null,
       "final_sha": null,
       "repo_id": "frontend"
@@ -72,6 +72,6 @@
   },
   "tier": 3,
   "type": "feature",
-  "updated_at": "2026-11-15T06:36:55.470230Z",
+  "updated_at": "2026-11-15T15:32:23.679391Z",
   "workflow_version": "2"
 }

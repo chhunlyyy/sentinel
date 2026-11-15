@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import re
 import sqlite3
 import time
@@ -10,12 +11,21 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+import auditlog
 from errors import SentinelError
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 _ID_PREFIX = {"runs": "r-", "tasks": "t-", "approvals": "a-", "cycles": "c-",
               "evidence": "e-", "artifacts": "ar-", "findings": "f-", "changed_files": "cf-",
               "verification_rounds": "vr-"}
+
+
+def _busy_ms():
+    """The busy timeout in milliseconds; SENTINEL_BUSY_TIMEOUT_MS shortens it (tests, scripts)."""
+    try:
+        return max(1, int(os.environ.get("SENTINEL_BUSY_TIMEOUT_MS") or 10000))
+    except ValueError:
+        return 10000
 
 
 def _now():
@@ -59,6 +69,7 @@ def _load_file_migrations():
 
 class Registry:
     LATEST = max(v for v, _, _ in _load_file_migrations())
+    CHAIN_VERSION = next(v for v, n, _ in _load_file_migrations() if n == "audit_chain")  # the migration that adds the hash chain
 
     def __init__(self, conn, state_dir):
         self._c = conn
@@ -73,9 +84,9 @@ class Registry:
         state_dir.mkdir(parents=True, exist_ok=True)
         migs = sorted(migrations if migrations is not None else _load_file_migrations())
         db = state_dir / "sentinel.db"
-        conn = sqlite3.connect(db, timeout=10, isolation_level=None)
+        conn = sqlite3.connect(db, timeout=_busy_ms() / 1000, isolation_level=None)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute(f"PRAGMA busy_timeout={_busy_ms()}")
         reg = cls(conn, state_dir)
         try:
             reg._enable_wal()
@@ -90,6 +101,11 @@ class Registry:
             raise SentinelError("E_MIGRATION", f"cannot open registry: {e}") from e
         try:
             reg._index_legacy()
+        except sqlite3.OperationalError as e:
+            conn.close()
+            if "locked" in str(e):
+                raise SentinelError("E_LOCKED", f"the registry is locked for writing: {e}") from e
+            raise
         except BaseException:
             conn.close()
             raise
@@ -109,7 +125,7 @@ class Registry:
         for attempt in range(3):
             try:
                 self._c.execute("PRAGMA journal_mode=WAL").fetchone()
-                self._c.execute("PRAGMA busy_timeout=10000")
+                self._c.execute(f"PRAGMA busy_timeout={_busy_ms()}")
                 return
             except sqlite3.OperationalError as e:
                 last = e
@@ -167,9 +183,15 @@ class Registry:
                     bak.close()
             if current > max(applied, default=0):
                 applied.add(current)  # a version recorded without a file stays the high-water mark
+            def audit_cols():
+                return {r[1] for r in self._c.execute('PRAGMA table_info("audit")')}
             for version, name, sql in pending:
+                had_chain = "chain_sha" in audit_cols()
                 for stmt in _split_statements(sql):
                     self._c.execute(stmt)
+                self._cols.pop("audit", None)
+                if name == "audit_chain" or (not had_chain and "chain_sha" in audit_cols()):
+                    auditlog.backfill(self._c)  # chain the rows written before the hash chain existed
                 applied.add(version)
                 self._record_applied(applied)
             self._c.execute("COMMIT")
@@ -339,11 +361,41 @@ class Registry:
             out.append(d)
         return out
 
-    def add_audit(self, actor, channel, action, target, before_sha=None, after_sha=None, reason=None):
-        cur = self._c.execute(
-            "INSERT INTO audit(actor, channel, action, target, before_sha, after_sha, at, reason) VALUES (?,?,?,?,?,?,?,?)",
-            (actor, channel, action, target, before_sha, after_sha, _now(), reason))
-        return cur.lastrowid
+    def add_audit(self, actor, channel, action, target, before_sha=None, after_sha=None, reason=None, at=None):
+        """Append an audit row with its place in the hash chain, in the caller's transaction (or its own). Every field
+        but the id is text or None: the chain hashes the JSON of the row, and SQLite would store another type differently."""
+        for field, value in (("actor", actor), ("channel", channel), ("action", action), ("target", target),
+                             ("before_sha", before_sha), ("after_sha", after_sha), ("reason", reason), ("at", at)):
+            if value is not None and not isinstance(value, str):
+                raise SentinelError("E_VALIDATION", f"audit field {field} must be text or null, got {type(value).__name__}",
+                                    {"field": field})
+        if "chain_sha" not in self._columns("audit"):  # a registry opened with migrations older than 10
+            cur = self._c.execute(
+                "INSERT INTO audit(actor, channel, action, target, before_sha, after_sha, at, reason) VALUES (?,?,?,?,?,?,?,?)",
+                (actor, channel, action, target, before_sha, after_sha, at or _now(), reason))
+            return cur.lastrowid
+        own = not self._c.in_transaction
+        if own:
+            self._c.execute("BEGIN IMMEDIATE")
+        try:
+            last = self._c.execute("SELECT id, chain_sha FROM audit ORDER BY id DESC LIMIT 1").fetchone()
+            seq = self._c.execute("SELECT seq FROM sqlite_sequence WHERE name='audit'").fetchone()
+            new_id = max(seq[0] if seq else 0, last["id"] if last else 0) + 1
+            row = {"id": new_id, "at": at or _now(), "actor": actor, "channel": channel, "action": action,
+                   "target": target, "before_sha": before_sha, "after_sha": after_sha, "reason": reason}
+            rsha = auditlog.row_sha(row)
+            self._c.execute(
+                "INSERT INTO audit(id, actor, channel, action, target, before_sha, after_sha, at, reason, row_sha, chain_sha) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (new_id, actor, channel, action, target, before_sha, after_sha, row["at"], reason, rsha,
+                 auditlog.chain_sha(last["chain_sha"] if last else None, rsha)))
+        except BaseException:
+            if own:
+                self._c.execute("ROLLBACK")
+            raise
+        if own:
+            self._c.execute("COMMIT")
+        return new_id
 
     def audit_rows(self):
         return [dict(r) for r in self._c.execute("SELECT * FROM audit ORDER BY id")]

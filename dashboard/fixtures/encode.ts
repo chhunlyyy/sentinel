@@ -54,6 +54,7 @@ export const configVersion = (v: T.ConfigVersion): W.WConfigVersion => ({
 
 export const audit = (pid: string, a: T.AuditRow): W.WAudit => ({
   id: a.id, project: pid, actor: a.actor, channel: a.channel, action: a.action, target: a.target, before_sha: a.before_sha256, after_sha: a.after_sha256, reason: a.reason, at: a.at,
+  row_sha: String(a.id).padStart(64, '0'), chain_sha: String(a.id).padStart(64, 'f'),
 });
 
 export const runSummary = (s: T.RunSummary) => ({
