@@ -1,4 +1,5 @@
 """Phase F: human decisions through the dashboard channel (approvals_api.feature)."""
+import hashlib
 import json
 import os
 import sqlite3
@@ -9,6 +10,7 @@ from contextlib import contextmanager
 from unittest import mock
 
 from sv_helpers import SV, SLUG, Http, spec_text, fail_next_write
+from errors import SentinelError
 PROMPT = "first 8 characters"
 
 
@@ -227,10 +229,16 @@ class Approvals(SV):
     # ---- final acceptance (Phase E)
     def completed(self, slug="leave-form", acceptance="accepted", state="COMPLETED"):
         """A COMPLETED run with approved specification and Gherkin and a written report; returns the report sha256."""
-        self.to_gherkin_approved(slug, 3)
+        self.to_gherkin_approved(slug, 2)
+        run = self.run_row(slug)
         with self.eng.reg.transaction():
             self.eng.reg._c.execute("UPDATE runs SET state=?, execution_status='completed', acceptance_status=? WHERE slug=?",
                                     (state, acceptance, slug))
+            self.eng.reg.insert_row("verification_rounds", {"run_id": run["id"], "round": 1, "started_at": "2026-01-01T00:00:00.000000Z",
+                                                            "finished_at": "2026-01-01T00:00:01.000000Z", "interrupted": 0, "passed": 1})
+            for rr in self.eng.reg.run_repos(run["id"]):
+                self.eng.reg.insert_row("evidence", {"run_id": run["id"], "kind": "scope", "repo_id": rr["repo_id"], "round": 1,
+                                                     "verdict": "pass", "classification": "pass", "failing": "[]", "detail": "{}"})
         return self.eng.write_report(slug)["sha256"] if state == "COMPLETED" else "0" * 64
 
     def accept_body(self, sha, decision="accept", comment=None, **over):
@@ -247,11 +255,35 @@ class Approvals(SV):
         self.assertEqual(r.status, 200, r.text)
         ap = [a for a in self.approvals("acceptance", "leave-form")][-1]
         self.assertEqual((ap["decision"], ap["sha256"], ap["approver"], ap["channel"]), ("accept", sha, "dev", "dashboard"))
-        row = [a for a in self.audit_rows() if a["action"] == "acceptance"][-1]
+        row = [a for a in self.audit_rows() if a["action"] == "accepted"][-1]
         self.assertEqual(row["channel"], "dashboard")
         r = self.http.get("/api/v1/tasks/leave-form/report")
         self.assertEqual(r.status, 200, r.text)
         self.assertEqual(set(r.json), {"sha256", "report"})
+
+    def test_AC_VER_04n_a_report_that_changed_on_disk_is_not_served_or_accepted(self):
+        sha = self.completed()
+        path = self.ws / ".sentinel" / "runs" / "leave-form" / "report.json"
+        path.write_text(path.read_text() + " ")
+        self.serve()
+        r = self.http.get("/api/v1/tasks/leave-form/report")
+        self.assertEqual((r.status, r.code), (409, "E_INTEGRITY"), r.text)
+        forged = hashlib.sha256(path.read_bytes()).hexdigest()
+        r = self.http.post("/api/v1/tasks/leave-form/acceptance", self.accept_body(forged))
+        self.assertEqual((r.status, r.code), (409, "E_INTEGRITY"), r.text)
+        self.assertEqual(self.approvals("acceptance", "leave-form"), [])
+        self.assertEqual(self.run_row("leave-form")["acceptance_status"], "accepted")
+
+    def test_AC_VER_04o_only_a_rejected_or_confirmed_run_maps_to_a_transition(self):
+        from apiserver import ops
+        body = {"sha256_of_report": "a" * 64, "confirmation": "a" * 8, "decision": "accept"}
+        for details, code in [({}, "E_PRECONDITION"), ({"acceptance": "rejected"}, "E_TRANSITION"), ({"acceptance": "confirmed"}, "E_TRANSITION")]:
+            with self.subTest(details=details):
+                eng = mock.Mock()
+                eng.accept.side_effect = SentinelError("E_PRECONDITION", "no", details)
+                with self.assertRaises(SentinelError) as c:
+                    ops.accept(eng, "leave-form", body, "dev", "Dev")
+                self.assertEqual(c.exception.code, code)
 
     def test_AC_VER_04l_the_dashboard_cannot_accept_what_the_engine_rejects(self):
         rows = [("rejected by engine", dict(acceptance="rejected"), 409, "E_TRANSITION"), ("human rejected", None, 409, "E_TRANSITION"),

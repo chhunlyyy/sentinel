@@ -19,6 +19,7 @@ import render_stage
 import scheduler
 from errors import SentinelError
 from paths import ROOT
+from review import SECURITY_GATE
 from tasks import DEFAULT_TIMEOUT, OPEN_STATES, _int, _seconds_since
 
 TASK_ID = re.compile(r"t-[0-9a-f]{12}")
@@ -370,6 +371,10 @@ class RuntimeOps:
             raise SentinelError("E_TRANSITION", f"task {task_id} is {t['state']}, only a QUEUED task runs"
                                 + (f"; open dependencies: {', '.join(deps)}" if deps else ""),
                                 {"state": t["state"], "open_dependencies": deps})
+        for r in self._vrounds(run):
+            if not r["finished_at"] and not r["interrupted"] and self._owner_alive(r, run):
+                raise SentinelError("E_LOCKED", f"verification round {r['round']} of {run['slug']} is in progress; tasks wait",
+                                    {"round": r["round"]})
         refused = self._before_dispatch(run, t)
         if refused:
             return refused
@@ -611,7 +616,11 @@ class RuntimeOps:
             return {**base, "kind": "human", "reason": f"review and approve {what}",
                     "commands": [f"sentinel review {slug} {gate}", f"sentinel approve {slug} {gate}"]}
         if state == "NEEDS_HUMAN":
-            return {**base, "kind": "human", "reason": self._state_reason(run, "NEEDS_HUMAN") or "a human decision is needed"}
+            reason = self._state_reason(run, "NEEDS_HUMAN") or "a human decision is needed"
+            step = {**base, "kind": "human", "reason": reason}
+            if reason.startswith(SECURITY_GATE):
+                step["command"] = f'sentinel resolve {slug} --approve-security -m "<why the security gate is accepted>"'
+            return step
         if state == "BLOCKED":
             reason = self._state_reason(run, "BLOCKED") or "blocked"
             m = re.match(r"runner not installed: (\S+)", reason)

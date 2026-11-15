@@ -20,7 +20,7 @@ Actors: `E` engine, `O` orchestrator (AI tool through the CLI), `H` human (TTY o
 | R12 | GHERKIN_APPROVED | EXECUTING | E | both approvals valid by hash; policy gates before execution satisfied (tier 4 security gate) | cycles planned | NEEDS_HUMAN |
 | R13 | EXECUTING | VERIFYING | E | all cycles CYCLE_ACCEPTED; required extra stages (hardener) COMPLETED | n/a | stay |
 | R14 | VERIFYING | REVIEWING | E | all required verification evidence passed | evidence rows | route failures (see orchestration doc), stay |
-| R15 | REVIEWING | COMPLETED | E | reviews and QA done; no open blocker or major; acceptance computed | execution completed; acceptance accepted or rejected | NEEDS_HUMAN at cap |
+| R15 | REVIEWING | COMPLETED | E | reviews and QA done; no open blocker or major; at tier 4 the security gate is approved by a human (else NEEDS_HUMAN, `sentinel resolve --approve-security`); acceptance computed (evidence stale when the verified tree changed) | execution completed; acceptance accepted or rejected | NEEDS_HUMAN at cap |
 | R16 | VERIFYING, REVIEWING | EXECUTING | E | a finding needs a new cycle | new cycle planned | n/a |
 | R17 | any active | SPECIFICATION_REVIEW | E | spec hash changed after approval | spec and Gherkin approvals INVALIDATED | n/a |
 | R18 | GHERKIN_APPROVED, EXECUTING, VERIFYING, REVIEWING | GHERKIN_REVIEW | E | Gherkin hash changed after approval | Gherkin approval INVALIDATED | n/a |

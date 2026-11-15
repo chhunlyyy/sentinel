@@ -322,6 +322,90 @@ class Bundle(PE):
                 self.assertFalse((ws.parent / ".bashrc").exists())
                 self.assertEqual(os.listdir(ws / ".sentinel" / "tmp") if (ws / ".sentinel" / "tmp").exists() else [], [])
 
+    def test_AC_ART_03n_rows_of_another_run_are_never_imported(self):
+        bundle = self.exported()
+        orig = self.read_bundle()
+        ws, eng = self.second()
+        eng.create_run("victim", "human", type="feature", baseline={"backend": "abc"}, request="x")
+        victim = eng.reg.get_run("victim")
+        victim_task = eng.create_task("victim", "docs", "docs", repos=["backend"], write=["backend/docs/**"])["id"]
+        rows = json.loads(orig["rows.json"])
+        forged = {"id": "a-forged000001", "run_id": victim["id"], "gate": "security", "state": "APPROVED", "decision": "approve",
+                  "approver": "attacker", "version": 1}
+        t0 = rows["tasks"][0]["id"]
+
+        def forge(key):
+            def go(r):
+                if key == "approval of another run":
+                    r["approvals"].append(forged)
+                elif key == "dependency on another run":
+                    r["task_deps"].append({"task_id": t0, "depends_on": "t-foreign00001"})
+                elif key == "other slug":
+                    r["runs"][0]["slug"] = "victim"
+                elif key == "audit of another run":
+                    r["audit"].append({"actor": "x", "channel": "tty", "action": "resolve", "target": "victim/security",
+                                       "before_sha": None, "after_sha": None, "at": "2026-01-01T00:00:00Z", "reason": "approve"})
+                elif key == "task of another run":
+                    r["events"].append({**r["events"][0], "task_id": victim_task})
+                elif key == "artifact outside the run":
+                    r["artifacts"][0]["path"] = "../../etc/passwd"
+                elif key == "two runs":
+                    r["runs"].append(dict(r["runs"][0]))
+            return go
+        for key in ("approval of another run", "dependency on another run", "other slug", "audit of another run",
+                    "task of another run", "artifact outside the run", "two runs"):
+            with self.subTest(case=key):
+                doc = json.loads(orig["rows.json"])
+                forge(key)(doc)
+                files = dict(orig)
+                files["rows.json"] = json.dumps(doc).encode()
+                bad = self.ws / "bad.tar.gz"
+                self.write_bundle(self.fix_manifest(files), bad)
+                code, out = self.import_pty(ws, bad)
+                self.assertEqual(code, 5, out)
+                self.assertIn("E_VALIDATION", out)
+                self.assertEqual(eng.reg.rows("approvals", run_id=victim["id"]), [])
+                self.assertIsNone(eng.reg.get_run(SLUG))
+                self.assertEqual([r["slug"] for r in eng.reg.rows("runs")], ["victim"])
+
+    def test_AC_ART_03o_import_caps_and_unreadable_files_are_validation_errors(self):
+        import gzip
+        self.exported()
+        orig = self.read_bundle()
+        ws, eng = self.second()
+        many = self.ws / "many.tar.gz"
+        self.write_bundle({**orig, **{f"run/pad/{i}.txt": b"x" for i in range(10001)}}, many)
+        huge = self.ws / "huge.tar.gz"
+        info = tarfile.TarInfo("run/big.bin")
+        info.size = 300 << 20
+        with gzip.open(huge, "wb") as fh:
+            fh.write(info.tobuf())
+        locked = self.ws / "locked.tar.gz"
+        self.write_bundle(orig, locked)
+        locked.chmod(0)
+        self.addCleanup(locked.chmod, 0o600)
+        garbage = self.ws / "garbage.tar.gz"
+        garbage.write_bytes(b"not gzip at all")
+        for name, path in [("member count", many), ("declared size", huge), ("unreadable", locked), ("not an archive", garbage)]:
+            with self.subTest(case=name):
+                code, out = self.import_pty(ws, path)
+                self.assertEqual(code, 5, out)
+                self.assertIn("E_VALIDATION", out)
+                self.assertNotIn("Traceback", out)
+        self.assertEqual(os.listdir(ws / ".sentinel" / "tmp"), [])
+
+    def test_AC_ART_03p_refused_imports_are_audited(self):
+        bundle = self.exported()
+        ws, eng = self.second()
+        code, out = run_plain(["--dir", str(ws), "run", "import", str(bundle)])
+        self.assertEqual(code, 5, out)
+        self.assertIn("E_NOT_TTY", out)
+        bad = self.ws / "bad.tar.gz"
+        bad.write_bytes(b"not gzip at all")
+        self.assertEqual(self.import_pty(ws, bad)[0], 5)
+        refused = [(a["action"], a["target"], a["reason"]) for a in eng.reg.audit_rows() if a["action"].endswith("_refused")]
+        self.assertEqual(refused, [("run_import_refused", bundle.name, "E_NOT_TTY"), ("run_import_refused", "bad.tar.gz", "E_VALIDATION")])
+
     def test_AC_ART_03m_an_existing_slug_is_never_overwritten(self):
         bundle = self.exported()
         for existing in ("row", "run folder", "shared folder"):

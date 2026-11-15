@@ -7,13 +7,13 @@ file and the manifest together (residual risk, README point 18). Source: plan/v1
 """
 import getpass
 import hashlib
-import io
 import json
 import os
 import shutil
 import sqlite3
 import tarfile
 import tempfile
+import zlib
 from pathlib import Path
 
 import machines
@@ -21,16 +21,15 @@ import scrub
 from errors import SentinelError
 from paths import ROOT
 from registry import _now
+from util import sha_bytes
 
 FORMAT = "sentinel-run-bundle-v1"
 TABLES = ("runs", "run_repos", "artifacts", "approvals", "tasks", "task_deps", "cycles", "evidence", "findings", "trace_links",
           "changed_files", "verification_rounds")
-ENV_NAMES = (".env",)
 OPEN_TASKS = ("RUNNING", "WAITING_FOR_INPUT")
-
-
-def sha_bytes(data):
-    return hashlib.sha256(data).hexdigest()
+MAX_BYTES = 256 << 20  # declared size of all members together
+MAX_MEMBERS = 10000
+CHUNK = 1 << 20
 
 
 def is_text(data):
@@ -185,15 +184,19 @@ class BundleOps:
         bundle = Path(bundle)
         if not bundle.is_file():
             raise SentinelError("E_NOT_FOUND", f"no bundle file {bundle}", {"path": str(bundle)})
-        raw = bundle.read_bytes()
-        bundle_sha = sha_bytes(raw)
         stage = Path(tempfile.mkdtemp(prefix="import-", dir=self._tmp()))
         try:
-            self._unpack(raw, stage)
-            manifest = self._check_manifest(stage)
-            slug = manifest["slug"]
-            doc = json.loads((stage / "rows.json").read_text(encoding="utf-8"))
+            try:
+                bundle_sha = self._unpack(bundle, stage)
+                manifest = self._check_manifest(stage)
+                slug = manifest["slug"]
+                doc = json.loads((stage / "rows.json").read_text(encoding="utf-8"))
+            except OSError as err:
+                raise SentinelError("E_VALIDATION", f"the bundle cannot be read: {err}") from err
+            except ValueError as err:
+                raise SentinelError("E_VALIDATION", f"rows.json is not valid JSON: {err}", {"path": "rows.json"}) from err
             self._check_slug_free(slug, doc)
+            self._check_rows(doc, slug)
             run_row = doc["runs"][0]
             active = run_row["state"] not in machines.RUN_FINAL
             held = False
@@ -206,6 +209,10 @@ class BundleOps:
                     raise SentinelError("E_LOCKED", str(err.code), {"slug": slug}) from err
             try:
                 self._write_rows(doc, slug, bundle_sha, user or getpass.getuser(), channel)
+            except sqlite3.IntegrityError as err:
+                if held:
+                    self._release(slug, {"adhoc": 0})
+                raise SentinelError("E_VALIDATION", f"rows.json clashes with rows of this registry: {err}", {"error": str(err)}) from err
             except sqlite3.Error as err:
                 if held:
                     self._release(slug, {"adhoc": 0})
@@ -220,14 +227,26 @@ class BundleOps:
         self.write_view(slug)
         return self._get(slug)
 
-    def _unpack(self, raw, stage):
+    def _unpack(self, bundle, stage):
+        """Stream the archive into `stage`, member by member, within the caps. Returns the sha256 of the bundle file."""
+        digest = hashlib.sha256()
         try:
-            tar = tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz")
-        except (tarfile.TarError, OSError, EOFError) as err:
+            with open(bundle, "rb") as fh:
+                for chunk in iter(lambda: fh.read(CHUNK), b""):
+                    digest.update(chunk)
+                fh.seek(0)
+                self._extract(fh, stage)
+        except (tarfile.TarError, EOFError, zlib.error) as err:
             raise SentinelError("E_VALIDATION", f"the bundle is not a readable archive: {err}") from err
-        total = 0
-        with tar:
-            for m in tar.getmembers():
+        return digest.hexdigest()
+
+    def _extract(self, fh, stage):
+        total = count = 0
+        with tarfile.open(fileobj=fh, mode="r|gz") as tar:
+            for m in tar:
+                count += 1
+                if count > MAX_MEMBERS:
+                    raise SentinelError("E_VALIDATION", f"the bundle holds more than {MAX_MEMBERS} entries")
                 name = m.name
                 parts = name.replace("\\", "/").split("/")
                 if name.startswith(("/", "\\")) or ".." in parts or (len(name) > 1 and name[1] == ":"):
@@ -239,15 +258,62 @@ class BundleOps:
                 if not m.isreg():
                     raise SentinelError("E_VALIDATION", f"unsafe archive entry {name!r}: not a regular file", {"entry": name})
                 total += m.size
-                if total > 1 << 30:
-                    raise SentinelError("E_VALIDATION", "the bundle is too large")
+                if total > MAX_BYTES:
+                    raise SentinelError("E_VALIDATION", f"the bundle declares more than {MAX_BYTES >> 20} MiB")
                 dst = stage / name
                 try:
                     dst.resolve().relative_to(stage.resolve())
                 except ValueError:
                     raise SentinelError("E_VALIDATION", f"unsafe archive entry {name!r}", {"entry": name})
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                dst.write_bytes(tar.extractfile(m).read())
+                src = tar.extractfile(m)
+                with open(dst, "wb") as out:
+                    for chunk in iter(lambda: src.read(CHUNK), b""):
+                        out.write(chunk)
+
+    def _check_rows(self, doc, slug):
+        """rows.json speaks for one run only: the slug of the manifest, rows that carry that run's id, links between its own
+        tasks, audit rows about it, and artifact paths inside its own folders. Nothing of another run is touched."""
+        def bad(message):
+            raise SentinelError("E_VALIDATION", f"rows.json: {message}", {"file": "rows.json"})
+        runs = doc.get("runs") if isinstance(doc, dict) else None
+        if not (isinstance(runs, list) and len(runs) == 1 and isinstance(runs[0], dict)):
+            bad("it must hold exactly one run")
+        run_id = runs[0].get("id")
+        if runs[0].get("slug") != slug:
+            bad(f"the run is {runs[0].get('slug')!r}, the manifest says {slug!r}")
+        rows = {t: doc.get(t, []) for t in (*TABLES[1:], "events", "audit")}
+        for table, items in rows.items():
+            if not isinstance(items, list) or not all(isinstance(r, dict) for r in items):
+                bad(f"{table} must be a list of rows")
+        refs = (("task_id", "tasks"), ("cycle_id", "cycles"))
+        own = {col: {r.get("id") for r in rows[table]} for col, table in refs}
+
+        def foreign(row):
+            """A task or cycle this registry already holds that the bundle does not (so it belongs to another run)."""
+            return next((f"{col} {row[col]!r}" for col, table in refs if row.get(col) is not None and row[col] not in own[col]
+                         and self.reg.get_row(table, row[col])), None)
+        for table in TABLES[1:]:
+            for r in rows[table]:
+                if table == "task_deps":
+                    if r.get("task_id") not in own["task_id"] or r.get("depends_on") not in own["task_id"]:
+                        bad("task_deps names a task that is not in the bundle")
+                    continue
+                if r.get("run_id") != run_id:
+                    bad(f"a {table} row belongs to run {r.get('run_id')!r}, not to {run_id!r}")
+                if foreign(r):
+                    bad(f"a {table} row names {foreign(r)} of another run")
+        for art in rows["artifacts"]:
+            path = art.get("path")
+            if not (isinstance(path, str) and path.startswith((f"runs/{slug}/", f"shared/specs/{slug}/")) and ".." not in path.split("/")):
+                bad(f"artifact path {path!r} is outside the run")
+        for e in rows["events"]:
+            if foreign(e):
+                bad(f"an event names {foreign(e)} of another run")
+        for a in rows["audit"]:
+            target = a.get("target") or ""
+            if target != slug and not target.startswith(slug + "/"):
+                bad(f"an audit row is about {target!r}, not about the run")
 
     def _check_manifest(self, stage):
         mpath = stage / "manifest.json"

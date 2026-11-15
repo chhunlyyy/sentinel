@@ -67,7 +67,7 @@ class Evidence(PE):
         for text, secret, marker in rows:
             with self.subTest(text=text):
                 self.boot1()
-                (self.ws / "backend" / ".env").write_text("DB_PASSWORD=Pw-9f3kq2zz\n")
+                (self.ws / ".env").write_text("DB_PASSWORD=Pw-9f3kq2zz\n")  # outside the repos: an untracked .env in a repo is a scope violation
                 self.mode("test", "backend", exit=0, report=[], extra_passed=1, stdout=text)
                 self.verify()
                 e = self.vrows("test")[0]
@@ -132,8 +132,10 @@ class Evidence(PE):
         a = self.popen("verify", SLUG)
         self.assertTrue(wait_until(lambda: self.rounds(), 10))
         b = self.popen("verify", SLUG)
-        codes = sorted([self.finish(a)[0], self.finish(b)[0]])
-        self.assertEqual(codes, [0, 5])
+        results = [self.finish(a), self.finish(b)]
+        self.assertEqual(sorted(r[0] for r in results), [0, 5])
+        refused = [r for r in results if r[0] == 5][0]
+        self.assertIn("E_LOCKED", refused[1] + refused[2])  # the second call really overlapped the first
         self.assertEqual(len(self.rounds()), 1)
 
     def test_AC_AGT_07u_verify_waits_while_a_task_runs(self):

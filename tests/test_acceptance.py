@@ -8,35 +8,9 @@ from pe_helpers import PE, SLUG
 from pb_helpers import PtyProc, run_tty, run_plain, CLI, CLI_ENV
 from errors import SentinelError
 
-BAL = "backend/src/main/java/leave/Balance.java"
-
 
 class Accept(PE):
     d = property(lambda self: ["--dir", str(self.ws)])
-
-    def to_ready(self, tier=3):
-        """REVIEWING with every review task COMPLETED, ready for R15."""
-        self.boot_ver(tier=tier)
-        self.change()
-        for c in self.cycles():
-            self.eng.reg.add_trace_link(self.run_row()["id"], "cycle", c["id"], "file", BAL)
-        assert self.verify()["exit"] == 0
-        if tier >= 3:
-            self.approve_security()
-            for t in self.new_tasks():
-                self.eng.reg.update_row("tasks", t["id"], state="COMPLETED")
-
-    def approve_security(self):
-        if (self.run_row()["tier"] or 0) >= 4:
-            self.eng.reg.insert_row("approvals", {"run_id": self.run_row()["id"], "gate": "security", "state": "APPROVED", "version": 1})
-
-    def to_completed(self, tier=3):
-        self.to_ready(tier)
-        step = self.eng.next_step(SLUG)
-        assert self.state() == "COMPLETED", (self.state(), step)
-
-    def prefix(self):
-        return self.eng.report_info(SLUG)["sha256"][:8]
 
     def accept_tty(self, *flags, typed=None):
         typed = self.prefix() if typed is None else typed
@@ -79,10 +53,8 @@ class Accept(PE):
             with self.subTest(gap=gap):
                 tier = 4 if gap in ("no security", "migration") else 3
                 self.to_ready(tier)
-                if gap == "no security":
-                    self.eng.reg._c.execute("DELETE FROM approvals WHERE gate='security'") if False else None
-                    with self.eng.reg.transaction():
-                        self.eng.reg._c.execute("DELETE FROM approvals WHERE gate='security'")
+                if gap == "migration":
+                    self.approve_security()
                 self.tweak(gap)
                 res = self.eng.compute_acceptance(SLUG)
                 self.assertEqual(res["status"], "rejected")
@@ -129,6 +101,15 @@ class Accept(PE):
             c.execute("UPDATE evidence SET verdict='fail' WHERE kind='lint' AND repo_id='frontend'")
         self.assertEqual(self.eng.compute_acceptance(SLUG)["reasons"], [
             "gherkin approval missing or invalid", "cycles incomplete: request-form", "required tests fail: frontend lint"])
+
+    def test_AC_VER_03g_a_planned_check_without_an_evidence_row_is_missing(self):
+        self.to_ready()
+        with self.eng.reg.transaction():
+            self.eng.reg._c.execute("DELETE FROM evidence WHERE kind='lint' AND repo_id='frontend'")
+            self.eng.reg._c.execute("DELETE FROM evidence WHERE kind='test' AND repo_id='backend'")
+        res = self.eng.compute_acceptance(SLUG)
+        self.assertEqual(res["status"], "rejected")
+        self.assertIn("verification evidence missing: backend test, frontend lint", res["reasons"])
 
     def test_AC_VER_03e_checks_that_were_not_run_do_not_count_as_missing(self):
         for repo, kind, verdict in [("frontend", "lint", "not_configured"), ("backend", "typecheck", "disabled")]:
@@ -187,7 +168,8 @@ class Accept(PE):
                          ("accept", self.eng.report_info(SLUG)["sha256"], "tty", "pilot ok"))
         run = self.run_row()
         self.assertEqual((run["state"], run["acceptance_status"]), ("COMPLETED", "accepted"))
-        self.assertTrue([a for a in self.audit() if a["action"] == "acceptance"])
+        # wording per Phase F AC-VER-04k; Phase E AC-VER-04a wording pending human confirmation
+        self.assertEqual([a["action"] for a in self.audit() if a["action"] in ("accepted", "rejected", "acceptance")], ["accepted"])
         self.assertEqual(self.eng.human_acceptance(run), "confirmed")
 
     def test_AC_VER_04b_a_human_rejects_an_accepted_run(self):
@@ -197,6 +179,7 @@ class Accept(PE):
         self.assertEqual(self.run_row()["acceptance_status"], "rejected")
         self.assertEqual(self.events("run.state_changed")[-1]["payload"]["transition"], "R25")
         self.assertEqual(self.events("run.status_changed")[-1]["payload"]["reasons"], ["rejected by human: wrong rounding"])
+        self.assertEqual([a["action"] for a in self.audit() if a["action"] in ("accepted", "rejected", "acceptance")], ["rejected"])
 
     def test_AC_VER_04c_a_rejected_run_never_becomes_accepted(self):
         for cause in ("engine", "human"):
@@ -213,6 +196,8 @@ class Accept(PE):
                 code, out = self.accept_tty()
                 self.assertEqual(code, 5, out)
                 self.assertIn("E_PRECONDITION", out)
+                self.assertIn("a rejected run never becomes accepted", out)
+                self.assertIn("required tests fail: backend test" if cause == "engine" else "rejected by human: no", out)
                 self.assertEqual(self.run_row()["acceptance_status"], "rejected")
                 self.assertTrue([a for a in self.audit() if a["action"] == "acceptance_refused"])
                 self.reset_ws()
@@ -344,6 +329,9 @@ class Accept(PE):
         deny = json.loads((self.ws / ".claude" / "settings.json").read_text())["permissions"]["deny"]
         self.assertIn("Bash(sentinel accept:*)", deny)
         self.assertIn("Bash(sentinel --dir * accept *)", deny)
+        for rule in ("Bash(sentinel run export:*)", "Bash(sentinel run import:*)", "Bash(sentinel --dir * run export *)",
+                     "Bash(sentinel --dir * run import *)"):
+            self.assertIn(rule, deny)
         for f in (self.ws / ".claude" / "agents").glob("*.md"):
             self.assertIn("sentinel accept", f.read_text())
 

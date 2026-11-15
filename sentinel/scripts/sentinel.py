@@ -358,6 +358,8 @@ def cmd_sync_adapters(args):
 
 HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)", "Bash(sentinel resolve:*)",
                        "Bash(sentinel --dir * approve *)", "Bash(sentinel --dir * accept *)", "Bash(sentinel --dir * resolve *)",
+                       "Bash(sentinel run export:*)", "Bash(sentinel run import:*)",
+                       "Bash(sentinel --dir * run export *)", "Bash(sentinel --dir * run import *)",
                        "Read(~/.config/sentinel/**)", "Read(//**/.config/sentinel/server.json)",
                        "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)"]
 
@@ -774,8 +776,9 @@ def cmd_verify(args):
         engine.close()
 
 
-def human_gate(engine, slug, what):
-    """A human decision command: refused inside a task process (E_ACTOR) and without a terminal (E_NOT_TTY); refusals are audited."""
+def human_gate(engine, slug, what, target=None):
+    """A human decision command: refused inside a task process (E_ACTOR) and without a terminal (E_NOT_TTY); refusals are
+    audited against the run, or against `target` when the command names no run yet (an import)."""
     user, git_name = human_identity()
     task = os.environ.get("SENTINEL_TASK_ID")
     err = None
@@ -784,9 +787,9 @@ def human_gate(engine, slug, what):
     elif not is_tty():
         err = refuse_without_tty(f"`sentinel {what}`")
     if err:
-        if engine.is_v2(slug):
-            engine.audit(user, "tty" if is_tty() else "cli", f"{what.split()[0]}_refused" if what != "accept" else "acceptance_refused",
-                         slug, reason=err.code)
+        if target or engine.is_v2(slug):
+            engine.audit(user, "tty" if is_tty() else "cli", f"{what.replace(' ', '_')}_refused" if what != "accept" else "acceptance_refused",
+                         target or slug, reason=err.code)
         raise err
     return user, git_name
 
@@ -880,16 +883,16 @@ def cmd_run_import(args):
     config_path, config = load_config(args.dir)
     engine = open_registry(config_path, config)
     try:
-        task = os.environ.get("SENTINEL_TASK_ID")
-        user, _ = human_identity()
-        if task:
-            raise SentinelError("E_ACTOR", f"a task process may not run `sentinel run import` (called from task {task})", {"task": task})
-        if not is_tty():
-            raise refuse_without_tty("`sentinel run import`")
+        name = Path(args.bundle).name
+        user, _ = human_gate(engine, None, "run import", target=name)
         if not args.yes and input(f"Import the run in {args.bundle}? [y/N] ").strip().lower() not in ("y", "yes"):
             print("nothing imported")
             sys.exit(1)
-        run = engine.import_run(args.bundle, user=user)
+        try:
+            run = engine.import_run(args.bundle, user=user)
+        except SentinelError as err:
+            engine.audit(user, "tty", "run_import_refused", name, reason=err.code)
+            raise
         print(f"imported run {run['slug']} ({run['state']}, acceptance {run['acceptance_status']})")
     finally:
         engine.close()

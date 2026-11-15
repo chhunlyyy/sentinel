@@ -5,7 +5,6 @@ repo the run changed, each leaving one evidence row (written when the check fini
 "finished" record. All checks green: R14. Otherwise failures go to a human (policy gates, unjudgeable runs) or to one fix
 task per failing repo. Source: plan/v1.1/phaseE/README.md points 1 to 9.
 """
-import hashlib
 import json
 import os
 import platform
@@ -24,6 +23,8 @@ import release_check
 import scopes
 from errors import SentinelError
 from registry import _now
+from tasks import retry_cap
+from util import cap_of, sha_bytes
 
 ALLOWED = ("mutation", "migration_check", "disabled", "extra")
 DISABLEABLE = ("targeted", "build", "lint", "typecheck", "hygiene", "secret", "deps", "mutation", "migration", "extra",
@@ -31,6 +32,8 @@ DISABLEABLE = ("targeted", "build", "lint", "typecheck", "hygiene", "secret", "d
 DEFAULTS = {"mutation": "tier4", "migration_check": "auto", "disabled": [], "extra": []}
 FIX_ROLES = ("tdd_green", "hardener")
 ACTIVE_TASKS = ("RUNNING", "WAITING_FOR_INPUT")
+PENDING_TASKS = ("CREATED", "QUEUED")
+AGENT_FILES = re.compile(r"(^|/)AGENTS\.md$|(^|/)\.claude/(agents|skills)/")  # always a violation, whatever the write scopes say
 TEXT_KINDS = ("lint", "secret", "typecheck", "build", "hygiene")
 DESTRUCTIVE = [("DROP TABLE", re.compile(r"\bDROP\s+TABLE\b", re.I)), ("DROP COLUMN", re.compile(r"\bDROP\s+COLUMN\b", re.I)),
                ("TRUNCATE", re.compile(r"\bTRUNCATE\b", re.I)), ("RENAME", re.compile(r"\bRENAME\b", re.I)),
@@ -94,7 +97,7 @@ def destructive_statements(sql):
 
 def sha_of(path):
     try:
-        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        return sha_bytes(Path(path).read_bytes())
     except OSError:
         return None
 
@@ -141,7 +144,7 @@ class VerifyOps:
                 run = self._get_v2(slug)
                 if run["state"] != "VERIFYING":
                     raise SentinelError("E_TRANSITION", f"verification needs a VERIFYING run, run is {run['state']}", {"state": run["state"]})
-                busy = [t for t in self.reg.rows("tasks", run_id=run["id"]) if t["state"] in ACTIVE_TASKS]
+                busy = [t for t in self.reg.rows("tasks", run_id=run["id"]) if t["state"] in ACTIVE_TASKS + PENDING_TASKS]
                 if busy:
                     raise SentinelError("E_PRECONDITION", f"task {busy[0]['id']} of the run is {busy[0]['state']}; verification waits",
                                         {"task": busy[0]["id"]})
@@ -196,6 +199,13 @@ class VerifyOps:
                 info["changed"].append(p)
         return info
 
+    def repo_fingerprint(self, path):
+        """{"head", "paths": {path: sha256}} of a repo as it is now, without the sentinel folder and the git rule files."""
+        state = boundary.changed_state(path)
+        sname = self.state_dir.name
+        return {"head": state["head"], "paths": {p: h for p, h in sorted(state["paths"].items())
+                                                 if not (p == sname or p.startswith(sname + "/") or p in boundary.IGNORE_FILES)}}
+
     def _plan(self, run):
         cfg = self._run_config(run)
         st = settings(cfg)
@@ -238,42 +248,50 @@ class VerifyOps:
         return union
 
     # ---- the round
+    def _kinds(self, run, cfg, st, tier, info, docs):
+        """The checks of a repo in this round, scope first: nothing the repo's own scripts run starts before it passed."""
+        kinds = ["scope"]
+        if info["is_changed"]:
+            if docs:
+                return kinds + ["docs_links", "docs_build"]
+            kinds += ["targeted", "test", "build", "lint", "typecheck", "hygiene"]
+            if tier >= 2:
+                kinds += ["secret", "deps"]
+            if self._mutation_on(st, tier):
+                kinds.append("mutation")
+            if st["migration_check"] == "always" or (st["migration_check"] == "auto" and self._migration_files(cfg, info)):
+                kinds.append("migration")
+            kinds += [("extra", r) for r in st["extra"] if r.get("repo") in (None, info["id"])]
+        return kinds
+
     def _run_round(self, run, rnd, plan):
         cfg, st, tier = plan["cfg"], plan["st"], plan["tier"]
-        slug = run["slug"]
         union = self._scope_union(run)
         first = sorted(r["id"] for r in plan["repos"])[:1]
-        summary = {"unchanged": [], "changed_before_run": [], "not_run": [], "claims": []}
+        summary = {"unchanged": [], "changed_before_run": [], "not_run": [], "claims": [], "plan": {}}
         rows = []
         for info in plan["repos"]:
             rid = info["id"]
             summary["changed_before_run"] += [f"{rid}/{p}" for p in info["before"]]
-            kinds = []
-            if info["is_changed"]:
-                if plan["docs"]:
-                    kinds = ["docs_links", "docs_build"]
-                else:
-                    kinds = ["targeted", "test", "build", "lint", "typecheck", "hygiene"]
-                    if tier >= 2:
-                        kinds += ["secret", "deps"]
-                    if self._mutation_on(st, tier):
-                        kinds.append("mutation")
-                    if st["migration_check"] == "always" or (st["migration_check"] == "auto" and self._migration_files(cfg, info)):
-                        kinds.append("migration")
-                    kinds += [("extra", r) for r in st["extra"] if r.get("repo") in (None, rid)]
-            else:
+            if not info["is_changed"]:
                 summary["unchanged"].append(rid)
-            kinds.append("scope")
+            kinds = self._kinds(run, cfg, st, tier, info, plan["docs"])
+            summary["plan"][rid] = [[k[0], k[1].get("name")] if isinstance(k, tuple) else [k, None] for k in kinds]
+            scope_failed = False
             for item in kinds:
                 kind, rule = item if isinstance(item, tuple) else (item, None)
                 if kind in st["disabled"] and kind != "scope":
                     res = {"verdict": "disabled", "classification": "disabled"}
+                elif scope_failed:
+                    res = {"verdict": "not_run", "classification": "not_run", "reason": "the scope check of the repo failed"}
                 else:
                     res = getattr(self, f"_chk_{kind}")(run, cfg, info, union=union, first=rid in first, rule=rule, tier=tier)
-                rows.append(self._record(run, rnd, kind, rid, res, name=(rule or {}).get("name") if rule else None))
-        summary["not_run"] = [f"{r['repo']} {r['kind']}" for r in rows if r["verdict"] in ("not_configured", "disabled")]
-        decision = self._judge_round(run, rnd, plan, rows, summary)
-        return decision
+                rec = self._record(run, rnd, kind, rid, res, name=(rule or {}).get("name") if rule else None)
+                rows.append(rec)
+                scope_failed = scope_failed or (kind == "scope" and rec["verdict"] == "fail")
+        summary["not_run"] = [f"{r['repo']} {r['kind']}" for r in rows if r["verdict"] in ("not_configured", "disabled", "not_run")]
+        summary["repo_state"] = {i["id"]: self.repo_fingerprint(i["path"]) for i in plan["repos"] if (i["path"] / ".git").exists()}
+        return self._judge_round(run, rnd, plan, rows, summary)
 
     def _record(self, run, rnd, kind, repo, res, name=None):
         """One evidence row, committed on its own so progress is visible; the output goes to a scrubbed file."""
@@ -292,7 +310,7 @@ class VerifyOps:
             dest = self.run_dir(run["slug"]) / "verification" / f"round-{rnd}" / f"{label}.log"
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(data)
-            sha = hashlib.sha256(data).hexdigest()
+            sha = sha_bytes(data)
             env = {"platform": sys.platform, "python": sys.version.split()[0], "os": platform.platform(),
                    "tools": (scopes._repo(self._run_config(run), repo) or {}).get("tool_versions") or {}}
             with self.reg.transaction():
@@ -321,28 +339,33 @@ class VerifyOps:
             "classification": row["classification"], "verdict": row["verdict"], "evidence": eid})
 
     # ---- individual checks. Each returns {verdict, classification, ran?, failing?, detail?, human?}
-    def _exec(self, cfg, rid, command, tools, tests=(), info=None):
-        return self._run_tests(cfg, rid, command, tools, tests, info)
-
     def _chk_scope(self, run, cfg, info, union=(), first=False, **_):
-        bad = []
+        bad, workspace = [], []
         if info["head"] is not None and info["head"] != info["baseline"]:
             bad.append("HEAD moved")
         for p in info["changed"]:
-            if not scopes.path_allowed(union, info["id"], p):
+            if AGENT_FILES.search(p) or not scopes.path_allowed(union, info["id"], p):
                 bad.append(p)
         if first:
             cfg_file = self.workspace / "sentinel.config.yaml"
             snap = self.reg.get_config_version(run["config_snapshot_id"]) if run.get("config_snapshot_id") else None
             if cfg_file.is_file() and snap and sha_of(cfg_file) != snap["sha256"]:
-                bad.append("sentinel.config.yaml")
+                workspace.append("sentinel.config.yaml")
+            try:
+                was = json.loads(run.get("watched_baseline") or "null")
+            except ValueError:
+                was = None
+            if was is not None:
+                now = self.watched_files()
+                workspace += [p for p in sorted(set(was) | set(now)) if was.get(p) != now.get(p)]
+            bad += workspace
         return {"verdict": "fail" if bad else "pass", "classification": "scope_exceeded" if bad else "pass", "failing": bad,
-                "repo_sha": info["head"], "human": bad or None}
+                "detail": {"workspace": workspace}, "repo_sha": info["head"], "human": bad or None}
 
     def _chk_test(self, run, cfg, info, **_):
         rid = info["id"]
         tools = scopes.test_tools(cfg, rid)
-        ran = self._exec(cfg, rid, tools["test"], tools)
+        ran = self._run_tests(cfg, rid, tools["test"], tools)
         base_row = self.baseline(run, rid)
         base = json.loads(base_row["failing"] or "[]") if base_row else []
         cl = classifier.classify(ran["exit_code"], ran["output"], ran["report"], tools["failure_patterns"], baseline_failing=base,
@@ -381,7 +404,7 @@ class VerifyOps:
             return {"verdict": "not_configured", "classification": "not_configured",
                     "reason": "no targeted_test command" if not tools.get("targeted_test") else "no targeted tests"}
         try:
-            ran = self._exec(cfg, rid, tools["targeted_test"], tools, tests, tinfo)
+            ran = self._run_tests(cfg, rid, tools["targeted_test"], tools, tests, tinfo)
         except ValueError as err:
             return {"verdict": "fail", "classification": "unknown", "reason": str(err), "human": f"targeted tests cannot be selected in repo {rid}: {err}"}
         base_row = self.baseline(run, rid)
@@ -401,7 +424,7 @@ class VerifyOps:
         if not command:
             return {"verdict": "not_configured", "classification": "not_configured", "reason": f"no {key} command"}
         tools = {**scopes.test_tools(cfg, info["id"]), "test_report": None}
-        ran = self._exec(cfg, info["id"], command, tools)
+        ran = self._run_tests(cfg, info["id"], command, tools)
         ok = ran["exit_code"] == 0
         return {"ran": ran, "verdict": "pass" if ok else "fail", "classification": "pass" if ok else kind_cls}
 
@@ -546,12 +569,9 @@ class VerifyOps:
                 "detail": {"hits": broken}}
 
     # ---- judging and routing
-    def _approved_paths(self, run, rid):
-        return self.approved_files(run, rid)
-
     def _located_in_approved_tests(self, run, rid, row):
         """True when a failure's text names an approved test file and no production file."""
-        approved = self._approved_paths(run, rid)
+        approved = self.approved_files(run, rid)
         if not approved or row["kind"] not in TEXT_KINDS:
             return None
         text = row["text"] + "\n" + "\n".join(row["failing"])
@@ -589,8 +609,9 @@ class VerifyOps:
         if scope_bad:
             parts = []
             for r in scope_bad:
+                ws = r["detail"].get("workspace", [])
                 for p in r["failing"]:
-                    parts.append(f"{r['repo']}: HEAD moved" if p == "HEAD moved" else p if p == "sentinel.config.yaml" else f"{r['repo']}/{p}")
+                    parts.append(f"{r['repo']}: HEAD moved" if p == "HEAD moved" else p if p in ws else f"{r['repo']}/{p}")
             human = "changes outside every task scope: " + ", ".join(parts)
         if not human:
             for r in failed:
@@ -604,8 +625,7 @@ class VerifyOps:
                 if hit:
                     human = f"fix needs a change to approved test file {hit}"
                     break
-        cap = (cfg.get("limits") or {}).get("release_check_rounds")
-        cap = cap if isinstance(cap, int) and not isinstance(cap, bool) and cap >= 1 else 3
+        cap = cap_of((cfg.get("limits") or {}).get("release_check_rounds"), 3)
         finished = len([x for x in self._vrounds(run) if x["finished_at"] and not x["interrupted"]]) + 1
         out = {"round": rnd, "rows": [{k: r[k] for k in ("repo", "kind", "name", "verdict", "classification")} for r in rows],
                "summary": summary, "passed": not failed, "fix_tasks": []}
@@ -652,9 +672,7 @@ class VerifyOps:
                     lines += [f"    applied migration changed: {p}" for p in r["detail"].get("applied_changed", [])]
                 lines.append("")
             write = scopes.scope_globs(cfg, rid, "tests" if role == "hardener" else "production")
-            cap = ((cfg.get("agents") or {}).get(role) or {}).get("max_retries")
-            from tasks import retry_cap
-            cap = cap if isinstance(cap, int) and not isinstance(cap, bool) and cap >= 0 else retry_cap(cfg, role)
+            cap = cap_of(((cfg.get("agents") or {}).get(role) or {}).get("max_retries"), retry_cap(cfg, role), 0)
             task = self._make_task(run, role, f"Fix the verification failures of {rid} (round {rnd})", [rid], write=write,
                                    readonly_approved=self.approved_files(run, rid), brief="\n".join(lines) + "\n",
                                    max_retries=cap, queue=True)

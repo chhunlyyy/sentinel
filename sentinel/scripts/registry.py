@@ -318,6 +318,11 @@ class Registry:
              actor_name, channel))
         return cur.lastrowid
 
+    def last_status_reasons(self, run_id):
+        """The reasons of the latest `run.status_changed` event of a run (why it is rejected), or []."""
+        events = self.list_events(run_id, "run.status_changed")
+        return list((events[-1]["payload"] or {}).get("reasons") or []) if events else []
+
     def list_events(self, run_id=None, type=None):
         where, args = [], []
         if run_id is not None:

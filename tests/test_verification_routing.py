@@ -144,17 +144,25 @@ class Routing(PE):
         self.assertEqual(self.last_reason(), "changes outside every task scope: backend/build.gradle")
         self.assertTrue((self.ws / "backend/build.gradle").exists())
 
-    def test_AC_ORC_06b_06c_destructive_migration_needs_a_human_then_passes(self):
-        mig = "backend/db/migration/V8__drop_legacy.sql"
+    MIG = "backend/db/migration/V8__drop_legacy.sql"
+
+    def destructive_migration(self):
         self.boot4()
-        self.write_file(mig, "ALTER TABLE leave DROP COLUMN legacy_days;\n")
-        res = self.verify()
+        self.write_file(self.MIG, "ALTER TABLE leave DROP COLUMN legacy_days;\n")
+        return self.verify()
+
+    def test_AC_ORC_06b_destructive_migration_needs_a_human(self):
+        res = self.destructive_migration()
         row = self.vrows("migration")[0]
         self.assertEqual((row["classification"], row["verdict"]), ("destructive", "fail"))
         self.assertIn("DROP COLUMN", row["failing"])
         self.assertEqual(res["exit"], 6)
         self.assertEqual(self.last_reason(), "destructive migration needs human approval (policy destructive_migration)")
         self.assertFalse(self.fix_tasks())
+
+    def test_AC_ORC_06c_an_approved_destructive_migration_passes(self):
+        mig = self.MIG
+        self.destructive_migration()
         self.eng.resolve(SLUG, user="dev", channel="tty", comment="reviewed", approve_file=mig)
         ap = self.approvals("migration")[0]
         self.assertEqual((ap["state"], ap["sha256"], ap["approver"], ap["channel"]),

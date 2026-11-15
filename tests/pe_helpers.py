@@ -156,8 +156,8 @@ class PE(PDX):
     BAL = "backend/src/main/java/leave/Balance.java"
 
     def approve_security(self):
-        if (self.run_row()["tier"] or 0) >= 4:
-            self.eng.reg.insert_row("approvals", {"run_id": self.run_row()["id"], "gate": "security", "state": "APPROVED", "version": 1})
+        """The human's decision through the normal command (R20 `resolve --approve-security`)."""
+        self.eng.resolve(SLUG, user="dev", channel="tty", comment="security reviewed", approve_security=True)
 
     def to_ready(self, tier=3, **kw):
         """REVIEWING with every review task COMPLETED, ready for R15."""
@@ -167,7 +167,6 @@ class PE(PDX):
             self.eng.reg.add_trace_link(self.run_row()["id"], "cycle", c["id"], "file", self.BAL)
         assert self.verify()["exit"] == 0
         if tier >= 3:
-            self.approve_security()
             for t in self.new_tasks():
                 self.eng.reg.update_row("tasks", t["id"], state="COMPLETED")
 

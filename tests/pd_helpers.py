@@ -1,4 +1,5 @@
 """Shared fixtures for Phase D tests: repos with the fake test tool, approved Gherkin, planned cycles, fake agents."""
+import contextlib
 import json
 import sys
 import textwrap
@@ -105,6 +106,19 @@ class PD(PCX):
             git(self.ws / rid, "add", "-A")
             git(self.ws / rid, "commit", "-q", "-m", "ignore build")
 
+    @contextlib.contextmanager
+    def subTest(self, *args, **params):
+        """A failing subtest still resets the workspace, so the next one does not boot on its leftovers."""
+        with super().subTest(*args, **params):
+            try:
+                yield
+            except BaseException:
+                try:
+                    self.reset_ws()
+                except Exception:
+                    pass
+                raise
+
     def reset_ws(self):
         """Fresh registry and clean repos, same config (for subtests that boot several runs)."""
         import shutil
@@ -118,6 +132,8 @@ class PD(PCX):
             git(self.ws / rid, "checkout", "-q", "--", ".")
             git(self.ws / rid, "clean", "-fdq")
         (self.ws / self.BIN / "faketest.log").unlink(missing_ok=True)
+        shutil.rmtree(self.ws / ".claude", ignore_errors=True)
+        (self.ws / "AGENTS.md").unlink(missing_ok=True)
 
     def fake_tool(self, **modes):
         """Write the fake test tool and its scenario file; modes: {"full": {...}, "targeted": {...}, "default": {...}}."""

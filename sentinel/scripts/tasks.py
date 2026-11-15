@@ -20,6 +20,7 @@ import scopes
 from errors import SentinelError
 from paths import ROOT
 from registry import _new_id, _now
+from util import sha_bytes
 
 DEFAULT_TIMEOUT = 5400
 DEFAULT_RETRIES = 2
@@ -342,6 +343,20 @@ class TaskOps:
         if isinstance(run, str):
             run = self.reg.get_run(run)
         return scopes.effective_globs(self._run_config(run), repo_id)
+
+    def watched_files(self):
+        """{workspace-relative path: sha256} of the agent, skill and AGENTS.md files (the config file is checked against the
+        run's config snapshot). Taken when a run is created; verification compares against it."""
+        out = {}
+        for name in WATCHED[1:]:
+            base = self.workspace / name
+            files = [base] if base.is_file() else sorted(p for p in base.rglob("*") if p.is_file()) if base.is_dir() else []
+            for f in files:
+                try:
+                    out[f.relative_to(self.workspace).as_posix()] = sha_bytes(f.read_bytes())
+                except OSError:
+                    out[f.relative_to(self.workspace).as_posix()] = None
+        return out
 
     def _config_digests(self):
         return {name: boundary.config_state([self.workspace / name]) for name in WATCHED}

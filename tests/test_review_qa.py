@@ -195,6 +195,14 @@ class Review(PE):
         self.assertEqual(c.exception.code, "E_ACTOR")
         self.assertEqual(self.state(), "REVIEWING")
 
+    GATE = "security gate (tier 4) needs human approval"
+
+    def drain_chain(self):
+        for t in self.new_tasks():
+            if t["state"] in ("CREATED", "QUEUED"):
+                self.eng.reg.update_row("tasks", t["id"], state="COMPLETED")
+        self.eng.bookkeep(SLUG)
+
     def test_AC_ORC_03c_a_review_blocker_at_tier_3_raises_the_tier(self):
         self.to_review()
         self.reviewer_says(finding("blocker", "bad", f"{BAL}:22"))
@@ -203,7 +211,54 @@ class Review(PE):
         ev = self.events("run.tier_raised")[-1]["payload"]
         self.assertEqual((ev["from"], ev["to"]), (3, 4))
         self.assertEqual(self.state(), "NEEDS_HUMAN")
-        self.assertEqual(self.last_reason(), "security gate (tier 4) needs human approval before execution resumes")
+        self.assertEqual(self.last_reason(), self.GATE + " before execution resumes")
+
+    def test_AC_ORC_03c_the_blocker_is_routed_after_the_security_approval_and_the_run_completes(self):
+        self.to_review()
+        self.reviewer_says(finding("blocker", "bad", f"{BAL}:22"))
+        self.run_role("reviewer")
+        self.eng.resolve(SLUG, user="dev", channel="tty", comment="reviewed", approve_security=True)
+        self.assertEqual(self.state(), "EXECUTING")
+        f = self.eng.reg.rows("findings", run_id=self.run_row()["id"])[0]
+        self.assertEqual(f["state"], "routed")
+        new = [c for c in self.cycles() if c["state"] == "PLANNED"]
+        self.assertEqual(len(new), 1)
+        self.assertEqual(len(self.r16()), 1)
+        self.eng.reg.update_row("cycles", new[0]["id"], state="CYCLE_ACCEPTED",
+                                tests=json.dumps(["RemainingBalanceTest.employeeSeesRemainingDays"]))
+        self.eng.bookkeep(SLUG)
+        self.assertEqual(self.state(), "VERIFYING")
+        self.assertEqual(self.verify()["exit"], 0)
+        self.assertEqual(self.eng.reg.get_row("findings", f["id"])["state"], "resolved")
+        roles = [t["role"] for t in self.new_tasks() if t["state"] != "CANCELLED"]
+        self.assertEqual(roles[-6:], ["reviewer", "qa", "promotion", "docs", "rollout", "retrospective"])
+        self.drain_chain()
+        self.eng.next_step(SLUG)
+        run = self.run_row()
+        self.assertEqual((run["state"], run["acceptance_status"]), ("COMPLETED", "accepted"))
+
+    def test_AC_ORC_03d_tier_4_without_a_security_approval_parks_before_completion(self):
+        self.to_review(4)
+        self.drain_chain()
+        step = self.eng.next_step(SLUG)
+        self.assertEqual(self.state(), "NEEDS_HUMAN")
+        self.assertEqual((step["kind"], step["reason"]), ("human", self.GATE + " before the run completes"))
+        self.assertEqual(step["command"], f'sentinel resolve {SLUG} --approve-security -m "<why the security gate is accepted>"')
+        self.assertFalse(self.approvals("security"))
+        self.eng.resolve(SLUG, user="dev", channel="tty", comment="reviewed", approve_security=True)
+        self.assertEqual(self.state(), "REVIEWING")
+        self.eng.next_step(SLUG)
+        run = self.run_row()
+        self.assertEqual((run["state"], run["acceptance_status"]), ("COMPLETED", "accepted"))
+
+    def test_AC_ORC_03e_a_security_approval_of_an_older_specification_does_not_count(self):
+        self.to_review(4)
+        self.drain_chain()
+        self.eng.next_step(SLUG)
+        self.eng.resolve(SLUG, user="dev", channel="tty", comment="ok", approve_security=True)
+        with self.eng.reg.transaction():
+            self.eng.reg._c.execute("UPDATE approvals SET sha256='0000' WHERE gate='security'")
+        self.assertIn("required human approval missing: security", self.eng.compute_acceptance(SLUG)["reasons"])
 
     def drive_to_cap(self, source):
         """Every pass of `source` reports a major finding; every new cycle and verification round passes."""
@@ -252,28 +307,19 @@ class Review(PE):
                 self.assertIn("balance can go negative", self.last_reason())
                 self.reset_ws()
 
-    def approve_security(self):
-        self.eng.reg.insert_row("approvals", {"run_id": self.run_row()["id"], "gate": "security", "state": "APPROVED", "version": 1})
-
     def test_AC_ORC_05q_a_waived_finding_completes_the_run_rejected(self):
-        self.to_review()
-        self.reviewer_says(finding("major", "balance can go negative", f"{BAL}:22"))
-        self.run_role("reviewer")
-        f = self.eng.reg.rows("findings", run_id=self.run_row()["id"])[0]
-        # the review round cap parks the run with the finding open, back in REVIEWING
-        self.eng.reg.update_row("findings", f["id"], state="open", routed_to=None, cycle_id=None)
-        self.set_state("NEEDS_HUMAN")
-        self.eng.reg.update_run(SLUG, previous_state="REVIEWING")
-        for t in self.new_tasks():
-            if t["state"] in ("CANCELLED",):
-                self.eng.reg.update_row("tasks", t["id"], state="COMPLETED")
+        self.to_review(3, limits={"review_rounds": 1})
+        step = self.drive_to_cap("reviewer")  # the second pass finds the same thing again: the cap is really reached
+        self.assertIsNotNone(step)
+        self.assertEqual(self.state(), "NEEDS_HUMAN")
+        self.assertIn("reviewer round cap reached", self.last_reason())
+        f = [r for r in self.eng.reg.rows("findings", run_id=self.run_row()["id"]) if r["state"] == "open"][0]
         self.eng.resolve(SLUG, user="dev", channel="tty", comment="accepted risk for pilot", waive=f["id"])
         f2 = self.eng.reg.get_row("findings", f["id"])
         self.assertEqual((f2["state"], f2["decided_by"], f2["comment"]), ("waived", "dev", "accepted risk for pilot"))
         self.assertTrue([a for a in self.audit() if a["action"] == "resolve"])
-        for t in self.new_tasks():
-            if t["state"] not in ("COMPLETED",):
-                self.eng.reg.update_row("tasks", t["id"], state="COMPLETED")
+        self.assertEqual(self.state(), "REVIEWING")
+        self.drain_chain()
         self.eng.next_step(SLUG)
         run = self.run_row()
         self.assertEqual((run["state"], run["acceptance_status"]), ("COMPLETED", "rejected"))

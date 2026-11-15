@@ -141,7 +141,7 @@ def h_tdd(ctx, eng, project, slug):
 
 @run_read
 def h_verification(ctx, eng, project, slug):
-    return views.verification(eng.reg, eng._get(slug))
+    return views.verification(eng, eng._get(slug))
 
 
 @run_read
@@ -151,7 +151,7 @@ def h_trace(ctx, eng, project, slug):
 
 @run_read
 def h_report(ctx, eng, project, slug):
-    return views.report(eng.state_dir, slug, ctx.query.get("format", "json"))
+    return views.report(eng.reg, eng.state_dir, slug, eng._get(slug), ctx.query.get("format", "json"))
 
 
 @run_read

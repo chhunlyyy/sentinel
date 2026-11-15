@@ -2,20 +2,20 @@
 
 ReviewOps is mixed into Engine. Source: plan/v1.1/phaseE/README.md points 10 to 14.
 """
-import hashlib
 import json
 import re
 from pathlib import Path
 
 import machines
-import scopes
 from errors import SentinelError
 from registry import _now
+from util import cap_of, sha_bytes
 
 CHAIN = ["reviewer", "qa", "promotion", "docs"]
 CHAIN_T4 = CHAIN + ["rollout", "retrospective"]
 OPEN = ("CREATED", "QUEUED", "RUNNING", "WAITING_FOR_INPUT")
 ROUTED = ("blocker", "major")
+SECURITY_GATE = "security gate (tier 4) needs human approval"
 
 
 def cycle_name(cycle):
@@ -126,7 +126,7 @@ class ReviewOps:
                 fid = self.reg.insert_row("findings", {
                     "run_id": run["id"], "task_id": task_id, "source": t["role"], "severity": f["severity"],
                     "location": f.get("location"), "text": f["text"], "state": "open",
-                    "category": f.get("category") or ("code_bug" if t["role"] == "qa" else None), "round": None})
+                    "category": f.get("category") or ("code_bug" if t["role"] == "qa" else None)})
                 self._event(run, "finding.created", machines.ENGINE, {"finding": fid, "source": t["role"], "severity": f["severity"],
                                                                       "location": f.get("location")})
                 rows.append(self.reg.get_row("findings", fid))
@@ -142,14 +142,13 @@ class ReviewOps:
         cfg = self._run_config(run)
         source = task["role"]
         cap_key = "review_rounds" if source == "reviewer" else "qa_rounds"
-        cap = (cfg.get("limits") or {}).get(cap_key)
-        cap = cap if isinstance(cap, int) and not isinstance(cap, bool) and cap >= 1 else (2 if source == "reviewer" else 3)
+        cap = cap_of((cfg.get("limits") or {}).get(cap_key), 2 if source == "reviewer" else 3)
         used = len([e for e in self.reg.list_events(run["id"], "review.routed") if e["payload"]["source"] == source])
         listing = "; ".join(f"[{f['severity']}] {f['text']}" for f in todo)
         if source == "reviewer" and (run["tier"] or 0) == 3 and any(f["severity"] == "blocker" for f in todo):
             self.reg.update_run(run["slug"], tier=4)  # the 0.1 rule: a blocker raises the tier, so the security gate applies
             self._event(run, "run.tier_raised", machines.ENGINE, {"from": 3, "to": 4, "reason": "review blocker"})
-            self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason="security gate (tier 4) needs human approval before execution resumes")
+            self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=SECURITY_GATE + " before execution resumes")
             return []
         gaps = [f for f in todo if f["category"] == "spec_gap"]
         if gaps:
@@ -204,6 +203,13 @@ class ReviewOps:
             return False
         if self.review_chain_roles(run) and not self.chain_tasks(run):
             return False
+        if (run["tier"] or 0) >= 4 and run["type"] != "docs" and not self.security_approved(run):
+            with self.reg.transaction():
+                run = self._get_v2(slug)
+                if run["state"] == "REVIEWING":
+                    self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=SECURITY_GATE + " before the run completes")
+            self._finish_up(slug, run)
+            return False
         self.complete_run(slug)
         return True
 
@@ -239,7 +245,7 @@ class ReviewOps:
                     raise SentinelError("E_VALIDATION", f"{approve_file} is outside the workspace")
                 if not path.is_file():
                     raise SentinelError("E_NOT_FOUND", f"no file {approve_file}", {"path": approve_file})
-                sha = hashlib.sha256(path.read_bytes()).hexdigest()
+                sha = sha_bytes(path.read_bytes())
                 self._approval(run, "migration", sha, user, channel, comment, approve_file)
                 self.reg.add_audit(user, channel, "resolve", f"{slug}/{approve_file}", after_sha=sha, reason="approve migration")
                 done.append("migration")
@@ -257,7 +263,24 @@ class ReviewOps:
                 raise SentinelError("E_VALIDATION", "resuming needs a comment")
             self.resume_run(slug, comment or ", ".join(done), user=user, channel=channel)
             done.append("resume")
+        if "security" in done:
+            self._route_after_security(slug)
         return self._get_v2(slug)
+
+    def _route_after_security(self, slug):
+        """A tier raise parked the run before the blockers that caused it were routed; with the gate approved they go back (R16)."""
+        run0 = self._get_v2(slug)
+        if run0["state"] != "REVIEWING":
+            return
+        with self.reg.transaction():
+            run = self._get_v2(slug)
+            for task_id in dict.fromkeys(f["task_id"] for f in self.open_findings(run)):
+                if self._get_v2(slug)["state"] != "REVIEWING":
+                    break
+                task = self._task_row(task_id)
+                if task["role"] in ("reviewer", "qa"):
+                    self._route_findings(self._get_v2(slug), task, [f for f in self.open_findings(run) if f["task_id"] == task_id])
+        self._finish_up(slug, run0)
 
     def _approval(self, run, gate, sha, user, channel, comment, what):
         self.reg.insert_row("approvals", {"run_id": run["id"], "gate": gate, "sha256": sha, "state": "APPROVED", "decision": "approve",

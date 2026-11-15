@@ -67,16 +67,16 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | POST | `/tasks/{slug}/approvals` | body `{gate, sha256, confirmation, decision, comment}` -> `approvals.decide` (human only). `sha256` is the full hash, `confirmation` its first 8 characters as typed |
 | GET | `/tasks/{slug}/workflow` | full graph: nodes (tasks, gates), edges, states |
 | GET | `/tasks/{slug}/tdd` | cycles with phases and evidence ids |
-| GET | `/tasks/{slug}/verification` | evidence list and acceptance computation |
+| GET | `/tasks/{slug}/verification` | evidence list (round, repo, name, verdict), latest finished `round`, `missing` (planned checks without evidence), acceptance computation and `acceptance_record` (decision, approver, channel, at, comment; null while pending) |
 | GET | `/tasks/{slug}/trace` | trace links and gaps |
 | GET | `/tasks/{slug}/changes` | per repo: base, branch, files, stats |
 | GET | `/tasks/{slug}/changes/diff?repo=&path=&mode=inline|split` | scrubbed diff |
 | GET | `/tasks/{slug}/artifacts/{aid}` | content, hash verified, scrubbed |
 | GET | `/tasks/{slug}/logs/{task_id}?offset=` | live log tail |
 | POST | `/tasks/{slug}/control` | body `{action: resume|cancel|retry, task_id?, comment?}` (`pause` and "request intervention" are dropped for 1.1.0; the API answers 400) |
-| POST | `/tasks/{slug}/acceptance` | body `{sha256_of_report, confirmation, decision, comment}` (human only) |
+| POST | `/tasks/{slug}/acceptance` | body `{sha256_of_report, confirmation, decision, comment}` (human only). A rejected run or an already confirmed acceptance is `E_TRANSITION` (409), a stale hash `E_APPROVAL_STALE`, a changed report, evidence output or verified tree `E_INTEGRITY` (409); every other refusal keeps its own code. The audit row is `accepted` or `rejected` |
 | POST | `/tasks/{slug}/publish` | shared-repo push (human only, scrub-checked) |
-| GET | `/tasks/{slug}/report?format=json|md` | run report |
+| GET | `/tasks/{slug}/report?format=json|md` | run report; `E_INTEGRITY` when report.json no longer matches the report the engine registered |
 
 ### Other
 

@@ -120,8 +120,9 @@ class Engine(CycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, RuntimeOps, T
     def _event(self, run, type, actor, payload):
         self.reg.add_event(run["id"], type, actor, payload, **self._actor_ctx(actor))
 
-    def _move(self, run, to, actor, reason=None):
-        """Inside a transaction: validate and apply a state change. Returns the rule and extra fields."""
+    def _move(self, run, to, actor, reason=None, acceptance=None):
+        """Inside a transaction: validate and apply a state change. Returns the rule and extra fields. `acceptance` is the
+        (status, reasons) the engine computed for an R15 of a verified run."""
         frm = run["state"]
         rule = machines.check_run(frm, to, actor)
         if frm == to:
@@ -140,10 +141,9 @@ class Engine(CycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, RuntimeOps, T
         previous = run["previous_state"] if frm in parked and to in parked else frm if to in parked else None
         fields = {"state": to, "execution_status": machines.execution_status_for(to), "previous_state": previous}
         reasons = []
-        computed = getattr(self, "_computed", None)
-        if to == "COMPLETED" and computed:  # R15 of a verified run (PE-01): acceptance computed from the registry
-            reasons = list(computed[1])
-            fields["acceptance_status"] = computed[0]
+        if to == "COMPLETED" and acceptance:  # R15 of a verified run (PE-01): acceptance computed from the registry
+            reasons = list(acceptance[1])
+            fields["acceptance_status"] = acceptance[0]
         elif to == "COMPLETED":  # only reachable from REVIEWING: self-transitions are refused above
             if not self.reg.has_passing_evidence(run["id"]):
                 reasons.append(MISSING_EVIDENCE)
@@ -197,6 +197,7 @@ class Engine(CycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, RuntimeOps, T
                 "state": "CREATED", "execution_status": "running", "acceptance_status": "pending",
                 "workflow_version": WORKFLOW_VERSION, "config_snapshot_id": snap, "adhoc": int(bool(adhoc)),
                 "priority": priority, "requested_tier": requested_tier, "origin": origin,
+                "watched_baseline": json.dumps(self.watched_files(), sort_keys=True),
             })
             run = self.reg.get_run(slug)
             for repo_id, sha in sorted(baseline.items()):

@@ -4,24 +4,21 @@ AcceptOps is mixed into Engine. R15 computes acceptance from evidence alone (VER
 may then confirm or reject it (R25); a rejected run never changes. The report is built from the registry only, scrubbed and
 reproducible. Source: plan/v1.1/phaseE/README.md points 14 to 16.
 """
-import hashlib
 import json
 import subprocess
 from pathlib import Path
 
 import machines
+import scopes
 from errors import SentinelError
 from registry import _now
-from review import CHAIN_T4, OPEN, ROUTED, cycle_name
+from review import cycle_name
+from util import sha_bytes
 
 REPORT_SECTIONS = ["execution", "specification", "gherkin", "agents", "cycles", "verification", "regression", "findings",
                    "changed_files", "acceptance", "trace", "cost"]
 NOT_REACHED = {"status": "not reached"}
 BLOCKING = ("blocker", "major")
-
-
-def sha_bytes(data):
-    return hashlib.sha256(data).hexdigest()
 
 
 def plural(n, word):
@@ -109,10 +106,11 @@ class AcceptOps:
         if not latest or not latest["finished_at"]:
             reasons.append("verification evidence missing")
         else:
-            have = {(e["repo_id"], e["kind"]) for e in rows}
-            miss = [f"{r['repo_id']} scope" for r in self.reg.run_repos(run["id"]) if (r["repo_id"], "scope") not in have]
+            miss = self._missing_evidence(run, latest, rows)
             if miss:
                 reasons.append("verification evidence missing: " + ", ".join(miss))
+            reasons += [f"verification evidence stale: {rid} changed after round {latest['round']}"
+                        for rid in self._stale_repos(run, latest)]
         scope_bad = [e["repo_id"] for e in rows if e["kind"] == "scope" and e["verdict"] == "fail"]
         if scope_bad:
             reasons.append("scope exceeded: " + ", ".join(scope_bad))
@@ -131,13 +129,45 @@ class AcceptOps:
             if roles:
                 reasons.append("required reviews open: " + ", ".join(roles))
         missing = []
-        if (run["tier"] or 0) >= 4 and not any(a["state"] == "APPROVED" for a in self.reg.rows("approvals", run_id=run["id"], gate="security")):
+        if (run["tier"] or 0) >= 4 and not self.security_approved(run):
             missing.append("security")
         if migration_missing:
             missing.append("migration")
         if missing:
             reasons.append("required human approval missing: " + ", ".join(missing))
         return ("rejected" if reasons else "accepted"), reasons
+
+    def _missing_evidence(self, run, latest, rows):
+        """The checks the round planned (its summary) that left no evidence row; a round without a plan owes one scope row per repo."""
+        plan = json.loads(latest["summary"] or "{}").get("plan")
+        if plan is None:
+            plan = {r["repo_id"]: [["scope", None]] for r in self.reg.run_repos(run["id"])}
+        have = {(e["repo_id"], e["kind"], e["name"]) for e in rows}
+        return [f"{rid} {kind}" + (f" {name}" if name else "") for rid, kinds in plan.items() for kind, name in kinds
+                if (rid, kind, name) not in have]
+
+    def _stale_repos(self, run, latest):
+        """Repos whose tree is no longer the one the latest round verified: HEAD moved or a path changed that no review task
+        (docs, promotion) was allowed to write. Rounds from before this check have no stored state and are not compared."""
+        state = json.loads(latest["summary"] or "{}").get("repo_state") or {}
+        imported = self.reg.list_events(run["id"], "run.imported")
+        if imported and latest["finished_at"] <= imported[-1]["payload"]["imported_at"]:
+            return []  # verified on the machine the bundle came from: this tree is not the one that was checked
+        allowed = [g for t in self.chain_tasks(run).values() for g in self.task_scope(t["id"])]
+        cfg = self._run_config(run)
+        stale = []
+        for rid, was in sorted(state.items()):
+            now = self.repo_fingerprint(self._repo_path(cfg, rid))
+            changed = [p for p in set(was["paths"]) | set(now["paths"]) if was["paths"].get(p) != now["paths"].get(p)]
+            if now["head"] != was["head"] or any(not scopes.path_allowed(allowed, rid, p) for p in changed):
+                stale.append(rid)
+        return stale
+
+    def security_approved(self, run):
+        """A tier 4 run needs a human's approval of the security gate that was given for the specification it now has."""
+        spec = self._latest_approval(run, "specification", "APPROVED")
+        return any(a["state"] == "APPROVED" and (spec is None or a["sha256"] == spec["sha256"])
+                   for a in self.reg.rows("approvals", run_id=run["id"], gate="security"))
 
     def compute_acceptance(self, slug):
         """The acceptance the engine computes now: {"status", "reasons"}. A changed evidence file is E_INTEGRITY and parks the run."""
@@ -161,11 +191,7 @@ class AcceptOps:
                 if run["state"] != "REVIEWING":
                     raise SentinelError("E_TRANSITION", f"R15 needs a REVIEWING run, run is {run['state']}", {"state": run["state"]})
                 status, reasons = self._acceptance(run)
-                self._computed = (status, reasons)
-                try:
-                    self._move(run, "COMPLETED", machines.ENGINE, reason="review complete")
-                finally:
-                    self._computed = None
+                self._move(run, "COMPLETED", machines.ENGINE, reason="review complete", acceptance=(status, reasons))
                 for rr in self.reg.run_repos(run["id"]):
                     path = self._repo_path(self._run_config(run), rr["repo_id"])
                     sha = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
@@ -289,9 +315,7 @@ class AcceptOps:
         else:
             rep["findings"] = dict(NOT_REACHED)
         rep["changed_files"] = changed
-        reasons = []
-        for ev in reg.list_events(run["id"], "run.status_changed"):
-            reasons = (ev["payload"] or {}).get("reasons", [])
+        reasons = reg.last_status_reasons(run["id"])
         if final:
             human = self.acceptance_rows(run)
             h = human[-1] if human else None
@@ -353,7 +377,11 @@ class AcceptOps:
         if not path.is_file():
             return self.write_report(slug)
         data = path.read_bytes()
-        return {"sha256": sha_bytes(data), "report": json.loads(data)}
+        sha = sha_bytes(data)
+        arts = self.reg.rows("artifacts", run_id=run["id"], kind="report")
+        if arts and arts[-1]["sha256"] != sha:
+            raise SentinelError("E_INTEGRITY", "report.json does not match the report the engine registered", {"path": "report.json"})
+        return {"sha256": sha, "report": json.loads(data)}
 
     # ---- final human acceptance (R25)
     def pending_acceptance(self, slug):
@@ -421,18 +449,24 @@ class AcceptOps:
             if run["state"] != "COMPLETED":
                 raise SentinelError("E_TRANSITION", f"acceptance needs a COMPLETED run, run is {run['state']}", {"state": run["state"]})
             human = self.human_acceptance(run)
-            reasons = []
-            for ev in self.reg.list_events(run["id"], "run.status_changed"):
-                reasons = (ev["payload"] or {}).get("reasons", [])
+            reasons = self.reg.last_status_reasons(run["id"])
             if run["acceptance_status"] == "rejected":
                 raise SentinelError("E_PRECONDITION", "the run is rejected: " + "; ".join(reasons or ["rejected"]) +
-                                    "; a rejected run never becomes accepted", {"reasons": reasons})
+                                    "; a rejected run never becomes accepted",
+                                    {"reasons": reasons, "acceptance": "rejected"})
             if decision == "accept":
                 if human == "confirmed":
-                    raise SentinelError("E_PRECONDITION", "acceptance was already confirmed", {})
-                bad = self._evidence_problems(run, self.round_rows(run, self.latest_round(run)["round"]) if self.latest_round(run) else [])
-                if bad:
-                    deferred = bad
+                    raise SentinelError("E_PRECONDITION", "acceptance was already confirmed", {"acceptance": "confirmed"})
+                try:
+                    now_status, now_reasons = self._acceptance(run)
+                except SentinelError as err:
+                    if err.code != "E_INTEGRITY":
+                        raise
+                    deferred = err.details.get("files", [])
+                else:
+                    if now_status != "accepted":
+                        raise SentinelError("E_INTEGRITY", "the evidence no longer supports the recorded acceptance: " + "; ".join(now_reasons),
+                                            {"reasons": now_reasons})
             if deferred is None:
                 machines.check_acceptance_change(run["acceptance_status"], "accepted" if decision == "accept" else "rejected",
                                                  machines.HUMAN)
@@ -451,7 +485,9 @@ class AcceptOps:
                 else:
                     self._event(run, "run.status_changed", machines.HUMAN, {"execution_status": "completed", "acceptance_status": "accepted",
                                                                              "reasons": [], "human_acceptance": "confirmed"})
-                self.reg.add_audit(who, channel, "acceptance", f"{slug}", after_sha=current, reason=decision)
+                # wording per Phase F AC-VER-04k; Phase E AC-VER-04a wording pending human confirmation
+                self.reg.add_audit(who, channel, "accepted" if decision == "accept" else "rejected", slug, after_sha=current,
+                                   reason=decision)
         if deferred is not None:
             raise self._evidence_stop(run, deferred)
         return self._finish_up(slug, run)
