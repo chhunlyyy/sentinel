@@ -17,10 +17,11 @@ function sha(buf: Buffer | string) {
   return createHash('sha256').update(buf).digest('hex');
 }
 
-/** Hash of everything the build depends on: src, index.html, package-lock.json and the build config. */
+/** Hash of everything the build depends on: src, index.html, package.json, package-lock.json and the build, test, lint and TypeScript config. */
 function sourceHash(root: string): string {
   const h = createHash('sha256');
-  const files = [...walk(join(root, 'src')), join(root, 'index.html'), join(root, 'package-lock.json'), join(root, 'vite.config.ts'), join(root, 'tsconfig.json')];
+  const names = ['index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'vitest.config.ts', 'eslint.config.js', 'tsconfig.json'];
+  const files = [...walk(join(root, 'src')), ...names.map((n) => join(root, n))];
   for (const f of files) {
     h.update(relative(root, f).split('\\').join('/'));
     h.update('\0');

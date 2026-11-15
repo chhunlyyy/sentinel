@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
@@ -31,6 +31,9 @@ sentinel = "sentinel.scripts.sentinel:main"
 path = "sentinel/VERSION"
 pattern = "(?P<version>\\S+)"
 
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["sentinel"]
 # the built dashboard is git-ignored; the release step runs `npm run build` in dashboard/ first
@@ -40,5 +43,5 @@ artifacts = ["sentinel/dashboard_dist/**"]
 "skills" = "sentinel/skills"
 
 [tool.hatch.build.targets.sdist]
-include = ["sentinel", "skills", "docs", "README.md", "LICENSE", "pyproject.toml"]
+include = ["sentinel", "skills", "docs", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml", "hatch_build.py"]
 artifacts = ["sentinel/dashboard_dist/**"]

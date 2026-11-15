@@ -12,7 +12,21 @@ It is provider-neutral. The pipeline is plain files and a small Python CLI. Any 
 - Effort scales with the task. A typo fix is one coder call. A change to authorization rules runs the full pipeline.
 - The knowledge a team builds up (specs, project invariants, the regression suite) lives in one shared repo, so it stays current for everyone. Logs and caches stay local and disposable.
 
-## How it works
+## The version 2 flow
+
+Since 1.1.0, `sentinel run new <slug>` creates a **version 2 run**, where you control the requirements and Sentinel controls the process:
+
+```
+run new > triage > specification > you approve > Gherkin > you approve > TDD cycles > verify > report > you accept
+```
+
+Two human approvals gate everything: the specification, then the Gherkin scenarios (`sentinel review`, `sentinel approve`, in a terminal or in the dashboard). After both, the engine runs one Red, Green and Refactor cycle per behavior with a write scope for every task, verifies the result with its own checks (an agent's claim is never evidence), writes a report, and waits for you to accept it (`sentinel accept`). Any provider CLI can run a task; the engine, not the agent, decides the order, the retries and the result. A version 2 run never pushes to the shared repo by itself. Read the [workflow guide](docs/workflow.md). Runs created with `--legacy`, `--tier` or `--adhoc` use the 0.1 pipeline below, which is unchanged.
+
+## Dashboard
+
+`sentinel dashboard` starts a local dashboard on 127.0.0.1 and prints a one-time session URL. It shows runs, approvals, tasks, the workflow graph, logs, diffs, verification, the trace from requirement to code, notifications and reports, and lets you approve, accept, cancel and create tasks. It works offline and is read only for projects, repos and configuration in 1.1.0. See [the dashboard guide](docs/dashboard.md) and [operations](docs/operations.md) for notifications, stats, audit export and backup.
+
+## How it works (0.1 tiers)
 
 ![Stages by tier](docs/images/workflow.svg)
 
@@ -55,12 +69,14 @@ Each repo has its own stack profile (`flutter`, `spring-gradle`, `nextjs`, `node
 Two parts, each installed once. The engine is the `sentinel` command; the skills are what your AI tool shows as `/sentinel`.
 
 ```bash
-# 1. the engine
+# 1. the engine (the CLI; the dashboard UI is not in a git install, see below)
 uv tool install git+https://github.com/chhunlyyy/sentinel
 
 # 2. the skills, for your AI tool (leave -a off to choose from a list)
 npx skills@latest add chhunlyyy/sentinel -a claude-code
 ```
+
+The dashboard UI is built from `dashboard/` and is shipped in the release wheel `sentinel-1.1.0-py3-none-any.whl`, which the maintainer attaches to the GitHub release. `uv tool install git+https://…` installs the CLI without the dashboard UI: `sentinel dashboard` then serves a "UI not installed" page. For the full dashboard install the release wheel (`uv tool install ./sentinel-1.1.0-py3-none-any.whl`), or build it from a local checkout with `cd dashboard && npm ci && npm run build`, then `cd .. && uv tool install .`. See the [installation guide](docs/installation.md#the-dashboard-ui).
 
 Agent names for `-a` include `claude-code`, `antigravity-cli`, `codex`, `cursor`, `opencode`, `devin`, `windsurf`, `amp` and `pi`. Skills run with your agent's full permissions, so read what you install; Sentinel's are plain markdown in [skills/](skills/).
 
@@ -102,14 +118,18 @@ First time in a project, start with `/sentinel-setup` (or run `sentinel init` yo
 - [Installation](docs/installation.md)
 - [Quickstart](docs/quickstart.md)
 - [Workflow, step by step](docs/workflow.md)
+- [Dashboard](docs/dashboard.md)
+- [Operations: notifications, stats, audit, backup](docs/operations.md)
 - [Configuration reference](docs/config.md)
-- [Security notes](docs/security.md)
+- [Security notes and residual risks](docs/security.md)
+- [Migrating from 0.1 to 1.1.0](docs/migration-1.1.md)
+- [Changelog](CHANGELOG.md)
 - [Beta testing guide](docs/beta-testing.md)
 - [Pipeline contract](skills/sentinel/pipeline.md)
 
 ## Status
 
-Internal beta, version 0.1.0b7. It has run end to end on one project (Tier 2 bug fix on a Spring Boot and Next.js workspace) and passes its own self-test (`sentinel selftest`, dozens of checks on a throwaway workspace). The specifier, reviewer, hardener, QA, promotion, docs, rollout and retrospective stages have not run for real yet, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
+Version 1.1.0 (beta). The version 2 flow, the dashboard, the registry, notifications, analytics, the audit log and backups have a test suite of their own (unit, integration, browser and security tests; `python3 tools/release_gate.py` runs them all and checks that every approved acceptance criterion has a passing test). Known limits and residual risks are stated in [docs/security.md](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md): an agent that runs as your OS user can approve through a pseudo-terminal or the token file, and a provider CLI can run any command during a task. The dashboard cannot create projects or edit configuration yet. The 0.1 stages (specifier, reviewer, hardener, QA, promotion, docs, rollout, retrospective) have run for real on one project only, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
 
 ## License
 

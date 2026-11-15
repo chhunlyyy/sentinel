@@ -13,7 +13,7 @@ interface Stub {
 
 declare global {
   interface Window {
-    __notes: { title: string; body: string; tag: string; onclick: (() => void) | null }[];
+    __notes: { title: string; body: string; tag: string; opts: Record<string, unknown>; onclick: (() => void) | null }[];
     __asks: number;
   }
 }
@@ -34,8 +34,10 @@ async function stubBrowser(target: BrowserContext | Page, stub: Partial<Stub> = 
       title: string;
       body: string;
       tag: string;
+      opts: Record<string, unknown>;
       onclick: (() => void) | null = null;
       constructor(title: string, opts: { body?: string; tag?: string } = {}) {
+        this.opts = opts;
         this.title = title;
         this.body = opts.body ?? '';
         this.tag = opts.tag ?? '';
@@ -259,5 +261,61 @@ test.describe('reports', () => {
     await open(page, '/reports');
     await page.getByLabel('Project').selectOption('digital-hr');
     await expect(page.getByTestId('report-cost')).toContainText('partial: 4 tasks did not report cost');
+  });
+});
+
+test.describe('untrusted content on the new screens', () => {
+  const rows: { payload: string; field: string; screen: string; shown: boolean; setup: (api: Api, p: string) => Promise<void>; route: string }[] = [
+    { payload: '<img src=x onerror=alert(1)>', field: 'a notification text', screen: 'the notification list', shown: true, route: '/',
+      setup: (a, p) => a.set(['notifications', 'id=digital-hr:900'], { ...NEW, text: p }) },
+    { payload: "<script>fetch('//evil.example')</script>", field: 'a run slug in a notification', screen: 'the notification list', shown: false, route: '/',
+      setup: (a, p) => a.set(['notifications', 'id=digital-hr:900'], { ...NEW, run: p, link: `/tasks/${p}` }) },
+    { payload: 'javascript:alert(1)', field: 'a notification link', screen: 'the notification list', shown: false, route: '/',
+      setup: (a, p) => a.set(['notifications', 'id=digital-hr:900'], { ...NEW, text: 'Link test', link: p }) },
+    { payload: '<svg onload=alert(1)>', field: 'a provider name in analytics', screen: 'Reports', shown: true, route: '/reports',
+      setup: async (a, p) => {
+        await a.set(['analytics', 'digital-hr', 'provider_failure_rate', p], { value: 0.5, failures: 1, tasks: 2 });
+      } },
+    { payload: '"><iframe src=//evil.example>', field: 'an audit reason', screen: 'the audit tab', shown: true, route: '/projects/digital-hr/audit',
+      setup: (a, p) => a.set(['projectData', 'digital-hr', 'audit'], [{ id: 1, actor: 'dev', channel: 'tty', action: 'approve', target: 'leave-balance', before_sha256: 'a'.repeat(64), after_sha256: 'b'.repeat(64), reason: p, at: '2026-11-14T09:00:00Z' }]) },
+  ];
+  for (const r of rows) {
+    test(`AC-SEC-09a payloads from runs are shown as text: ${r.field} on ${r.screen} (${r.payload})`, async ({ page, api }) => {
+      await api.preset('notifications');
+      const dialogs: string[] = [];
+      const left: string[] = [];
+      page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
+      page.on('request', (q) => { if (/evil\.example/.test(q.url())) left.push(q.url()); });
+      await r.setup(api, r.payload);
+      await open(page, r.route);
+      if (r.screen === 'Reports') await page.getByLabel('Project').selectOption('digital-hr');
+      if (r.screen === 'the notification list') {
+        await bell(page).click();
+        await expect(page.getByTestId('notification').first()).toBeVisible();
+      }
+      if (r.shown) await expect(page.locator('main, [data-testid="notification-panel"]').first()).toContainText(r.payload);
+      if (r.field === 'a notification link' || r.field === 'a run slug in a notification') {
+        await page.getByTestId('notification').filter({ hasText: r.field === 'a notification link' ? 'Link test' : 'Specification ready' }).first().click();
+        await expect(page).not.toHaveURL(/javascript|evil/i);
+      }
+      const created = await page.evaluate(() =>
+        document.querySelectorAll('main script, main img[src="x"], main svg[onload], main iframe, [data-testid="notification-panel"] img, [data-testid="notification-panel"] iframe, [data-testid="notification-panel"] svg[onload], a[href^="javascript"]').length,
+      );
+      expect(created).toBe(0);
+      await page.evaluate(() => new Promise((res) => requestAnimationFrame(() => res(null))));
+      expect(dialogs).toEqual([]);
+      expect(left).toEqual([]);
+    });
+  }
+
+  test('AC-SEC-09c the desktop notification text is plain', async ({ page, api, context }) => {
+    await api.preset('notifications');
+    await stubBrowser(context, { permission: 'granted', grant: true, enabled: true });
+    await open(page, '/');
+    await settle(page);
+    await arrive(api, { ...NEW, text: '<b>bold</b>' });
+    await expect.poll(() => notes(page)).toEqual([{ title: 'Sentinel', body: '<b>bold</b>', tag: 'digital-hr:900' }]);
+    const options = await page.evaluate(() => Object.keys(window.__notes[0].opts).sort());
+    expect(options).toEqual(['body', 'tag']);
   });
 });

@@ -18,7 +18,7 @@ Every requirement has an ID and a source. `MUST` requirements are needed for 1.1
 | VIS-04 | MUST: Local-first. Every capability works on one machine with no network. The only remote exchange is the shared repo sync (git). | G0 B1 |
 | VIS-05 | MUST: Incremental evolution. Existing CLI commands, config files and skills keep working. | C 2.7, D 22.19, P 13.3 |
 | VIS-06 | MUST: The dashboard is a client of the engine. It never holds orchestration logic. | D 8, P 4.2 |
-| VIS-07 | MUST: A new user can install Sentinel, open the dashboard, create a project, add repos, configure it, and start a task without editing files. | D 1, P 1 |
+| VIS-07 | MUST: A new user can install Sentinel, open the dashboard, create a project, add repos, configure it, and start a task without editing files. LATER (G-1): creating a project, adding repos and configuring without editing files. In 1.1.0 the dashboard shows projects, repos and configuration read only and names the CLI command or file for each change (decision G-1, Phase G review). Starting a task from the dashboard works; the rest uses `sentinel init` and `sentinel.config.yaml`. This product-level row is therefore not met in 1.1.0. | D 1, P 1 |
 
 ## 2. System architecture
 
@@ -43,7 +43,7 @@ Details: `docs/architecture/system-architecture.md`.
 | INS-05 | MUST: Errors carry an actionable fix (the command or setting to change). | D 2.2 |
 | INS-06 | MUST: The browser never executes local commands or reads arbitrary paths. Every filesystem or process operation is an allow-listed API operation with validated arguments. | D 2.2, D 18, P 5 |
 | INS-07 | MUST: `sentinel doctor` stays, and uses the same health-check functions as the dashboard. | D 22.19 |
-| INS-08 | SHOULD: The dashboard offers a directory picker served by the API, restricted to the user's home directory and configured workspace roots. | D 2.2 |
+| INS-08 | SHOULD: The dashboard offers a directory picker served by the API, restricted to the user's home directory and configured workspace roots. LATER (G-1): the directory picker. The installation path is chosen when Sentinel is installed. | D 2.2 |
 
 ## 4. Project management
 
@@ -51,19 +51,19 @@ Details: `docs/architecture/system-architecture.md`.
 |---|---|---|
 | PRJ-01 | MUST: A project is a workspace directory containing `sentinel.config.yaml`. The file stays the source of truth. | D 3, VIS-05 |
 | PRJ-02 | MUST: A user-level project registry lists known projects (`~/.config/sentinel/projects.json`, XDG aware). It stores paths and display data only. | D 3.1 |
-| PRJ-03 | MUST: Create a project from the dashboard: name, description, type, languages, frameworks, workspace directory, default branch, owner, environment, optional instructions. Creation writes `sentinel.config.yaml` through the same code as `sentinel init`. | D 3.1 |
-| PRJ-04 | MUST: Register an existing workspace. Edit, archive (registry flag) and remove from the registry. Removing never deletes files. | D 3.1, P 6 |
-| PRJ-05 | MUST: Guided setup and an advanced view. | D 3.1 |
+| PRJ-03 | MUST: Create a project from the dashboard: name, description, type, languages, frameworks, workspace directory, default branch, owner, environment, optional instructions. Creation writes `sentinel.config.yaml` through the same code as `sentinel init`. LATER (G-1): creating a project from the dashboard. Use `sentinel init`. | D 3.1 |
+| PRJ-04 | MUST: Register an existing workspace. Edit, archive (registry flag) and remove from the registry. Removing never deletes files. LATER (G-1): registering, editing, archiving and removing from the dashboard. `sentinel dashboard` registers the workspace it is started in; edit `sentinel.config.yaml` for the rest. | D 3.1, P 6 |
+| PRJ-05 | MUST: Guided setup and an advanced view. LATER (G-1): guided setup and advanced view. | D 3.1 |
 
 ## 5. Repository management
 
 | ID | Requirement | Source |
 |---|---|---|
 | REP-01 | MUST: A project holds one or more repos (`repos[]`). | D 3.2 |
-| REP-02 | MUST: Add a local git repo by path, or a remote git URL that Sentinel clones into the workspace. Remote access uses the user's git credentials; Sentinel stores none. | D 3.2, G0 B1 |
+| REP-02 | MUST: Add a local git repo by path, or a remote git URL that Sentinel clones into the workspace. Remote access uses the user's git credentials; Sentinel stores none. LATER (G-1): adding a repo or cloning a remote from the dashboard. Use `sentinel init` or edit `repos` in `sentinel.config.yaml`. | D 3.2, G0 B1 |
 | REP-03 | MUST: Per repo: id, path, remote, default branch, current branch, role, profile (language and framework), build, test, lint, typecheck and mutate commands, guidelines file. | D 3.2 |
 | REP-04 | MUST: Validate existence, git status, remote, branch availability, write permission, profile compatibility. | D 3.2 |
-| REP-05 | MUST: Add, edit, remove and reorder repos from the dashboard. Order drives `cross_repo.order`. | D 3.2 |
+| REP-05 | MUST: Add, edit, remove and reorder repos from the dashboard. Order drives `cross_repo.order`. LATER (G-1): adding, editing, removing and reordering repos from the dashboard. The repository list and its validation are shown read only. | D 3.2 |
 | REP-06 | MUST: Language and framework detection reuses `detect_profile`. | P 6 |
 | REP-07 | MUST: A task targets one or more repos. Cross-repo order and the sync checkpoint follow the existing shape rules. | D 3.3 |
 
@@ -71,13 +71,13 @@ Details: `docs/architecture/system-architecture.md`.
 
 | ID | Requirement | Source |
 |---|---|---|
-| CFG-01 | MUST: Every setting that today needs a file edit has a dashboard form, where safe. | D 4 |
+| CFG-01 | MUST: Every setting that today needs a file edit has a dashboard form, where safe. LATER (G-1): dashboard forms for settings. Edit `sentinel.config.yaml`; the dashboard shows the effective values and their sources. | D 4 |
 | CFG-02 | MUST: Scopes: global (`~/.config/sentinel/config.yaml`), project (`sentinel.config.yaml`), repo (`repos[]` entry), task (snapshot at run start). Precedence: task > repo > project > global > built-in default. | D 4.2, P 7 |
-| CFG-03 | MUST: Validation against the JSON Schema before any save takes effect. Invalid config is never activated. | D 4.6 |
-| CFG-04 | MUST: Save writes YAML while keeping comments and key order where possible. | D 4.7, VIS-05 |
-| CFG-05 | MUST: Every saved version is kept in the registry (content, hash, author, time). History, diff between versions, restore. | D 4.6 |
+| CFG-03 | MUST: Validation against the JSON Schema before any save takes effect. Invalid config is never activated. LATER (G-1): validation of a dashboard save. `sentinel doctor` validates the file against the schema. | D 4.6 |
+| CFG-04 | MUST: Save writes YAML while keeping comments and key order where possible. LATER (G-1): saving YAML from the dashboard. Nothing is written by the dashboard. | D 4.7, VIS-05 |
+| CFG-05 | MUST: Every saved version is kept in the registry (content, hash, author, time). History, diff between versions, restore. LATER (G-1): restore from the dashboard. Version history and the diff between versions are shown in 1.1.0. | D 4.6 |
 | CFG-06 | MUST: Effective-config view shows each value and where it came from. | D 4.7 |
-| CFG-07 | MUST: Import (validated) and export of a project config. | D 4.7 |
+| CFG-07 | MUST: Import (validated) and export of a project config. LATER (G-1): import and export of a project config. Copy the file. | D 4.7 |
 | CFG-08 | MUST: A run uses the config snapshot taken when it started. A config change never alters a running run. The dashboard shows the change impact. | D 4.6 |
 | CFG-09 | MUST: Configuration can add gates and policies, never remove the two mandatory approvals. | D 4.3, D 4.4 |
 | CFG-10 | MUST: Profiles (stack profiles) offer starting values for commands, test globs and verification. | D 4.5 |
@@ -87,9 +87,9 @@ Details: `docs/architecture/system-architecture.md`.
 
 | ID | Requirement | Source |
 |---|---|---|
-| PRV-01 | MUST: Providers are the existing runners (claude, codex, gemini, agy, custom). The dashboard lists them with install status and capabilities. | D 4.2 |
-| PRV-02 | MUST: Enable or disable, choose default, choose model, provider options, fallback order. | D 4.2 |
-| PRV-03 | MUST: Connectivity test reuses `doctor --check-models`. | D 4.2 |
+| PRV-01 | MUST: Providers are the existing runners (claude, codex, gemini, agy, custom). The dashboard lists them with install status and capabilities. LATER (G-1): the providers screen. Providers are shown in the health checks and in `sentinel routing`. | D 4.2 |
+| PRV-02 | MUST: Enable or disable, choose default, choose model, provider options, fallback order. LATER (G-1): changing providers from the dashboard. Edit `runners`, `providers` and `routing` in `sentinel.config.yaml`. | D 4.2 |
+| PRV-03 | MUST: Connectivity test reuses `doctor --check-models`. LATER (G-1): the connectivity test from the dashboard. Use `sentinel doctor --check-models`. | D 4.2 |
 | PRV-04 | MUST: Sentinel 1.1.0 stores no provider API keys. Provider CLIs keep their own credentials. If a later adapter needs a key, it goes to a 0600 secrets file and is never returned by the API. | D 4.2, D 18 |
 | PRV-05 | MUST: `single_model` keeps its meaning: every stage runs in the current tool. | VIS-05 |
 
@@ -104,7 +104,7 @@ Details: `docs/architecture/system-architecture.md`.
 | AGT-05 | MUST: Timeouts, retry limits, cancellation, result validation, provider-failure policy (fallback provider or fail). | C 5.3 |
 | AGT-06 | MUST: Agents cannot widen their permissions, approve, or change run state. No nested delegation. | C 5.4 |
 | AGT-07 | MUST: Tasks with overlapping write scopes never run at the same time. | C 5.4 |
-| AGT-08 | MUST: Dashboard manages role to provider and model assignment, limits, timeouts and retries per role. | D 4.3 |
+| AGT-08 | MUST: Dashboard manages role to provider and model assignment, limits, timeouts and retries per role. LATER (G-1): role assignment from the dashboard. Edit `agents` in `sentinel.config.yaml`. | D 4.3 |
 | AGT-09 | LATER: A2A adapter, API adapters. | C 5.4 |
 
 Details: `docs/architecture/agent-runtime.md`.
@@ -173,7 +173,7 @@ Full table: `docs/contracts/state-transitions.md` (part of the API contract set)
 | TDD-06 | MUST: Each cycle stores evidence written by the engine: commands, exit codes, captured output (scrubbed), test counts, timestamps, changed files with hashes, working-tree reference, provider and model, task ids. | C 6.5 |
 | TDD-07 | MUST: Bug fixes start with the repro test as cycle 1 Red and keep it as a regression test. | C 7 |
 | TDD-08 | MUST: Permission matrix of C 6.6. Any exception is an explicit, recorded engine authorization. | C 6.6 |
-| TDD-09 | MUST: With `no_permanent_frontend_tests` on, frontend repos use QA scenarios as Red evidence and the run records the exception. | G0 B10 |
+| TDD-09 | MUST: With `no_permanent_frontend_tests` on, frontend repos use QA scenarios as Red evidence and the run records the exception. LATER: not in 1.1.0 (decision of the Phase D and E reviews: the Red-evidence-from-QA exception needs a QA task per behavior group and was left out of the approved sets; see Phase E point 20). Frontend repos with `no_permanent_frontend_tests` still get the release check for leftover test tooling. | G0 B10 |
 
 ## 14. Independent verification and acceptance
 
@@ -189,11 +189,12 @@ Full table: `docs/contracts/state-transitions.md` (part of the API contract set)
 | ID | Requirement | Source |
 |---|---|---|
 | DSH-01 | MUST: Navigation of D 19, local single-user. | D 19 |
-| DSH-02 | MUST: First-run wizard: installation, health, create project, add repos, configure, readiness, first task. | D 2.1 |
+| DSH-02 | MUST: First-run wizard: installation, health, create project, add repos, configure, readiness, first task. LATER (G-1): the create project, add repos and configure steps of the first-run wizard. In 1.1.0 the dashboard shows projects, repos and configuration read only and names the CLI command or file for each change (decision G-1, Phase G review). The wizard covers installation, health, readiness and the first task. | D 2.1 |
 | DSH-03 | MUST: Readiness states: Ready, Ready with warnings, Needs configuration, Invalid configuration, Connection unavailable. Based on executed checks only. Only the needs of the selected workflow are required. | D 5 |
 | DSH-04 | MUST: The UI never claims success before the API confirms it. | D 11 |
 | DSH-05 | MUST: Live updates through SSE with reconnect and full state refresh. | D 20 |
 | DSH-06 | MUST: Works fully offline. All assets are served by the local server; no CDN. | VIS-04 |
+| DSH-07 | MUST: every screen meets WCAG 2.1 AA, works with the keyboard alone and labels every control. | D 20 |
 
 Details: `docs/architecture/system-architecture.md` section 5.
 
@@ -201,17 +202,17 @@ Details: `docs/architecture/system-architecture.md` section 5.
 
 | ID | Requirement | Source |
 |---|---|---|
-| TSK-01 | MUST: Create a task: request text, project, target repos, priority, type (feature, bug, docs, refactor, ...), optional tier override (raise only), optional provider preference, branch or ticket reference, attachments. | D 6 |
+| TSK-01 | MUST: Create a task: request text, project, target repos, priority, type (feature, bug, docs, refactor, ...), optional tier override (raise only), optional provider preference, branch or ticket reference, attachments. LATER: attachments and provider preference are LATER (decision of the Phase G review); the other fields are in 1.1.0. | D 6 |
 | TSK-02 | MUST: Creating a task does not authorize implementation. | D 6 |
 | TSK-03 | MUST: A dashboard-created task runs through the same engine. The AI work is dispatched to the configured providers by the CLI adapter; native subagent stages need an AI tool session and are shown as "waiting for orchestrator". | D 8, G0 |
-| TSK-04 | MUST: Templates for common task types. Templates cannot skip gates. | D 15 |
+| TSK-04 | MUST: Templates for common task types. Templates cannot skip gates. LATER: templates for common task types are not in 1.1.0 (decision of the Phase G review). | D 15 |
 
 ## 17. Workflow monitoring
 
 | ID | Requirement | Source |
 |---|---|---|
 | MON-01 | MUST: Show the real run graph, stage status, dependencies, agent, provider, model, timings, retries, failures, logs, artifacts, blockers, human actions. | D 11 |
-| MON-02 | MUST: Controls: pause, resume, cancel, retry, request intervention. Each is an engine transition. | D 11 |
+| MON-02 | MUST: Controls: pause, resume, cancel, retry, request intervention. Each is an engine transition. LATER: pause and request intervention are LATER (no paused state in 1.1.0); this is the decision of the Phase F review. Resume, cancel and retry are in 1.1.0. | D 11 |
 | MON-03 | MUST: Live log tail of running tasks (from the existing live log files). | D 11 |
 
 ## 18. Code changes and Git
@@ -219,7 +220,7 @@ Details: `docs/architecture/system-architecture.md` section 5.
 | ID | Requirement | Source |
 |---|---|---|
 | GIT-01 | MUST: Per repo: branch, base commit, changed files, additions and deletions, diff (inline and side by side), linked task and cycle. | D 14 |
-| GIT-02 | MUST: Branch creation, commits, PRs and shared-repo publishing follow policy; publishing is off unless configured; agents never commit. | C 11, D 14 |
+| GIT-02 | MUST: Branch creation, commits, PRs and shared-repo publishing follow policy; publishing is off unless configured; agents never commit. LATER (G-1): publishing from the dashboard. Publish with `sentinel sync push`; version 2 runs never push by themselves. | C 11, D 14 |
 | GIT-03 | SHOULD: The change map is embedded in the run view. | D 14 |
 
 ## 19. Requirement-to-code traceability
@@ -234,7 +235,7 @@ Details: `docs/architecture/system-architecture.md` section 5.
 | ID | Requirement | Source |
 |---|---|---|
 | ART-01 | MUST: Artifacts live under `.sentinel/runs/<slug>/` and are referenced by sha256 in the registry. Integrity is checked on read. | C 11 |
-| ART-02 | MUST: Knowledge (invariants, guidelines, specs, regression suite) stays in the shared folder; the dashboard can view and edit it, and publishing to the remote shared repo needs authorization. | D 15, C 11 |
+| ART-02 | MUST: Knowledge (invariants, guidelines, specs, regression suite) stays in the shared folder; the dashboard can view and edit it, and publishing to the remote shared repo needs authorization. LATER (G-1): viewing and editing knowledge in the dashboard. The shared folder is edited as files. | D 15, C 11 |
 | ART-03 | MUST: `sentinel run export` / `import` produce and read a scrubbed bundle for moving a run between machines. | C 10 |
 | ART-04 | MUST: Retention follows `state.retention`. | existing |
 
@@ -243,7 +244,7 @@ Details: `docs/architecture/system-architecture.md` section 5.
 | ID | Requirement | Source |
 |---|---|---|
 | NOT-01 | MUST: In-dashboard notifications for: pending approvals, changes requested, run start and end, agent failure, blocked, provider unavailable, verification failure, human intervention. | D 16 |
-| NOT-02 | SHOULD: Desktop notification through the browser Notification API when permitted. | D 16 |
+| NOT-02 | SHOULD: Desktop notification through the browser Notification API when permitted. In 1.1.0 desktop notifications use the browser Notification API only: no `notify-send`, service worker or push service. | D 16 |
 | NOT-03 | MUST: Opening a notification is never an approval. | D 16 |
 
 ## 22. Analytics
@@ -265,6 +266,7 @@ Details: `docs/architecture/system-architecture.md` section 5.
 | SEC-06 | MUST: Secret redaction (scrubber) on every evidence, log and report file the API serves. | C 11 |
 | SEC-07 | MUST: Audit log for every human action, approval, config change and publish. | C 11, D 16 |
 | SEC-08 | MUST: `docs/security.md` states the residual risks R1 and R3 plainly. | R1, R3 |
+| SEC-09 | MUST: content from runs, users and agents is rendered as text, never as HTML, and links in it are not followed. | D 20, R12 |
 
 Details: `docs/architecture/security-architecture.md`.
 

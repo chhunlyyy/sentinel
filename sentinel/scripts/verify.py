@@ -462,7 +462,11 @@ class VerifyOps:
         repo = scopes._repo(cfg, info["id"]) or {}
         if "test_infra" in enabled and rules.get("no_permanent_frontend_tests") and repo.get("role") in release_check.CLIENT_ROLES:
             status = git(info["path"], "status", "--porcelain", "--untracked-files=all").splitlines()
-            hits += [f"test infrastructure left behind: {s[3:]}" for s in status if release_check.TEST_INFRA.search(s[3:])]
+            # the approved test files of this run's TDD cycles are written by Red on purpose; every other test file or runner
+            # config left behind is still flagged (the 0.1 release check, which sees no cycles, is unchanged)
+            approved = set(self.approved_files(run, info["id"]))
+            hits += [f"test infrastructure left behind: {s[3:]}" for s in status
+                     if release_check.TEST_INFRA.search(s[3:]) and f"{info['id']}/{s[3:]}" not in approved]
         return {"verdict": "fail" if hits else "pass", "classification": "hygiene" if hits else "pass", "failing": hits,
                 "detail": {"hits": hits}}
 

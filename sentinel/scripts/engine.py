@@ -27,6 +27,8 @@ from accept import AcceptOps
 from bundle import BundleOps
 
 WORKFLOW_VERSION = "2"
+# the run types of a version 2 run: the one list the CLI, the API and the docs share
+RUN_TYPES = ("feature", "bug", "docs", "refactor", "migration", "security", "chore")
 TIER_STAGES = {
     1: ["coder"],
     2: ["repro", "coder", "release_check", "metrics", "changelog"],

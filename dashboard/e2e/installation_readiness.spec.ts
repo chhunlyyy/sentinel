@@ -17,7 +17,7 @@ test.describe('installation and runtime', () => {
     await expect(main).toContainText('payroll');
   });
 
-  test('AC-INS-04a the browser never starts or stops processes', async ({ page }) => {
+  test('AC-INS-04a REQ-VIS-06 the browser never starts or stops processes', async ({ page }) => {
     await open(page, '/settings/installation');
     await page.getByRole('link', { name: 'Runtime connection' }).click();
     const main = page.getByRole('main');

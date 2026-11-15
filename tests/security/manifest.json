@@ -115,7 +115,9 @@
       "threat": "untrusted content rendered as HTML (XSS)",
       "status": "blocking",
       "checks": [
-        "test_threats.DocsAndConfigs.test_AC_TST_05_dashboard_source_builds_no_html_from_content"
+        "test_threats.DocsAndConfigs.test_AC_TST_05_dashboard_source_builds_no_html_from_content",
+        "test_notifications.Security.test_AC_SEC_09b_notification_links_are_dashboard_routes_only",
+        "test_notifications.Security.test_AC_SEC_09b_a_run_name_that_is_not_a_slug_gets_no_link"
       ]
     },
     {

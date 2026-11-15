@@ -13,6 +13,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 
+import engine as engine_mod
 import health
 import scopes
 from errors import SentinelError
@@ -22,7 +23,7 @@ from . import userdir
 from .projects import CONFIG_NAME
 from .views import validation
 
-WORKFLOWS = ("feature", "bug", "docs", "refactor", "chore")
+WORKFLOWS = engine_mod.RUN_TYPES
 DIFF_LIMIT = 1024 * 1024
 DIFF_READ_CAP = 8 * 1024 * 1024
 GIT_TIMEOUT = 30

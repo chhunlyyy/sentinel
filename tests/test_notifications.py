@@ -349,6 +349,23 @@ class Security(NT):
             self.assertEqual(set(n), {"id", "project", "run", "level", "text", "link", "at", "read_at"})
             self.assertTrue(n["link"].startswith("/") and not n["link"].startswith("/api"), n)
 
+    def test_AC_SEC_09b_notification_links_are_dashboard_routes_only(self):
+        hostile = ["javascript:alert(1)", "//evil.example/x", "/api/v1/tasks/x/approvals", "https://evil.example/", "data:text/html;base64,PHNjcmlwdD4="]
+        for link in hostile:
+            with self.subTest(payload_link=link):
+                eid = self.ev("run.state_changed", {"to": "NEEDS_HUMAN", "reason": "x", "link": link, "url": link, "href": link})
+                n = [x for x in self.notes()["items"] if x["id"] == f"digital-hr:{eid}"][0]
+                self.assertEqual(n["link"], "/tasks/leave-balance")
+
+    def test_AC_SEC_09b_a_run_name_that_is_not_a_slug_gets_no_link(self):
+        for i, slug in enumerate(["//evil.example/x", "javascript:alert(1)", "../../api/v1/x", "a b"]):
+            with self.subTest(slug=slug):
+                self.add_run(self.dbp, f"rx{i}", slug)
+                eid = self.ev("run.created", {"tier": 2}, run=f"rx{i}")
+                n = [x for x in self.notes()["items"] if x["id"] == f"digital-hr:{eid}"][0]
+                self.assertIsNone(n["link"])
+                self.assertEqual(n["command"] if "command" in n else None, None)
+
     def test_AC_SEC_06i_notification_text_is_scrubbed(self):
         rows = [("run.state_changed", {"to": "NEEDS_HUMAN", "reason": "password=hunter2hunter2"}, "hunter2hunter2"),
                 ("task.finished", {"state": "FAILED", "role": "Bearer eyJhbGciOiJIUzI1NiJ9.e30.abc123def456", "error_code": "E_EXIT"},

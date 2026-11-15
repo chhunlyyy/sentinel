@@ -30,6 +30,20 @@ sentinel --version
 
 If `sentinel` is not found afterwards, run `uv tool update-shell` and open a new terminal (the command lives in `~/.local/bin`).
 
+### The dashboard UI
+
+The dashboard UI (`sentinel dashboard`) is built from `dashboard/` and is included only in the release wheel, `sentinel-1.1.0-py3-none-any.whl`, which the maintainer attaches to the GitHub release. `uv tool install git+https://…` installs the CLI without the dashboard UI (it is not in the git source tree): everything on the command line works, and `sentinel dashboard` serves a "UI not installed" page. Choose one of:
+
+```bash
+# 1. the release wheel (no Node needed)
+uv tool install ./sentinel-1.1.0-py3-none-any.whl
+
+# 2. a local checkout with the UI built first (needs Node and npm)
+git clone https://github.com/chhunlyyy/sentinel && cd sentinel
+(cd dashboard && npm ci && npm run build)
+uv tool install .
+```
+
 No `uv`: `pipx install git+https://github.com/chhunlyyy/sentinel` does the same. As a last resort, `pip install git+https://github.com/chhunlyyy/sentinel` inside a virtual environment.
 
 ## 3. Install the skills
@@ -67,7 +81,7 @@ Useful options:
 | `-l` | list the skills without installing |
 | `-y` | do not ask for confirmation |
 
-**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b7 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
+**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v1.1.0 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
 
 What you get:
 

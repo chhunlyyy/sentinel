@@ -188,7 +188,7 @@ class Recorder(SV, PD):
 
     def compare_with_fake(self):
         if not NODE:
-            self.skipTest("node is not installed: the fixture shape check runs in the release job")
+            self.skipTest("node is not installed: pending owner run on a machine that has node (no CI exists)")
         env = {**os.environ, "SENTINEL_FIXTURES_DIR": str(self.out)}
         r = subprocess.run([NODE, "fixtures/check.ts"], cwd=DASH, capture_output=True, text=True, timeout=120, env=env)
         self.assertEqual(r.returncode, 0, (r.stdout + r.stderr)[-3000:])

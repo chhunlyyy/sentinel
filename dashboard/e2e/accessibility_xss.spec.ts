@@ -33,7 +33,7 @@ const screens: Screen[] = [
 
 test.describe('automated accessibility checks', () => {
   for (const s of screens) {
-    test(`AC-DSH-01e no serious or critical axe violation: ${s.name} (${s.theme})`, async ({ page, api }) => {
+    test(`AC-DSH-01e REQ-DSH-07 no serious or critical axe violation: ${s.name} (${s.theme})`, async ({ page, api }) => {
       await s.setup?.(api);
       await page.emulateMedia({ colorScheme: s.theme });
       await open(page, s.route);

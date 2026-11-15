@@ -70,9 +70,28 @@ def doctor_problems(config_path, config, state_dir, check_models=False, model_ch
         problems.append(("storage", "state.shared_repo is required: ask your team for the URL of its private shared repo and run `sentinel shared set <url>`"))
     elif not (state_dir / "shared" / ".git").exists():
         problems.append(("storage", f"the shared repo ({shared_url}) is not cloned: run `sentinel sync pull`"))
+    notes.extend(optional_setting_notes(config))
     if (config.get("state") or {}).get("auto_sync_push"):
         notes.append("note: state.auto_sync_push is on, so finished runs publish to the shared repo without asking; set it to false to publish only on request")
     return problems, notes
+
+
+OPTIONAL_SETTINGS = (
+    ("policies", "task limits and the steps that need a human (parallel tasks, task timeout, retries); built-in defaults apply"),
+    ("providers", "fallback and disabled runners; none are disabled and there is no fallback"),
+    ("agents", "per-role runner and write scope; the roles use the routing defaults"),
+    ("tdd", "retry limits of the Red, Green and Refactor phases; the defaults apply"),
+    ("verification", "mutation, migration check, disabled and extra checks; the defaults apply"),
+    ("notifications", "desktop notifications in the dashboard (desktop: true is the default)"),
+)
+
+
+def optional_setting_notes(config):
+    """One note listing the 1.1.0 settings the config does not have, or none. A config from 0.1 stays valid; see docs/config.md."""
+    missing = [(key, text) for key, text in OPTIONAL_SETTINGS if key not in config]
+    if not missing:
+        return []
+    return ["note: optional settings not set, built-in defaults apply: " + "; ".join(f"`{key}` ({text})" for key, text in missing)]
 
 
 FIXES = {

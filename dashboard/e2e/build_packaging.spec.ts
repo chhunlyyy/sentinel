@@ -49,7 +49,7 @@ test.describe('build into dist (pure frontend part of the wheel build)', () => {
     const manifests: string[] = [];
     for (let i = 0; i < 2; i++) {
       const dir = mkdtempSync(join(tmpdir(), `dash-build-${i}-`));
-      for (const entry of ['src', 'index.html', 'package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts']) cpSync(join(root, entry), join(dir, entry), { recursive: true });
+      for (const entry of ['src', 'index.html', 'package.json', 'package-lock.json', 'tsconfig.json', 'vite.config.ts', 'vitest.config.ts', 'eslint.config.js']) cpSync(join(root, entry), join(dir, entry), { recursive: true });
       symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'));
       const r = spawnSync('npx', ['vite', 'build'], { cwd: dir, encoding: 'utf8', env: { ...process.env, DASHBOARD_OUT_DIR: 'dist' } });
       expect(r.status, r.stderr + r.stdout).toBe(0);

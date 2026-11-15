@@ -186,7 +186,7 @@ class Readiness(RR):
 
 
 class Repositories(RR):
-    def test_AC_REP_03a_the_repository_list(self):
+    def test_AC_REP_03a_REQ_REP_01_the_repository_list(self):
         self.cfg(repos=[{**REPOS[1], "commands": {"test": "npm test"}, "guidelines": "g.md"}, REPOS[0]])
         self.serve()
         r = self.http.get("/api/v1/projects/digital-hr/repositories")

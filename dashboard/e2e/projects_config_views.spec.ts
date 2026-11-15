@@ -6,7 +6,7 @@ const summary = (i: number, state = 'EXECUTING') => ({
 });
 
 test.describe('projects', () => {
-  test('AC-PRJ-02a the project list', async ({ page }) => {
+  test('AC-PRJ-02a REQ-PRJ-01 the project list', async ({ page }) => {
     await open(page, '/projects');
     const table = page.getByRole('table');
     for (const col of ['Name', 'Path', 'Status', 'Active runs']) await expect(table.getByRole('columnheader', { name: col })).toBeVisible();

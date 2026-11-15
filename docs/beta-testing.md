@@ -1,6 +1,6 @@
 # Beta testing guide
 
-Version 0.1.0b0. Thank you for testing. This is an internal beta: it works end to end for one team on one stack, and most of it has not been exercised by anyone else yet. Your reports are the point of this phase.
+Version 0.1 (the tiered pipeline). Thank you for testing. This is an internal beta: it works end to end for one team on one stack, and most of it has not been exercised by anyone else yet. Your reports are the point of this phase.
 
 ## 1. Set up (10 minutes)
 

@@ -1,0 +1,89 @@
+{
+  "description": "SPEC_CORE section 14, Mandatory Acceptance Tests: each scenario maps to AC ids of the approved Gherkin. The gate requires every mapped id to have a passing test.",
+  "scenarios": {
+    "User submits a feature request": [
+      "AC-ARC-03b",
+      "AC-SPA-01a"
+    ],
+    "Specification has not been approved": [
+      "AC-GHA-01b",
+      "AC-SPA-07a"
+    ],
+    "Human requests specification changes": [
+      "AC-SPA-05a"
+    ],
+    "Approved specification changes": [
+      "AC-SPA-08c",
+      "AC-SPA-08d"
+    ],
+    "Gherkin has not been approved": [
+      "AC-SPA-07a",
+      "AC-GHA-06c"
+    ],
+    "Human finds missing edge cases": [
+      "AC-GHA-05c"
+    ],
+    "Approved Gherkin changes": [
+      "AC-GHA-05i"
+    ],
+    "Both approvals are valid": [
+      "AC-GHA-06a",
+      "AC-TDD-01a"
+    ],
+    "Red produces expected assertion failure": [
+      "AC-TDD-03c"
+    ],
+    "Red fails due to environment": [
+      "AC-TDD-03d"
+    ],
+    "Green modifies approved tests": [
+      "AC-TDD-04b"
+    ],
+    "Green passes": [
+      "AC-TDD-04a"
+    ],
+    "Refactor breaks tests": [
+      "AC-TDD-05b",
+      "AC-TDD-05c"
+    ],
+    "More behaviors remain": [
+      "AC-SM-05d"
+    ],
+    "All cycles pass": [
+      "AC-ORC-01f",
+      "AC-ARC-03j"
+    ],
+    "Provider is unavailable": [
+      "AC-AGT-05e",
+      "AC-AGT-05g"
+    ],
+    "Agent exceeds write scope": [
+      "AC-AGT-06b",
+      "AC-AGT-06h"
+    ],
+    "Agent claims tests passed without evidence": [
+      "AC-VER-02b",
+      "AC-TDD-04e"
+    ],
+    "Process is interrupted": [
+      "AC-ORC-07a",
+      "AC-ORC-07d"
+    ],
+    "Two tasks modify overlapping files": [
+      "AC-AGT-07h",
+      "AC-AGT-07j"
+    ],
+    "Security gate requires human approval": [
+      "AC-ORC-06g",
+      "AC-ORC-06a"
+    ],
+    "Agent attempts to approve its own work": [
+      "AC-ORC-02a",
+      "AC-SEC-03b"
+    ],
+    "Publishing is attempted without authorization": [
+      "AC-C-35c",
+      "AC-ORC-06h"
+    ]
+  }
+}

@@ -146,10 +146,7 @@ class Regression(SV):
         self.assertIn('dependencies = ["pyyaml>=6", "jsonschema>=4"]', text)
 
     def test_AC_DSH_06d_the_dashboard_ui_is_not_built_yet(self):
-        dist = ROOT / "sentinel" / "dashboard_dist"
-        if (dist / "index.html").exists():
-            self.skipTest("dashboard_dist exists (Phase G)")
-        c = self.serve()
+        c = self.serve(dist_dir=self.ws / "no-dist")  # a wheel built without sentinel/dashboard_dist (AC-OPS-01c)
         r = c.get("/")
         self.assertEqual(r.status, 200)
         self.assertIn("UI not installed", r.text)

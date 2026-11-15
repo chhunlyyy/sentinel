@@ -199,7 +199,7 @@ class Decide(PB):
         self.assertEqual(len(self.audit("approve_refused")), len(bad))
         self.assertEqual(self.audit("approve_refused")[0]["target"], f"{SLUG}/specification")
 
-    def test_AC_SPA_07a_spec_approval_alone_never_executes(self):
+    def test_AC_SPA_07a_REQ_VIS_02_spec_approval_alone_never_executes(self):
         for tier in (1, 2, 3, 4):
             with self.subTest(tier=tier):
                 slug = f"lb-{tier}"
@@ -210,7 +210,7 @@ class Decide(PB):
                     self.assertEqual(c.exception.code, "E_TRANSITION")
                 self.assertEqual(self.state(slug), "SPECIFICATION_APPROVED")
 
-    def test_AC_SPA_07b_empty_human_required_keeps_gates(self):
+    def test_AC_SPA_07b_REQ_CFG_09_empty_human_required_keeps_gates(self):
         self.eng.config = {**CONFIG, "policies": {"human_required": []}}
         self.to_spec_review()
         self.eng.advance(SLUG)

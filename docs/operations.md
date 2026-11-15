@@ -1,0 +1,96 @@
+# Operations
+
+Everyday commands for running Sentinel 1.1.0: notifications, statistics, the audit log and backups. They read the registry of the workspace (`.sentinel/sentinel.db`) and never change a run. Run them from the workspace, or pass `--dir`.
+
+## Notifications
+
+`sentinel notifications` lists what needs you. A notification is computed from the registry's events, so there is nothing to clear and nothing is stored with the run:
+
+| Event | Notification |
+|---|---|
+| Specification or Gherkin ready for review | action: review and approve |
+| Changes requested | info |
+| Run started | info |
+| Run needs a human, or is blocked | action or warning, with the reason |
+| A task failed, or a provider is unavailable | warning |
+| A verification check failed | warning |
+| Run completed and waiting for acceptance | action: `sentinel accept` |
+| Run accepted, rejected or failed | info or warning |
+
+```bash
+sentinel notifications                 # all, newest first
+sentinel notifications --unread        # prints nothing when there are none
+sentinel notifications --json --project digital-hr --limit 20
+sentinel notifications read digital-hr:123    # mark one read (the id is <project>:<event number>)
+sentinel notifications read --all
+```
+
+Which notifications you have read is kept only in `~/.config/sentinel/user.db` (project, registry id, event id and times; no text). Reading does not write to the registry or the audit. The file is created by the first "mark read", not by a fresh install. Text is scrubbed before it is shown. The dashboard bell shows the same list. Desktop notifications are raised by your browser after you press "Enable desktop notifications" and the browser grants permission; `notifications.desktop: false` in the config hides the option (see [config](config.md#notifications)). Sentinel uses no operating system notification tool, service worker or push service, and sends nothing outside the machine.
+
+An agent cannot mark notifications read: `sentinel notifications read` is refused inside a task process.
+
+## Stats and analytics
+
+`sentinel stats` prints the 0.1 statistics (which count 0.1 runs only) plus a `v2` section for version 2 runs:
+
+```bash
+sentinel stats
+sentinel stats --from 2026-11-01 --to 2026-11-30 --format md
+```
+
+`--from` and `--to` filter on the run's creation date (UTC, inclusive). `--format md` prints a Markdown table. Stats open the registry read only and never create it. The dashboard's Reports screen and `GET /api/v1/reports/analytics` give the same numbers.
+
+| Metric | Definition |
+|---|---|
+| Lead time | created to finished, for runs that finished as completed or failed (a cancelled run is left out): median and p90 |
+| Acceptance rate | accepted runs over decided (accepted or rejected) runs |
+| Approval wait | from the `approval.requested` event to the decision; never negative |
+| Retries | retry tasks |
+| Provider failure rate | `E_PROVIDER` failures over finished tasks of the provider |
+| TDD cycles | cycles accepted, and rejected per phase |
+| Verification pass rate | per check, and the share of runs that passed on the first attempt (finished runs only) |
+| Rework | specification and Gherkin revisions, changes requested, findings routed back |
+| Cost | summed from the cost that tasks reported, labelled partial when some did not; nothing is estimated from tokens |
+
+A value that cannot be computed is shown as not reported, with the reason, never as 0.
+
+## Audit export and verify
+
+Every human action, approval, acceptance and control writes an audit row. The audit is append-only: triggers refuse changes, and each row carries a hash that chains it to the one before.
+
+```bash
+sentinel audit export --out audit.jsonl                      # scrubbed JSON lines
+sentinel audit export --out audit.csv --format csv --from 2026-11-01 --to 2026-11-30 --actor dev --channel tty --action approve --run leave-balance
+sentinel audit export --out audit.jsonl --force              # replace an existing file
+sentinel audit verify                                        # the registry of this workspace
+sentinel audit verify --file audit.jsonl                     # an export, against itself
+sentinel audit verify --file audit.jsonl --db .sentinel/sentinel.db   # and against the registry
+```
+
+`verify` names the first broken row. Exports are scrubbed; rows the scrubber changed are marked, and CSV cells that start with a formula character get a leading apostrophe. The chain detects edits made by other tools; it does not stop a process running as your user from rewriting the whole chain (see [security](security.md#residual-risks)). Keep an export somewhere the agent user cannot write if you need that proof. Export is for humans: it is refused inside a task process.
+
+## Backup, verify and restore
+
+```bash
+sentinel backup                       # copies the registry into .sentinel/backups/ (git-ignored, mode 0600)
+sentinel backup --out /safe/place
+sentinel backup --verify .sentinel/backups/sentinel-20261115T100000Z.db
+sentinel backup --force               # keep a copy even when the audit chain is broken
+sentinel backup restore .sentinel/backups/sentinel-20261115T100000Z.db
+```
+
+A backup uses the SQLite backup API, so it is consistent while the server runs, and it is checked (integrity, row counts, audit chain) before it is kept. `--verify` checks a copy later. It holds the workspace registry only: run folders, config files and `user.db` are not in it (copy run folders yourself, or use `sentinel run export`). Old backups are never deleted for you.
+
+`restore` is for a human at a terminal: it replaces the registry, so it asks you to type the first 8 characters of the backup's hash, refuses while a task or a Sentinel server is running, and first saves the current registry as `backups/pre-restore-<time>.db`. A backup is as sensitive as the registry, which holds unscrubbed request text; see [security](security.md#audit-log-and-backups).
+
+## Release checklist
+
+For the maintainer who cuts a release. The gate never tags, publishes or pushes; those steps stay with you.
+
+1. Start from a clean checkout of the release commit (`git status` shows nothing). The gate refuses a dirty tree.
+2. Build the dashboard: `cd dashboard && npm ci && npm run build`.
+3. Build the release wheel: `SENTINEL_RELEASE=1 python3 -m build --wheel` (or `hatchling build -t wheel`). A release build refuses a missing or stale dashboard build and names `npm run build`.
+4. Run the gate: `python3 tools/release_gate.py`. It runs the dashboard scripts, the offline wheel install, the selftest, the unit and security suites and the acceptance-criteria check, and writes `release-evidence.json`. `--allow-dirty` runs everything on a dirty tree but can never report "release ready".
+5. The gate prints `release ready` only when every manual item in `tests/release/manual.json` has `status: done` with a date and a machine. Until then it prints `release candidate: N manual checks pending owner` and lists them.
+6. Do the manual checks on a machine that allows user namespaces and with a screen reader: the loopback-only namespace runs (AC-OPS-01i, AC-DSH-06g) and the screen-reader pass. Record each in `tests/release/manual.json` as `status: done`, with the date and the machine.
+7. Attach `sentinel-1.1.0-py3-none-any.whl` to the GitHub release. The dashboard UI ships only in this wheel; a `uv tool install git+https://…` install has the CLI without it (see [installation](installation.md#the-dashboard-ui)).

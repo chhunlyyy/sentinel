@@ -8,6 +8,8 @@ Two parts, once per machine: the engine (the `sentinel` command) and the skills 
 uv tool install git+https://github.com/chhunlyyy/sentinel
 ```
 
+A git install has the CLI but not the dashboard UI. For the dashboard install the release wheel (`uv tool install ./sentinel-1.1.0-py3-none-any.whl`) or build from a checkout; see [the dashboard UI](installation.md#the-dashboard-ui).
+
 No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same way. Upgrade with `uv tool upgrade sentinel`.
 
 The skills are installed in step 5, after the project is set up. The [installation guide](installation.md) has prerequisites, per-tool details and troubleshooting.
@@ -64,7 +66,7 @@ Use the agent name of your tool: `claude-code`, `antigravity-cli`, `codex`, `cur
 
 You get `/sentinel`, `/sentinel-setup`, `/sentinel-resume`, `/sentinel-status`, `/sentinel-sync` and `/sentinel-change-map`. Nothing project-specific is generated: when a stage runs, the skill asks `sentinel stage render` for that stage's instructions, built from your config, rules and guidelines. Update later with `npx skills@latest update`.
 
-The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add the tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v0.1.0b7 --skill '*' -a <agent>`.
+The skills run with your agent's full permissions, so read them before installing; they are plain markdown. To pin a version, add the tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v1.1.0 --skill '*' -a <agent>`.
 
 ### Legacy: generated agent files
 
@@ -72,7 +74,7 @@ The skills run with your agent's full permissions, so read them before installin
 
 ## 6. Run a task
 
-Ask your agent: `/sentinel add an export button to the report page`. The agent follows the `sentinel` skill:
+Ask your agent: `/sentinel add an export button to the report page`. The agent follows the `sentinel` skill. For a version 2 run (the default) it creates the run with `sentinel run new <slug> --type feature`, asks `sentinel next <slug> --json` what is allowed, and stops at every human step, for example `sentinel approve <slug> spec`; see [workflow.md](workflow.md). The steps below describe a 0.1 run (`--tier`, `--legacy` or `--adhoc`):
 
 1. Picks the tier and prints one line with the reason.
 2. For tier 3 and 4, interviews you about decisions and records them in `.sentinel/runs/<slug>/decisions.md`.

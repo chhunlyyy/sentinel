@@ -24,6 +24,33 @@ class Checks(PE):
                 self.assertFalse(self.vrows(absent))
                 self.reset_ws()
 
+    def _hygiene_frontend(self, approve):
+        self.boot_ver(rules={"no_permanent_frontend_tests": True})
+        self.change()
+        cycle = next(c for c in self.cycles() if c["repo_id"] == "frontend")
+        self.write_file("frontend/src/test/Form.test.ts", "test('x', () => {});\n")
+        self.write_file("frontend/src/test/Other.spec.ts", "export default {};\n")
+        if approve:
+            sha = hashlib.sha256((self.ws / "frontend/src/test/Form.test.ts").read_bytes()).hexdigest()
+            self.eng.reg.update_row("cycles", cycle["id"], approved_tests=json.dumps([{"path": "frontend/src/test/Form.test.ts", "sha256": sha}]))
+        self.verify()
+        row = self.vrows("hygiene", "frontend")[0]
+        return row["verdict"], json.loads(row["failing"])
+
+    def test_TDD_09_hygiene_skips_approved_cycle_test_files_but_flags_other_test_infrastructure(self):
+        """With rules.no_permanent_frontend_tests, the test file Red wrote (approved in a cycle) is not left-behind
+        infrastructure; an unapproved test file still is."""
+        verdict, failing = self._hygiene_frontend(approve=True)
+        self.assertEqual(verdict, "fail")
+        self.assertTrue(any("Other.spec.ts" in f for f in failing), failing)
+        self.assertFalse(any("Form.test.ts" in f for f in failing), failing)
+
+    def test_TDD_09_hygiene_flags_a_test_file_no_cycle_approved(self):
+        verdict, failing = self._hygiene_frontend(approve=False)
+        self.assertEqual(verdict, "fail")
+        self.assertTrue(any("Form.test.ts" in f for f in failing), failing)
+        self.assertTrue(any("Other.spec.ts" in f for f in failing), failing)
+
     def test_AC_VER_01b_migration_safety_runs_when_a_migration_file_changed(self):
         for tier in (1, 3, 4):
             with self.subTest(tier=tier):

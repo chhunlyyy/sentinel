@@ -21,6 +21,7 @@ import yaml
 import scrub
 from apiserver import userdir
 from errors import SentinelError
+from paths import slug_problem
 from util import connect_ro
 
 USER_DB = "user.db"
@@ -186,6 +187,8 @@ def _make(source, row):
     if hit is None:
         return None
     level, text, link, command = hit
+    if slug_problem(str(row["slug"])) is not None:  # AC-SEC-09b: a link is always a dashboard route of a real run name
+        link = command = None
     return {"id": f"{source.id}:{row['id']}", "project": source.id, "run": row["slug"], "level": level, "text": _clip(source.clean(text)),
             "link": link, "at": row["at"], "read_at": None, "command": command, "_event": row["id"]}
 

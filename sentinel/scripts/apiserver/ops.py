@@ -9,7 +9,7 @@ from errors import SentinelError
 from paths import slug_problem
 from shared import Shared
 
-RUN_TYPES = ("feature", "bug", "docs", "refactor", "chore")
+RUN_TYPES = engine_mod.RUN_TYPES
 PRIORITIES = ("low", "normal", "high")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 CHANNEL = "dashboard"

@@ -1,0 +1,20 @@
+{
+  "AC-DSH-06g": {
+    "evidence": "The dashboard tests run in a network namespace (unshare -rn); Playwright skips the test where user namespaces are not allowed. pending owner run on a machine that allows user namespaces (no CI exists). AC-DSH-06a/06e/06f cover the same property by other means: no outbound connection, every request goes to the server origin, the bundle names no remote resource.",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-01i": {
+    "evidence": "owner/CI to run in a loopback-only network namespace: the offline wheel install, version, selftest and dashboard run with only loopback (pending owner run on a machine that allows user namespaces (no CI exists)). Everything except the namespace itself is asserted by the test on every run.",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "G9-screen-reader": {
+    "evidence": "Manual screen-reader pass over the dashboard screens (Phase G / H G9 gate); the axe and keyboard checks are automated, the screen-reader check is pending owner.",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  }
+}

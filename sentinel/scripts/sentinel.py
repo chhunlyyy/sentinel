@@ -419,6 +419,9 @@ def cmd_run_new(args):
 
 
 def new_v2_run(args, config_path, config):
+    from engine import RUN_TYPES
+    if args.type is not None and args.type not in RUN_TYPES:
+        raise SentinelError("E_VALIDATION", f"--type must be one of {', '.join(RUN_TYPES)}")
     run_dir(config_path, config, args.slug)
     only = [r for r in (args.repos or "").split(",") if r]
     unknown = [r for r in only if r not in {c["id"] for c in config["repos"]}]

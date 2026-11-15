@@ -56,7 +56,7 @@ class Lifecycle(unittest.TestCase):
         return dash.finish(10)
 
     # ---- AC-SEC-01 loopback bind
-    def test_AC_SEC_01a_starting_the_server_at_a_terminal(self):
+    def test_AC_SEC_01a_REQ_INS_01_REQ_ARC_02_starting_the_server_at_a_terminal(self):
         d = self.start()
         self.assertIn(f"http://127.0.0.1:{d.port}/auth?t={d.token}", d.text())
         self.assertEqual(self.server_json()["token"], d.token)
