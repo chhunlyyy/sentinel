@@ -668,6 +668,23 @@ class TaskOps:
             "path": dest.relative_to(self.state_dir).as_posix(),
             "sha256": hashlib.sha256(raw).hexdigest(), "created_at": _now()})
 
+    def _scrub_task_logs(self, tdir):
+        """Redact secrets from the finished task's stdout and stderr logs on disk (SEC-06): values of the workspace
+        .env files, of policies.redact_env and of the dashboard token, plus the scrubber's patterns."""
+        import scrub
+        scrubber = scrub.Scrubber("/nonexistent-workspace", scrub.env_values(self.workspace))  # local paths stay readable
+        for name in ("output.log", "stderr.log"):
+            path = tdir / name
+            try:
+                if not path.is_file() or path.is_symlink() or path.stat().st_size > scrub.MAX_BYTES:
+                    continue
+                text = path.read_text(encoding="utf-8", errors="replace")
+                clean = scrubber.scrub_text(adapters.redact_text(self.config, text))
+                if clean != text:
+                    path.write_text(clean, encoding="utf-8")
+            except OSError:
+                continue
+
     def finish_task(self, task_id, exit_code=0, seconds=None, timed_out=False, lost=False, session_id=None):
         """Ingest the task's result.json and decide its state. `exit_code` is the process exit (0 for a native task).
         FAILED tasks are retried as a new task until their cap; scope and integrity failures go to a human."""
@@ -713,6 +730,7 @@ class TaskOps:
                 self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=v["park"])
             if v["state"] == "COMPLETED":
                 self._queue_ready(run, dependents_only=True)
+        self._scrub_task_logs(self.task_dir(run0["slug"], task_id))
         self._finish_up(run0["slug"], run0)
         row = self._task_row(task_id)
         row["error_details"] = v["details"]

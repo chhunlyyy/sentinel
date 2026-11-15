@@ -386,9 +386,8 @@ class BundleOps:
                                     (run["id"], e.get("task_id"), e["type"], e["actor"], json.dumps(payload), e["at"],
                                      e.get("actor_name"), e.get("channel")))
             for a in doc.get("audit", []):
-                self.reg._c.execute("INSERT INTO audit(actor, channel, action, target, before_sha, after_sha, at, reason) VALUES (?,?,?,?,?,?,?,?)",
-                                    (a["actor"], a["channel"], a["action"], a["target"], a["before_sha"], a["after_sha"], a["at"],
-                                     a.get("reason")))
+                self.reg.add_audit(a["actor"], a["channel"], a["action"], a["target"], a["before_sha"], a["after_sha"],
+                                   a.get("reason"), at=a["at"])
             self.reg.add_event(run["id"], "run.imported", machines.ENGINE, {"bundle_sha256": bundle_sha, "imported_at": _now()})
             self.reg.add_audit(user, channel, "run_imported", slug, after_sha=bundle_sha)
 

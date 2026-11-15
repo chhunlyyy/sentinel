@@ -855,6 +855,7 @@ def main():
         phase_d_checks(tmp)
         phase_f_checks(tmp)
         phase_g_checks(tmp)
+        phase_h_b_checks(tmp)
         phase_e_checks(tmp)
 
         print("skills")
@@ -1148,6 +1149,46 @@ def phase_g_checks(tmp):
         check("AC-INS-06a a mutating contract route is still not offered", call("/api/v1/projects/ws-g/configuration/import", cookie, "POST")[0] in (403, 404))
     finally:
         srv.stop()
+
+
+def phase_h_b_checks(tmp):
+    print("audit chain, export, backup (phase H part B)")
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from registry import Registry
+    w = tmp / "ws-hb"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    run(CLI + ["--dir", str(w), "init", "--shape", "single", "--non-interactive", "--local-only"])
+    reg = Registry.open(w / ".sentinel")
+    with reg.transaction():
+        for i in range(5):
+            reg.add_audit("dev", "tty", "approve", f"run-{i}", reason="token=abcd1234efgh5678" if i == 2 else None)
+    reg.close()
+    code, out = run(CLI + ["--dir", str(w), "audit", "verify"])
+    check("AC-SEC-07g audit verify passes on an untouched registry", code == 0 and "5 rows" in out, out[-200:])
+    code, out = run(CLI + ["--dir", str(w), "audit", "export", "--out", str(w / "audit.jsonl")])
+    text = (w / "audit.jsonl").read_text() if (w / "audit.jsonl").exists() else ""
+    check("AC-SEC-07h audit export writes a 0600 scrubbed file that verifies", code == 0 and oct((w / "audit.jsonl").stat().st_mode & 0o777) == "0o600"
+          and "abcd1234efgh5678" not in text and run(CLI + ["--dir", str(w), "audit", "verify", "--file", str(w / "audit.jsonl")])[0] == 0, out[-200:])
+    code2 = subprocess.run(CLI + ["--dir", str(w), "audit", "export", "--out", str(w / "t2.jsonl")], capture_output=True, text=True,
+                           env={**ENV, "SENTINEL_TASK_ID": "t-1"}).returncode
+    check("AC-SEC-07o a task process cannot export the audit", code2 == 5 and not (w / "t2.jsonl").exists())
+    code, out = run(CLI + ["--dir", str(w), "backup"])
+    info = json.loads(out) if code == 0 else {}
+    check("AC-OPS-05a backup writes a checked copy", code == 0 and info.get("counts", {}).get("audit", 0) >= 5 and Path(info["path"]).exists(), out[-200:])
+    check("AC-OPS-05h backup --verify accepts the copy", run(CLI + ["--dir", str(w), "backup", "--verify", info.get("path", "")])[0] == 0)
+    bad = Path(info["path"]).with_name("bad.db")
+    bad.write_bytes(b"not a database" * 50)
+    check("AC-OPS-05h backup --verify refuses a file that is not SQLite", run(CLI + ["--dir", str(w), "backup", "--verify", str(bad)])[0] == 1)
+    code, out = run(CLI + ["--dir", str(w), "backup", "restore", info["path"]])
+    check("AC-OPS-05j restore without a terminal is refused", code == 5 and "E_NOT_TTY" in out, out[-200:])
+    conn = sqlite3.connect(w / ".sentinel/sentinel.db")
+    conn.execute("DROP TRIGGER audit_no_update")
+    conn.execute("UPDATE audit SET actor='agent' WHERE id=2")
+    conn.commit()
+    conn.close()
+    code, out = run(CLI + ["--dir", str(w), "audit", "verify"])
+    check("AC-SEC-07f audit verify names the first tampered row", code == 1 and "row 2" in out, out[-200:])
 
 
 if __name__ == "__main__":

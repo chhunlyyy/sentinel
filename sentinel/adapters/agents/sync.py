@@ -27,7 +27,7 @@ To implement a feature or fix a bug through Sentinel, first run `sentinel doctor
 2. Read `.sentinel/generated/orchestrator.md` and follow it. For a version 2 run it tells you to loop on `sentinel next <slug> --json` and do only what it says: `sentinel task run <task-id>` for a CLI task, or a fresh subagent on the task's prompt file followed by `sentinel task complete <task-id>` for a native task. A 0.1 run (`--tier`, `--adhoc`, `--legacy`) uses the effort tiers and `.sentinel/generated/pipeline.md`.
 3. Stage prompts are in `.sentinel/generated/prompts/<name>.md`. For a 0.1 run, run a stage with `sentinel stage run --stage <stage> [--repo <id>] --slug <slug> --brief <file>`, or follow the prompt yourself when you are the only agent.
 4. Run state lives in the registry and `.sentinel/runs/<slug>/`; never edit it. Resume a version 2 run with `sentinel next <slug> --json`, a 0.1 run with `sentinel resume <slug>`.
-5. Agents never run `sentinel approve` or `sentinel accept`. Those are human decisions made at a terminal.
+5. Agents never run `sentinel approve` or `sentinel accept`. Those are human decisions made at a terminal. Agents also never run `sentinel backup restore` or `sentinel audit export`, and never read `~/.config/sentinel/server.json`.
 
 Rules from `sentinel.config.yaml` apply to everything you write:
 {rules}

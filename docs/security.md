@@ -65,6 +65,40 @@ commands) are advisory: other spellings of a command can pass a pattern. The `da
 a terminal (TTY). Run agents under a separate OS user if you need a hard boundary. The browser is opened on a private redirect file
 (mode 0600) so the token never appears in the browser's command line.
 
+R1 has two known cases, and the security suite (`tests/security/`) asserts both so that a silent change in either
+direction fails the build:
+
+- **Pseudo-terminal.** An agent running as your user can open a pseudo-terminal (Python `pty`), start
+  `sentinel approve` in it, read the printed hash and type the prefix. The approval then succeeds with channel `tty` and
+  your OS user as the approver. The terminal check stops a pipe, not a program that creates a terminal.
+- **Token file.** An agent running as your user can read `server.json`, exchange the token at `/auth` and call the
+  approval routes. The approval is recorded with channel `dashboard`.
+
+Both are visible afterwards in the audit (channel and identity), not prevented. Only a separate OS user or a sandbox
+closes them.
+
+## Residual risk R3: provider commands during a task
+
+Sentinel cannot stop a provider CLI from running a command while a task runs. It detects file and git effects
+afterwards: a write outside the task's write scope or a `git commit` fails the task with `E_SCOPE` and parks the run
+for a human. It does not undo them. Review the diff of a failed task before you continue.
+
+## Audit log and backups
+
+- The audit table is append-only: SQLite triggers refuse `UPDATE` and `DELETE`, and every row carries `row_sha` and
+  `chain_sha`, a hash chain written in the same transaction as the row. `sentinel audit verify` checks the chain
+  (`--file` checks an export) and names the first broken row.
+- **Limit.** The chain and the triggers detect a changed, deleted or inserted row. They do not stop a process that runs
+  as your OS user: it can drop the triggers and rewrite every row and the whole chain, and verify will then pass. This is
+  the same boundary as R1. Keep an exported copy (`sentinel audit export --out file`) somewhere the agent user cannot
+  write if you need proof against that.
+- `sentinel audit export`, `sentinel backup` and `sentinel backup restore` are for humans. They are refused inside a
+  task process (`E_ACTOR`) and denied in the configs that `sync-adapters` writes. `restore` also needs a terminal and the
+  typed first 8 characters of the backup's hash, because it replaces the registry.
+- The audit export is scrubbed; rows changed by the scrubber are marked `"scrubbed": true`. A backup is a copy of the
+  registry, so it is as sensitive as the registry (mode 0600, inside the git-ignored `.sentinel` folder). Old backups are
+  never deleted for you.
+
 ## Dependencies
 
 The release check prints a notice when a dependency manifest changes. A human must approve each new dependency: check the package, its maintainers, and its license. The reviewer stage is also told to look at new dependencies.

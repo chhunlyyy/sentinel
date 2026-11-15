@@ -318,6 +318,8 @@ export interface WAudit {
   after_sha: string | null;
   reason: string | null;
   at: string;
+  row_sha: string | null;
+  chain_sha: string | null;
 }
 
 export interface WConfigDiff {

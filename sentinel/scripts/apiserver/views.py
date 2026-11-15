@@ -489,6 +489,9 @@ def approvals_in(projects, state):
     return {"items": items, "next": None}
 
 
+AUDIT_COLUMNS = ("id", "actor", "channel", "action", "target", "before_sha", "after_sha", "reason", "at", "row_sha", "chain_sha")
+
+
 def audit_rows(projects, pid, query):
     limit = parse_limit(query)
     cursor = decode_cursor(query["cursor"], 1)[0] if query.get("cursor") else None
@@ -499,7 +502,7 @@ def audit_rows(projects, pid, query):
         with projects.reader(project) as conn:
             if conn is None:
                 continue
-            sql = "SELECT id, actor, channel, action, target, before_sha, after_sha, reason, at FROM audit"
+            sql = f"SELECT {', '.join(AUDIT_COLUMNS)} FROM audit"
             args = []
             if cursor is not None:
                 sql += " WHERE id < ?"

@@ -312,7 +312,9 @@ HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)", "B
                        "Bash(sentinel run export:*)", "Bash(sentinel run import:*)",
                        "Bash(sentinel --dir * run export *)", "Bash(sentinel --dir * run import *)",
                        "Read(~/.config/sentinel/**)", "Read(//**/.config/sentinel/server.json)",
-                       "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)"]
+                       "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)",
+                       "Bash(sentinel backup restore:*)", "Bash(sentinel --dir * backup restore *)",
+                       "Bash(sentinel audit export:*)", "Bash(sentinel --dir * audit export *)"]
 
 
 def _config_dir_rules():
@@ -849,6 +851,132 @@ def cmd_run_import(args):
         engine.close()
 
 
+def task_process_refusal(what):
+    """E_ACTOR when called from a task process (SENTINEL_TASK_ID is set): human-only commands that need no terminal."""
+    task = os.environ.get("SENTINEL_TASK_ID")
+    if task:
+        raise SentinelError("E_ACTOR", f"a task process may not run `sentinel {what}` (called from task {task})",
+                            {"task": task, "command": what})
+
+
+def usage_exit(parser, message):
+    parser.print_usage(sys.stderr)
+    print(f"sentinel: error: {message}", file=sys.stderr)
+    sys.exit(2)
+
+
+def open_audit_registry(config_path, config):
+    from registry import Registry
+    state = state_dir_of(config_path, config)
+    if not (state / "sentinel.db").is_file():
+        raise SentinelError("E_NOT_FOUND", "no registry in this workspace; nothing to read", exit_code=1)
+    return Registry.open(state)
+
+
+def cmd_audit_verify(args):
+    import auditlog
+    config_path, config = load_config(args.dir)
+    if args.file:
+        res = auditlog.verify_file(args.file)
+    else:
+        db = Path(args.db) if args.db else state_dir_of(config_path, config) / "sentinel.db"
+        if not db.is_file():
+            raise SentinelError("E_NOT_FOUND", f"no registry at {db}", exit_code=1)
+        res = auditlog.verify_db(db)
+    if not res["ok"]:
+        raise SentinelError("E_INTEGRITY", res["message"], {"row": res["row"]}, exit_code=1)
+    print(f"audit ok: {res['rows']} rows, head chain_sha {res['head']}")
+
+
+def cmd_audit_export(args):
+    import auditlog
+    import scrub
+    from datetime import datetime
+    task_process_refusal("audit export")
+    config_path, config = load_config(args.dir)
+    filters = {"from": auditlog.parse_day(args.date_from, "--from") if args.date_from else None,
+               "to": auditlog.parse_day(args.date_to, "--to") if args.date_to else None,
+               "actor": args.actor, "channel": args.channel, "action": args.action, "run": args.run}
+    out = Path(args.out)
+    try:
+        reg = open_audit_registry(config_path, config)
+    except SentinelError as err:
+        if err.code == "E_LOCKED":
+            err.exit_code = 1
+        raise
+    try:
+        workspace = config_path.parent
+        scrubber = scrub.Scrubber(workspace, scrub.env_values(workspace))
+        user, _ = human_identity()
+        tmp, digest, count, head = auditlog.export(reg, out, args.format, filters, scrubber,
+                                                   (ROOT / "VERSION").read_text().strip(), workspace.name, workspace, args.force)
+        try:
+            with reg.transaction():
+                reg.add_audit(user, "tty" if is_tty() else "cli", "audit_exported", str(out), after_sha=digest,
+                              reason=json.dumps({k: v for k, v in filters.items() if v}, sort_keys=True))
+            os.replace(tmp, out)
+        except BaseException as e:
+            Path(tmp).unlink(missing_ok=True)
+            import sqlite3
+            if isinstance(e, sqlite3.OperationalError) and "locked" in str(e):
+                raise SentinelError("E_LOCKED", "the registry is locked for writing; try again", exit_code=1)
+            raise
+    finally:
+        reg.close()
+    print(json.dumps({"path": str(out), "rows": count, "head_chain_sha": head, "sha256": digest}))
+
+
+def cmd_backup(args):
+    import backup
+    words = args.words
+    if args.verify is None and "--verify" in sys.argv[1:]:
+        usage_exit(args.parser, "--verify needs the backup file")
+    if words and words[0] == "restore":
+        if len(words) < 2:
+            usage_exit(args.parser, "restore needs the backup file")
+        if len(words) > 2:
+            usage_exit(args.parser, f"unexpected argument {words[2]}")
+        return cmd_backup_restore(args, words[1])
+    if words:
+        usage_exit(args.parser, f"unknown backup action {words[0]!r}; use `backup`, `backup --verify FILE` or `backup restore FILE`")
+    if args.verify:
+        info = backup.verify_backup(args.verify)
+        print(json.dumps({k: v for k, v in info.items() if k != "registry_id"}))
+        return
+    task_process_refusal("backup")
+    config_path, config = load_config(args.dir)
+    user, _ = human_identity()
+    print(json.dumps(backup.create_backup(state_dir_of(config_path, config), args.out, user=user)))
+
+
+def cmd_backup_restore(args, file):
+    import backup
+    from apiserver import userdir
+    task_process_refusal("backup restore")
+    if not is_tty():
+        raise refuse_without_tty("`sentinel backup restore`")
+    config_path, config = load_config(args.dir)
+    state = state_dir_of(config_path, config)
+    info = backup.verify_backup(file)
+    busy = backup.running_conflicts(state, userdir.config_dir())
+    if busy:
+        raise SentinelError("E_LOCKED", "cannot restore while something runs: " + "; ".join(t for t, _ in busy),
+                            {"running": [d for _, d in busy]})
+    print(f"restore {file} over {state / 'sentinel.db'} (schema {info['schema_version']}, counts {info['counts']})")
+    print(f"sha256: {info['sha256']}")
+    try:
+        typed = input("Type the first 8 characters of the sha256 to confirm: ")
+    except (EOFError, KeyboardInterrupt):
+        print("\ninput closed; nothing restored", file=sys.stderr)
+        sys.exit(1)
+    if len(typed.strip()) < 8 or not info["sha256"].startswith(typed.strip().lower()):
+        print("the typed value does not match; nothing restored", file=sys.stderr)
+        sys.exit(1)
+    user, _ = human_identity()
+    backup.restore(state, file, user=user)
+    print(f"restored {file}; the previous registry is in {state / 'backups'}")
+
+
 def port_arg(text):
     try:
         port = int(text)
@@ -1216,6 +1344,31 @@ def main():
     scrub_cmd.add_argument("--check", action="store_true", help="verify .sentinel/shared is clean; non-zero exit on findings")
     scrub_cmd.add_argument("--shared", action="store_true", help="redact .sentinel/shared instead of runs and cache")
     scrub_cmd.set_defaults(func=cmd_scrub)
+
+    audit = sub.add_parser("audit", help="verify the audit hash chain, or export the audit (human; no terminal needed)")
+    audit_sub = audit.add_subparsers(dest="audit_cmd", required=True)
+    a_verify = audit_sub.add_parser("verify", help="check the audit chain of the registry, a registry file or an export")
+    a_verify.add_argument("--file", help="an exported audit file")
+    a_verify.add_argument("--db", help="a registry file (default: this workspace)")
+    a_verify.set_defaults(func=cmd_audit_verify)
+    a_export = audit_sub.add_parser("export", help="write a scrubbed audit export (refused in a task process)")
+    a_export.add_argument("--out", required=True)
+    a_export.add_argument("--format", choices=["jsonl", "csv"], default="jsonl")
+    a_export.add_argument("--from", dest="date_from", metavar="DATE")
+    a_export.add_argument("--to", dest="date_to", metavar="DATE")
+    a_export.add_argument("--actor")
+    a_export.add_argument("--channel")
+    a_export.add_argument("--action")
+    a_export.add_argument("--run", metavar="SLUG")
+    a_export.add_argument("--force", action="store_true", help="replace an existing file")
+    a_export.set_defaults(func=cmd_audit_export)
+
+    backup_cmd = sub.add_parser("backup", help="copy the workspace registry, check a copy (--verify FILE), or `restore FILE`")
+    backup_cmd.add_argument("words", nargs="*", metavar="restore FILE")
+    backup_cmd.add_argument("--out", help="folder for the copy (default: .sentinel/backups)")
+    backup_cmd.add_argument("--verify", metavar="FILE", help="check an existing copy")
+    backup_cmd.add_argument("--yes", action="store_true", help="accepted for scripts; restore still needs the typed hash prefix")
+    backup_cmd.set_defaults(func=cmd_backup, parser=backup_cmd)
 
     add_passthrough_commands(sub)
 
