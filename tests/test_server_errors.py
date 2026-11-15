@@ -85,7 +85,8 @@ class Mapping(SV):
     def test_AC_API_03h_mutating_routes_call_the_cli_engine_functions(self):
         from apiserver import routes
         table = {r.name: r for r in routes.ROUTES if r.method == "POST"}
-        self.assertEqual(set(table), {"approvals", "acceptance", "control", "create_run"})
+        self.assertEqual(set(table), {"approvals", "acceptance", "control", "create_run", "notification_read"})
+        self.assertEqual(table["notification_read"].calls, ())  # Phase H: writes only ~/.config/sentinel/user.db
         self.assertEqual(table["approvals"].calls, ("Engine.decide",))
         self.assertEqual(table["acceptance"].calls, ("Engine.accept",))
         self.assertEqual(set(table["control"].calls),

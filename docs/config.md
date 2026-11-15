@@ -174,6 +174,15 @@ runners:
 - `unsafe_skip_permissions: true` appends `unsafe_args` and prints a warning. Leave it false unless you accept that the tool will act without asking.
 - Only `claude` and `agy` have been run for real in this project. Check the flags of `codex` and `gemini` against their own documentation.
 
+## notifications
+
+```yaml
+notifications:
+  desktop: true   # default; false hides "Enable desktop notifications" in the dashboard
+```
+
+`sentinel notifications` and the dashboard bell always work. `desktop` only controls whether the dashboard offers browser notifications: they are raised by the browser after you press "Enable desktop notifications" and the browser grants permission. Sentinel uses no operating system notification tool, no service worker and no push service.
+
 ## rules
 
 All default to `false`. A rule only adds its text to the stage prompts and the release check when it is on.

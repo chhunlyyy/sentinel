@@ -312,7 +312,8 @@ HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)", "B
                        "Bash(sentinel run export:*)", "Bash(sentinel run import:*)",
                        "Bash(sentinel --dir * run export *)", "Bash(sentinel --dir * run import *)",
                        "Read(~/.config/sentinel/**)", "Read(//**/.config/sentinel/server.json)",
-                       "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)"]
+                       "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)",
+                       "Bash(sentinel notifications read:*)", "Bash(sentinel --dir * notifications read *)"]
 
 
 def _config_dir_rules():
@@ -952,10 +953,37 @@ def cmd_metrics_record(args):
     print(f"recorded {args.stage} for {args.slug}")
 
 
+def _stats_range(args):
+    import analytics
+    try:
+        return analytics.check_range(args.from_day, args.to_day)
+    except SentinelError as err:
+        print(f"sentinel stats: argument --{err.details.get('field', 'from')}: {err.message}", file=sys.stderr)
+        sys.exit(2)
+
+
+def _legacy_in_range(state, start, end):
+    if not (start or end):
+        return True
+    day = str(state.get("started") or "")[:10]
+    return bool(day) and (not start or day >= start) and (not end or day <= end)
+
+
 def cmd_stats(args):
+    import analytics
+    start, end = _stats_range(args)
     config_path, config = load_config(args.dir)
-    runs_dir = state_dir_of(config_path, config) / "runs"
-    states = [json.loads(p.read_text()) for p in sorted(runs_dir.glob("*/state.json"))]
+    state_dir = state_dir_of(config_path, config)
+    v2 = analytics.compute(state_dir / "sentinel.db", start, end, providers=_runner_ids(config))
+    if args.format == "md":
+        sys.stdout.write(analytics.markdown(v2))
+        return
+    runs_dir = state_dir / "runs"
+    states = []
+    for p in sorted(runs_dir.glob("*/state.json")):
+        state = json.loads(p.read_text())
+        if "schema_version" not in state and _legacy_in_range(state, start, end):
+            states.append(state)
     tiers, escalated, rounds = {}, 0, {"review": [], "qa": [], "release_check": []}
     stage_tokens, stage_seconds, outcomes = {}, {}, {}
     isolation = {"subagent": 0, "headless": 0, "inline": 0, "other": 0}
@@ -978,8 +1006,56 @@ def cmd_stats(args):
     print(json.dumps({
         "runs": len(states), "by_tier": tiers, "escalated_runs": escalated, "outcomes": outcomes,
         "avg_rounds": {k: average(v) for k, v in rounds.items()}, "stage_isolation": isolation,
-        "tokens_by_stage": stage_tokens, "seconds_by_stage": stage_seconds,
+        "tokens_by_stage": stage_tokens, "seconds_by_stage": stage_seconds, "v2": v2,
     }, indent=2))
+
+
+def cmd_notifications(args):
+    """List or mark read the local notifications of every registered workspace (read state: ~/.config/sentinel/user.db)."""
+    import notifications as N
+    if args.action == "read" and os.environ.get("SENTINEL_TASK_ID"):
+        raise SentinelError("E_ACTOR", "a task process may not run `sentinel notifications read`",
+                            {"task": os.environ["SENTINEL_TASK_ID"], "command": "notifications read"})
+    from apiserver.views import LIMIT_MAX
+    if not 1 <= args.limit <= LIMIT_MAX:
+        print(f"sentinel notifications: argument --limit: must be an integer from 1 to {LIMIT_MAX}, not {args.limit}", file=sys.stderr)
+        sys.exit(2)
+    sources = N.sources_from_registry(N.userdir.config_dir())
+    path = N.user_db_path()
+    try:
+        if args.action == "read":
+            if args.all:
+                count = N.mark_all(sources, path)
+                print(f"marked {count} notification{'' if count == 1 else 's'} read")
+            elif args.target:
+                n = N.mark_read(sources, path, args.target)
+                print(f"marked {n['id']} read at {n['read_at']}")
+            else:
+                print("sentinel notifications read: give a notification id or --all", file=sys.stderr)
+                sys.exit(2)
+            return
+        if args.target or args.all:
+            print("sentinel notifications: use `read <id>` or `read --all` to mark notifications read", file=sys.stderr)
+            sys.exit(2)
+        result = N.compute(sources, path, project=args.project, limit=args.limit, unread_only=args.unread)
+    except N.UserDbError as err:
+        print(f"E_INTERNAL: {err.message}; fix: {err.fix}", file=sys.stderr)
+        sys.exit(1)
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return
+    for n in result["items"]:
+        print(f"{'*' if not n['read_at'] else ' '} {n['at'][:16].replace('T', ' ')}  {n['level']:<7}  {n['project']}  {n['text']}  [{n['id']}]")
+        print(f"    {n['command']}")
+    for u in result["unavailable"]:
+        print(f"unavailable: {u['project']} ({u['reason']})", file=sys.stderr)
+    if not result["items"] and not args.unread:
+        print("No notifications.")
+
+
+def _runner_ids(config):
+    import analytics
+    return analytics.runner_ids(config)
 
 
 def cmd_clean(args):
@@ -1194,7 +1270,21 @@ def main():
     record.add_argument("--model")
     record.set_defaults(func=cmd_metrics_record)
 
-    sub.add_parser("stats").set_defaults(func=cmd_stats)
+    stats = sub.add_parser("stats", help="run statistics: the 0.1 keys plus a v2 section from the registry")
+    stats.add_argument("--from", dest="from_day", metavar="YYYY-MM-DD", help="first run creation date (UTC, inclusive)")
+    stats.add_argument("--to", dest="to_day", metavar="YYYY-MM-DD", help="last run creation date (UTC, inclusive)")
+    stats.add_argument("--format", choices=("json", "md"), default="json", help="json (default) or a Markdown table of the v2 metrics")
+    stats.set_defaults(func=cmd_stats)
+
+    notes = sub.add_parser("notifications", help="list local notifications, or mark them read with `read <id>` or `read --all`")
+    notes.add_argument("action", nargs="?", choices=("read",))
+    notes.add_argument("target", nargs="?", help="the notification id (<project>:<event number>) for `read`")
+    notes.add_argument("--all", action="store_true", help="with `read`: mark every notification read")
+    notes.add_argument("--unread", action="store_true", help="only unread notifications; prints nothing when there are none")
+    notes.add_argument("--json", action="store_true")
+    notes.add_argument("--project", help="only this project")
+    notes.add_argument("--limit", type=int, default=50, help="most notifications to list (default 50)")
+    notes.set_defaults(func=cmd_notifications)
 
     resume = sub.add_parser("resume")
     resume.add_argument("slug")

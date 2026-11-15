@@ -329,3 +329,60 @@ export interface WConfigDiff {
 
 /** GET /report: the report document with the sha256 a human types the first 8 characters of to accept the run. */
 export type WReport = { sha256: string; report: Record<string, unknown> };
+
+/** GET /notifications: computed from the events table, newest first. `unread` counts every project, not only this page. */
+export interface WNotification {
+  id: string;
+  project: string;
+  run: string;
+  level: string;
+  text: string;
+  link: string;
+  at: string;
+  read_at: string | null;
+}
+
+export interface WNotifications {
+  items: WNotification[];
+  next: string | null;
+  unread: number;
+  unavailable: { project: string; reason: string }[];
+}
+
+/** A metric that cannot be computed: never a zero. */
+export interface WNullMetric {
+  value: null;
+  reason: string;
+}
+
+export interface WSpread {
+  count: number;
+  median: number;
+  p90: number;
+}
+
+export interface WCostTotal {
+  value: number;
+  partial: boolean;
+  reported_tasks: number;
+  unreported_tasks: number;
+}
+
+/** GET /reports/analytics. Each metric is its value, or a WNullMetric with the reason. */
+export interface WAnalytics {
+  range: { from: string | null; to: string | null };
+  runs: { total: number; by_state: Record<string, number>; by_type: Record<string, number> };
+  lead_time_seconds: WSpread | WNullMetric;
+  acceptance_rate: { value: number; accepted: number; decided: number } | WNullMetric;
+  approval_wait_seconds: Record<string, WSpread | WNullMetric> | WNullMetric;
+  tasks: { by_role: Record<string, { count: number; median_seconds: number | null }> } | WNullMetric;
+  retries: { total: number } | WNullMetric;
+  provider_failure_rate: Record<string, { value: number; failures: number; tasks: number } | WNullMetric>;
+  cost: { total: WCostTotal | WNullMetric; partial: boolean; by_task: Record<string, number>; by_role: Record<string, number>; by_provider: Record<string, number> };
+  tdd: { cycles: { total: number; accepted: number; rejected: Record<string, number> } } | WNullMetric;
+  verification: {
+    pass_rate: Record<string, { value: number; passed: number; total: number }> | WNullMetric;
+    first_attempt_pass_rate: { value: number; passed_first: number; verified: number } | WNullMetric;
+  };
+  rework: { spec_revisions: number; gherkin_revisions: number; changes_requested: number; findings_routed: number } | WNullMetric;
+}

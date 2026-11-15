@@ -86,7 +86,8 @@ If a session stops or hits a usage limit, `sentinel resume <slug>` shows the nex
 - `sentinel scrub` clears tokens, emails, credentials, and home paths from runs and cache.
 - `sentinel sync push <slug> --auto` (by default; with `state.auto_sync_push: false`, `--yes` after you approve) merges the new specs, regression tests, and proposed invariants into the shared repo's main branch, with no pull request. If the merge conflicts, the agent resolves it and runs `sentinel sync push <slug> --continue`. It refuses if the scrub check fails.
 - `sentinel run finish <slug>` closes the run and releases the lock.
-- `sentinel stats` shows tier mix, escalations, average rounds, and cost per stage.
+- `sentinel stats` shows tier mix, escalations, average rounds, and cost per stage. For version 2 runs its `v2` key (and `sentinel stats --from 2026-11-01 --to 2026-11-30 --format md`) reports lead time, acceptance rate, approval wait, provider failure rate, TDD cycles, verification pass rate, rework and the cost that tasks reported. A value that cannot be computed is shown as not reported, with the reason; nothing is estimated. Lead time covers runs that finished as completed or failed (a cancelled run is left out); acceptance rate counts completed runs that were accepted or rejected; approval wait runs from the latest matching request to the decision and is never negative; verification rates use finished runs only. The dashboard shows the same numbers under Reports.
+- `sentinel notifications` lists what needs you (approvals waiting, runs that need a human, failed verification, results to accept). `sentinel notifications read <id>` or `read --all` marks them read; the read state is kept only in `~/.config/sentinel/user.db`.
 - `sentinel clean` prunes old runs and cache. `sentinel clean --db` also drops the throwaway QA schemas.
 
 ## Running a stage by hand or on another tool

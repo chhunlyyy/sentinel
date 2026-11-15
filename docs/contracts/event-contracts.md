@@ -46,7 +46,6 @@ Events are rows in the append-only `events` table (`docs/architecture/data-archi
 | `config.saved` | scope, version, sha256 |
 | `project.created` / `project.updated` / `repository.added` / `repository.removed` | ids |
 | `publish.requested` / `publish.done` | target, commit |
-| `notification.created` | level, text, link |
 
 ## 3. SSE
 
@@ -60,12 +59,21 @@ Events are rows in the append-only `events` table (`docs/architecture/data-archi
 
 ## 4. Notification rules
 
-| Event | Notification |
-|---|---|
-| `approval.requested` | "Specification (or Gherkin) ready for review" |
-| `approval.decided` with changes requested | "Changes requested" |
-| `run.state_changed` to NEEDS_HUMAN or BLOCKED | reason |
-| `task.finished` FAILED | role, error |
-| `evidence.recorded` failed (verification) | kind |
-| `run.status_changed` COMPLETED | acceptance result |
-| provider unavailable (task.finished with E_PROVIDER) | provider name |
+Notifications are not stored. `sentinel notifications` and `GET /api/v1/notifications` apply this table to the `events` table of each registered workspace (version 2 runs only) when asked; the notification id is `<project>:<event id>`. Only the read state is stored, in `~/.config/sentinel/user.db` (project, workspace registry id, event id, event time, read time). Marking a notification read is not audited and decides nothing.
+
+| Event | Level | Notification (text; link) |
+|---|---|---|
+| `approval.requested` | action | "Specification ready for review" or "Gherkin ready for review"; `/tasks/<slug>/specification` or `/gherkin` |
+| `approval.decided` with changes requested | info | "Changes requested"; the gate page |
+| `run.created` | info | "Run started"; `/tasks/<slug>` |
+| `run.state_changed` to NEEDS_HUMAN | action | the reason; `/tasks/<slug>` |
+| `run.state_changed` to BLOCKED | warning | the reason; `/tasks/<slug>` |
+| `task.finished` FAILED | warning | "<role> failed: <error code>"; `/tasks/<slug>/workflow` |
+| `task.finished` FAILED with E_PROVIDER (provider unavailable) | warning | "Provider <name> unavailable"; `/tasks/<slug>/workflow` |
+| `evidence.recorded` failed (verification) | warning | "Verification failed: <kind>"; `/tasks/<slug>/verification` |
+| `run.status_changed` completed, acceptance pending | action | "Run completed, waiting for acceptance"; `/tasks/<slug>/verification` |
+| `run.status_changed` completed, accepted | info | "Run accepted"; `/tasks/<slug>` |
+| `run.status_changed` completed, rejected | warning | "Run rejected"; `/tasks/<slug>` |
+| `run.status_changed` failed | warning | "Run failed"; `/tasks/<slug>` |
+
+Every other event, including `approval.decided` with approve, `task.finished` COMPLETED and passing evidence, gives no notification. The text is scrubbed like every other API text. The dashboard translates `/tasks/<slug>...` into the screen of the run in the notification's project.

@@ -1,4 +1,5 @@
 import type * as T from '../src/api/types.ts';
+import { analyticsSmall } from './reports.ts';
 import type { Db, ProjectData, RunData } from './db.ts';
 import { G1, H1, H2, REPORT } from './constants.ts';
 
@@ -252,6 +253,7 @@ const config = (): T.Configuration => ({
     { path: 'tdd.max_cycles', value: 5, category: 'TDD', source: 'default' },
     { path: 'verification.required', value: ['test'], category: 'Verification', source: 'project' },
     { path: 'limits.max_retries', value: 3, category: 'Limits', source: 'default' },
+    { path: 'notifications.desktop', value: true, category: 'Other', source: 'default' },
     { path: 'limits.task_timeout', value: 1200, category: 'Limits', source: 'project', overrides: { source: 'global', value: 900 } },
   ],
 });
@@ -312,6 +314,8 @@ export function twoProjects(): Db {
       },
     },
     runs: { 'digital-hr/leave-balance': lb, 'digital-hr/leave-form': lf, 'digital-hr/old-fix': of, 'payroll/tax-form': tf },
+    notifications: [],
+    analytics: { 'digital-hr': analyticsSmall(), payroll: analyticsSmall() },
   };
 }
 

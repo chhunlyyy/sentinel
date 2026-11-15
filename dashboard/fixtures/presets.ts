@@ -1,6 +1,7 @@
 import type * as T from '../src/api/types.ts';
 import type { Db, RunData } from './db.ts';
 import { G1, GTAX, H2, H3 } from './constants.ts';
+import { analyticsEmpty, analyticsPartialCost, fourNotifications } from './reports.ts';
 import { digitalHrData, repo, summary } from './two-projects.ts';
 
 function setApproval(run: RunData, gate: 'specification' | 'gherkin', state: string, version: number, sha: string) {
@@ -89,6 +90,15 @@ export function applyPreset(db: Db, name: string): void {
       db.runtime.projects = ['digital-hr'];
       return;
     }
+    case 'notifications':
+      db.notifications = fourNotifications();
+      return;
+    case 'analytics-empty':
+      db.analytics['digital-hr'] = analyticsEmpty();
+      return;
+    case 'analytics-partial-cost':
+      db.analytics['digital-hr'] = analyticsPartialCost();
+      return;
     default:
       throw new Error(`unknown preset ${name}`);
   }

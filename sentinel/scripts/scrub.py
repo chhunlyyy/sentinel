@@ -11,6 +11,7 @@ EMAIL_ALLOWED = re.compile(r"@(example\.(com|org|net)|localhost|users\.noreply\.
 SECRET_PATTERNS = [
     ("jwt", r"eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
     ("private key", r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    ("github token", r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
     ("aws key", r"\bAKIA[0-9A-Z]{16}\b"),
     ("bearer token", r"(?i)\bbearer\s+[A-Za-z0-9._~+/-]{24,}=*"),
     ("url credentials", r"(?i)\b([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@"),

@@ -12,6 +12,7 @@ import scrub
 from engine import Engine
 from errors import SentinelError
 from paths import ROOT
+from util import connect_ro
 from registry import Registry
 
 from . import userdir
@@ -142,7 +143,7 @@ class ProjectSet:
         if not db.exists():
             yield None
             return
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=10)
+        conn = connect_ro(db, timeout=10)
         conn.row_factory = sqlite3.Row
         try:
             yield conn

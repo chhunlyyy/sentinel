@@ -8,6 +8,8 @@ import { TasksScreen, RunsScreen, QualityScreen, CreateTaskScreen } from './scre
 import { ApprovalsScreen } from './screens/Approvals.tsx';
 import { RunScreen } from './screens/Run.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
+import { ReportsScreen } from './screens/Reports.tsx';
+import { NotificationBell } from './components/Notifications.tsx';
 
 function NotFound({ message }: { message: string }) {
   return (
@@ -47,6 +49,8 @@ function screenFor(route: Route): ReactNode {
       return <RunsScreen />;
     case 'quality':
       return <QualityScreen />;
+    case 'reports':
+      return <ReportsScreen />;
     case 'settings':
       return <SettingsScreen page={s[1] ?? 'installation'} />;
     default:
@@ -81,7 +85,7 @@ export class ScreenBoundary extends Component<{ children: ReactNode; resetKey: s
 }
 
 const TITLES: Record<string, string> = {
-  projects: 'Projects', tasks: 'Tasks', approvals: 'My Approvals', runs: 'Runs', quality: 'Quality', settings: 'Settings',
+  projects: 'Projects', tasks: 'Tasks', approvals: 'My Approvals', runs: 'Runs', quality: 'Quality', reports: 'Reports', settings: 'Settings',
 };
 
 export function titleFor(path: string): string {
@@ -105,6 +109,7 @@ function Nav({ path }: { path: string }) {
     { to: '/approvals', label: 'My Approvals', match: (p) => p.startsWith('/approvals') },
     { to: '/runs', label: 'Runs', match: (p) => p === '/runs' },
     { to: '/quality', label: 'Quality', match: (p) => p === '/quality' },
+    { to: '/reports', label: 'Reports', match: (p) => p === '/reports' },
     { to: '/settings', label: 'Settings', match: (p) => p.startsWith('/settings') },
   ];
   return (
@@ -155,6 +160,7 @@ function Shell() {
       </a>
       <aside className="sidebar">
         <span className="brand">Sentinel</span>
+        <NotificationBell />
         <Nav path={route.path} />
         <div className="statusbar">
           <span role="status" data-testid="connection-status">

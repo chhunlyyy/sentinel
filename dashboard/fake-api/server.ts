@@ -354,6 +354,35 @@ route('GET', `${V}/audit`, (c) => {
   return [200, { items: pg.items, next: pg.next }];
 });
 
+route('GET', `${V}/notifications`, (c) => {
+  const pid = c.query.get('project');
+  if (pid && !db.projects.some((p) => p.id === pid)) throw new ApiErr(404, 'E_NOT_FOUND', 'project not found');
+  const all = db.notifications.filter((n) => !pid || n.project === pid).sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+  const shown = c.query.get('unread') ? all.filter((n) => !n.read_at) : all;
+  const pg = page(shown, c.query);
+  return [200, { items: pg.items, next: pg.next, unread: all.filter((n) => !n.read_at).length, unavailable: [] }];
+});
+route('POST', `${V}/notifications/{id}/read`, (c) => {
+  const id = c.params[0];
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*:\d+$/.test(id)) throw new ApiErr(400, 'E_VALIDATION', 'bad notification id', { field: 'id' });
+  const n = db.notifications.find((x) => x.id === id);
+  if (!n) throw new ApiErr(404, 'E_NOT_FOUND', 'no such notification');
+  n.read_at ??= '2026-11-14T11:30:00.000000Z';
+  return [200, n];
+});
+route('GET', `${V}/reports/analytics`, (c) => {
+  for (const k of c.query.keys()) if (!['project', 'from', 'to'].includes(k)) throw new ApiErr(400, 'E_VALIDATION', `unknown query parameter ${k}`, { field: k });
+  const pid = c.query.get('project');
+  if (!pid) throw new ApiErr(400, 'E_VALIDATION', 'project is required', { field: 'project' });
+  const a = db.analytics[pid];
+  if (!a) throw new ApiErr(404, 'E_NOT_FOUND', 'project not found');
+  const from = c.query.get('from') || null;
+  const to = c.query.get('to') || null;
+  for (const [k, v] of [['from', from], ['to', to]] as const) if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new ApiErr(400, 'E_VALIDATION', `${k} must be YYYY-MM-DD`, { field: k });
+  if (from && to && from > to) throw new ApiErr(400, 'E_VALIDATION', 'from must not be after to', { field: 'from' });
+  return [200, { ...a, range: { from, to } }];
+});
+
 route('POST', `${V}/tasks/{slug}/approvals`, (c) => {
   const { run } = resolveRun(c.params[0], c.query);
   const b = body(c);

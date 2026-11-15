@@ -1,0 +1,120 @@
+{
+  "acceptance_rate": {
+    "reason": "no decided runs",
+    "value": null
+  },
+  "approval_wait_seconds": {
+    "gherkin": {
+      "count": 1,
+      "median": 0.00203,
+      "p90": 0.00203
+    },
+    "specification": {
+      "count": 3,
+      "median": 0.00125,
+      "p90": 0.165861
+    }
+  },
+  "cost": {
+    "by_provider": {},
+    "by_role": {},
+    "by_task": {},
+    "partial": false,
+    "total": {
+      "reason": "not reported",
+      "value": null
+    }
+  },
+  "lead_time_seconds": {
+    "reason": "no finished runs",
+    "value": null
+  },
+  "provider_failure_rate": {
+    "agy": {
+      "reason": "no tasks for this provider",
+      "value": null
+    },
+    "claude": {
+      "reason": "no tasks for this provider",
+      "value": null
+    },
+    "codex": {
+      "reason": "no tasks for this provider",
+      "value": null
+    },
+    "fake": {
+      "reason": "no tasks for this provider",
+      "value": null
+    },
+    "gemini": {
+      "reason": "no tasks for this provider",
+      "value": null
+    },
+    "native": {
+      "failures": 0,
+      "tasks": 5,
+      "value": 0.0
+    }
+  },
+  "range": {
+    "from": "2020-01-01",
+    "to": null
+  },
+  "retries": {
+    "total": 0
+  },
+  "rework": {
+    "changes_requested": 0,
+    "findings_routed": 0,
+    "gherkin_revisions": 0,
+    "spec_revisions": 0
+  },
+  "runs": {
+    "by_state": {
+      "EXECUTING": 1,
+      "GHERKIN_REVIEW": 1,
+      "SPECIFICATION_APPROVED": 1
+    },
+    "by_type": {
+      "feature": 3
+    },
+    "total": 3
+  },
+  "tasks": {
+    "by_role": {
+      "specifier": {
+        "count": 3,
+        "median_seconds": 0.007
+      },
+      "tdd_red": {
+        "count": 3,
+        "median_seconds": null
+      },
+      "test_designer": {
+        "count": 3,
+        "median_seconds": 0.008
+      }
+    }
+  },
+  "tdd": {
+    "cycles": {
+      "accepted": 0,
+      "rejected": {
+        "green": 0,
+        "red": 0,
+        "refactor": 0
+      },
+      "total": 3
+    }
+  },
+  "verification": {
+    "first_attempt_pass_rate": {
+      "reason": "no verification evidence",
+      "value": null
+    },
+    "pass_rate": {
+      "reason": "no verification evidence",
+      "value": null
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "at": "2026-11-15T10:57:50.894847Z",
+  "id": "digital-hr:52",
+  "level": "action",
+  "link": "/tasks/gherkin-run/gherkin",
+  "project": "digital-hr",
+  "read_at": "2026-11-15T10:57:51.034079Z",
+  "run": "gherkin-run",
+  "text": "Gherkin ready for review"
+}

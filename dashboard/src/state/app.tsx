@@ -10,6 +10,10 @@ import { createResource, type Resource, type ResourceState } from './resource.ts
 export interface Scope {
   project?: string;
   run?: string;
+  /** only events of these types refetch the view (resync messages and reconnects always do); every type when absent */
+  types?: readonly string[];
+  /** false: a resync message does not refetch the view (reconnects still do) */
+  resync?: boolean;
 }
 
 interface Registration {
@@ -34,6 +38,7 @@ export function createHub(): Hub {
     },
     dispatch(ev) {
       for (const { resource, scope } of regs) {
+        if (scope.types && !scope.types.includes(ev.type)) continue;
         if (scope.run) {
           if (ev.project === scope.project && ev.run === scope.run) resource.invalidate();
         } else if (scope.project) {
@@ -42,7 +47,7 @@ export function createHub(): Hub {
       }
     },
     resync(projects) {
-      for (const { resource, scope } of regs) if (!scope.project || projects.includes(scope.project)) resource.invalidate();
+      for (const { resource, scope } of regs) if (scope.resync !== false && (!scope.project || projects.includes(scope.project))) resource.invalidate();
     },
     refetchAll() {
       for (const { resource } of regs) resource.invalidate();
@@ -109,7 +114,7 @@ export function useResource<T>(key: string, fetcher: (client: Client, signal: Ab
   const app = useApp();
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
-  const scopeKey = `${scope.project ?? ''}/${scope.run ?? ''}`;
+  const scopeKey = `${scope.project ?? ''}/${scope.run ?? ''}/${(scope.types ?? []).join(',')}/${scope.resync === false ? 'n' : ''}`;
   const [resource, setResource] = useState<Resource<T> | null>(null);
 
   useEffect(() => {

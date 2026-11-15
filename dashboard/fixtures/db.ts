@@ -1,4 +1,5 @@
 import type * as T from '../src/api/types.ts';
+import type * as W from '../src/api/wire.ts';
 
 export interface RunData {
   detail: T.Run;
@@ -38,4 +39,8 @@ export interface Db {
   projectData: Record<string, ProjectData>;
   /** keyed "<project>/<slug>" */
   runs: Record<string, RunData>;
+  /** notifications as served by GET /notifications; read_at is set by the fake when a notification is marked read */
+  notifications: W.WNotification[];
+  /** analytics as served by GET /reports/analytics, by project id */
+  analytics: Record<string, W.WAnalytics>;
 }

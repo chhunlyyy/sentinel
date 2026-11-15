@@ -68,6 +68,12 @@
       "value": 2
     },
     {
+      "key": "notifications.desktop",
+      "overridden": [],
+      "source": "default",
+      "value": true
+    },
+    {
       "key": "policies.max_parallel_tasks",
       "overridden": [],
       "source": "default",
@@ -368,5 +374,5 @@
     }
   ],
   "project": "digital-hr",
-  "sha256": "12b19bf87ce77d3debc97b58593a16ab6f8fbe520cf192d4bce078e6ad9b768c"
+  "sha256": "21900ea904e345255be46e65da3a72b4085d1c26f19b551090fbf82e07b19063"
 }

@@ -10,10 +10,10 @@ import { fakeAnswers } from './answers.ts';
 const RECORDED = process.env.SENTINEL_FIXTURES_DIR ?? join(process.cwd(), 'fixtures', 'recorded');
 
 /** Paths whose keys depend on the data (maps), or whose shape depends on a kind field; only their value types are compared. */
-const MAPS = [/\.approvals$/, /\.task_counts$/, /\.commands$/];
+const MAPS = [/\.approvals$/, /\.task_counts$/, /\.commands$/, /^analytics\.runs\.by_(state|type)$/];
 /** The next step has fields that depend on its kind; only the kind is compared. Config values hold any JSON value. */
 const KIND_ONLY = [/\.next$/, /^next$/];
-const ANY = [/\.value$/, /\.overridden\[\]\.value$/, /^report\.report$/];
+const ANY = [/\.value$/, /\.overridden\[\]\.value$/, /^report\.report$/, /^analytics\.(?!range$|runs$)[a-z_]+$/];
 /** Recorded answers the fake does not reproduce, with the reason. */
 export const NOT_COMPARED: Record<string, string> = {};
 

@@ -109,8 +109,12 @@ class Recorder(SV, PD):
         info = self.eng_review_hash("spec-run")
         body = {"gate": "specification", "sha256": info, "confirmation": info[:8], "decision": "approve"}
         self.save("decision", h.post("/api/v1/tasks/spec-run/approvals", body))
+        notes = self.save("notifications", h.get("/api/v1/notifications"))
+        self.assertTrue(notes["items"], "the seeded runs produce notifications")
+        self.save("notification_read", h.post(f"/api/v1/notifications/{notes['items'][0]['id']}/read", {}))
+        self.save("analytics", h.get("/api/v1/reports/analytics?project=digital-hr&from=2020-01-01"))
         names = sorted(p.stem for p in self.out.glob("*.json"))
-        self.assertGreaterEqual(len(names), 27, names)
+        self.assertGreaterEqual(len(names), 30, names)
         self.compare_with_committed(names)
         if os.environ.get("SENTINEL_RECORD_FIXTURES") == "1":
             shutil.rmtree(COMMITTED, ignore_errors=True)

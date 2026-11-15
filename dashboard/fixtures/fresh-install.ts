@@ -9,5 +9,7 @@ export function freshInstall(): Db {
     projects: [],
     projectData: {},
     runs: {},
+    notifications: [],
+    analytics: {},
   };
 }

@@ -70,6 +70,9 @@ export const calls = {
   report: async (c: Client, slug: string, project: string) => A.report(await c.get<W.WReport>(buildPath('report', { slug }, { format: 'json', project }))),
   approvals: (c: Client) => c.get<T.Page<W.WApprovalItem>>(buildPath('approvals', {}, { state: 'IN_REVIEW' })),
   audit: async (c: Client, project: string, cursor?: string | null) => page(await c.get<T.Page<W.WAudit>>(buildPath('audit', {}, { project, limit: 50, cursor })), A.audit),
+  notifications: (c: Client) => c.get<W.WNotifications>(buildPath('notifications', {}, { limit: 50 })),
+  markNotificationRead: (c: Client, id: string) => c.post<W.WNotification>(buildPath('notificationRead', { id }), {}),
+  analytics: (c: Client, project: string, from: string, to: string) => c.get<W.WAnalytics>(buildPath('analytics', {}, { project, from, to })),
   decide: async (c: Client, slug: string, project: string, body: { gate: 'specification' | 'gherkin' } & Record<string, unknown>) =>
     A.decision(await c.post<W.WRun>(buildPath('decide', { slug }, proj(project)), body), body.gate),
   accept: async (c: Client, slug: string, project: string, body: { decision: string; comment?: string | null } & Record<string, unknown>) =>

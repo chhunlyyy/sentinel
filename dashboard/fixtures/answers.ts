@@ -2,6 +2,7 @@
 // built from the same fixtures and encoders the fake server uses.
 import * as E from './encode.ts';
 import { applyPreset } from './presets.ts';
+import { analyticsSmall, fourNotifications } from './reports.ts';
 import { twoProjects } from './two-projects.ts';
 
 export function fakeAnswers(): Record<string, unknown> {
@@ -50,5 +51,8 @@ export function fakeAnswers(): Record<string, unknown> {
     log: E.log(task, lb.logs['t-green1'].lines, 40, 0, false),
     decision: E.run(decided.detail, decided.next),
     report: db.runs['digital-hr/leave-form'].report,
+    notifications: { items: fourNotifications(), next: null, unread: 4, unavailable: [] },
+    analytics: analyticsSmall(),
+    notification_read: { ...fourNotifications()[0], read_at: '2026-11-14T11:30:00.000000Z' },
   };
 }

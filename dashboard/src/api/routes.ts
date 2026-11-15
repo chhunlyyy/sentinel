@@ -38,6 +38,9 @@ export const ROUTES = {
   control: { method: 'POST', pattern: '/api/v1/tasks/{slug}/control' },
   audit: { method: 'GET', pattern: '/api/v1/audit' },
   events: { method: 'GET', pattern: '/api/v1/events' },
+  notifications: { method: 'GET', pattern: '/api/v1/notifications' },
+  notificationRead: { method: 'POST', pattern: '/api/v1/notifications/{id}/read' },
+  analytics: { method: 'GET', pattern: '/api/v1/reports/analytics' },
 } as const satisfies Record<string, Route>;
 
 export type RouteName = keyof typeof ROUTES;

@@ -5,10 +5,11 @@ test.describe('app shell: navigation', () => {
   test('AC-DSH-01a the main navigation', async ({ page }) => {
     await open(page, '/');
     const n = nav(page);
-    for (const name of ['Overview', 'Projects', 'Tasks', 'My Approvals', 'Runs', 'Quality', 'Settings']) {
+    for (const name of ['Overview', 'Projects', 'Tasks', 'My Approvals', 'Runs', 'Quality', 'Reports', 'Settings']) {
       await expect(n.getByRole('link', { name: new RegExp(`^${name}`) })).toBeVisible();
     }
-    for (const name of ['Notifications', 'Reports', 'Agents', 'Providers', 'Users and Permissions']) {
+    // Phase H: Reports is a menu entry; the notification bell is a button, not a menu entry
+    for (const name of ['Notifications', 'Agents', 'Providers', 'Users and Permissions']) {
       await expect(n.getByRole('link', { name })).toHaveCount(0);
     }
     await expect(n.getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page');

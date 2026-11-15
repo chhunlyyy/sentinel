@@ -6,6 +6,9 @@ from urllib.parse import unquote
 from errors import SentinelError
 from paths import slug_problem
 
+import analytics
+import notifications
+
 from . import ops, readroutes, views
 from .projects import scrub_obj
 from .status import HttpError
@@ -257,6 +260,52 @@ def h_events(ctx):
     return 200, StreamRequest(project.id if project else None, run)
 
 
+# ---- Phase H part A: notifications and analytics (read side; mark-read writes only ~/.config/sentinel/user.db)
+def _notification_sources(ctx):
+    return notifications.sources_from_projects(ctx.projects, ctx.projects.scrubber)
+
+
+def _user_db(ctx):
+    return ctx.api.cfgdir / notifications.USER_DB
+
+
+def h_notifications(ctx):
+    pid = ctx.query.get("project")
+    if pid:
+        ctx.projects.get(pid)
+    limit = views.parse_limit(ctx.query)
+    cursor = views.decode_cursor(ctx.query["cursor"], 3) if ctx.query.get("cursor") else None
+    if cursor and not (isinstance(cursor[0], str) and isinstance(cursor[1], str) and isinstance(cursor[2], int)):
+        raise views.validation("cursor is not valid", "cursor")
+    unread = ctx.query.get("unread", "").lower() in ("1", "true", "yes")
+    result = notifications.compute(_notification_sources(ctx), _user_db(ctx), project=pid, limit=limit, cursor=cursor, unread_only=unread)
+    result["items"] = [notifications.public(n) for n in result["items"]]
+    result["next"] = views.encode_cursor(*result["next"]) if result["next"] else None
+    return 200, result
+
+
+def h_notification_read(ctx, nid):
+    try:
+        n = notifications.mark_read(_notification_sources(ctx), _user_db(ctx), nid)
+    except notifications.UserDbError as e:
+        raise HttpError("E_INTERNAL", e.message, {"fix": e.fix})
+    return 200, notifications.public(n)
+
+
+def h_analytics(ctx):
+    extra = sorted(set(ctx.query) - {"project", "from", "to"})
+    if extra:
+        raise views.validation(f"unknown query parameter {extra[0]}", extra[0])
+    pid = ctx.query.get("project")
+    if not pid:
+        raise views.validation("project is required", "project")
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    start, end = analytics.check_range(ctx.query.get("from"), ctx.query.get("to"))
+    config = ctx.projects.require(project)
+    return 200, analytics.compute(ctx.projects.db_path(project, config), start, end, providers=analytics.runner_ids(config))
+
+
 ROUTES = [
     Route("GET", "session", "session", h_session),
     Route("GET", "installation", "installation", h_installation),
@@ -292,6 +341,9 @@ ROUTES = [
     Route("GET", "config_diff", "projects/{pid}/configuration/diff", h_config_diff),
     Route("GET", "changes", "tasks/{slug}/changes", h_changes),
     Route("GET", "changes_diff", "tasks/{slug}/changes/diff", h_changes_diff),
+    Route("GET", "notifications", "notifications", h_notifications),
+    Route("POST", "notification_read", "notifications/{nid}/read", h_notification_read, ()),
+    Route("GET", "analytics", "reports/analytics", h_analytics),
 ]
 
 for _r in ROUTES:
@@ -306,7 +358,6 @@ UNBUILT = [(m, re.compile(p)) for m, p in [
     ("GET", r"fs/dirs"), ("GET", r"providers"), ("POST", r"providers/[^/]+/test"), ("GET", r"agents"),
     ("GET", r"workflows|policies|profiles"),
     ("POST", r"tasks/[^/]+/publish"),
-    ("GET|POST", r"notifications(/[^/]+/read)?"), ("GET", r"reports/analytics"),
 ]]
 
 
@@ -322,7 +373,9 @@ def match(method, path):
             continue
         if route.method == method:
             params = {k: unquote(v) for k, v in m.groupdict().items()}
-            if any(("/" in v or "\\" in v or "\0" in v) for v in params.values()):
+            # A notification id is checked by its own validator (400 E_VALIDATION), so `%00` or `..%2F` in it reach the handler;
+            # every other parameter that decodes to a slash, a backslash or a NUL is a route that does not exist.
+            if route.name != "notification_read" and any(("/" in v or "\\" in v or "\0" in v) for v in params.values()):
                 raise HttpError("E_NOT_FOUND", "no such route")
             return route, params
         allowed.append(route.method)

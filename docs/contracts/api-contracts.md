@@ -82,8 +82,9 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 
 | Method | Path | Engine function |
 |---|---|---|
-| GET | `/notifications`, POST `/notifications/{id}/read` | notifications |
-| GET | `/reports/analytics?project=&from=&to=` | analytics (missing values reported as null with reason) |
+| GET | `/notifications?project=&unread=&limit=&cursor=` | notifications computed from the events table (event-contracts section 4); answer `{items, next, unread, unavailable}`; each item is `{id, project, run, level, text, link, at, read_at}` |
+| POST | `/notifications/{id}/read` | mark one read in `~/.config/sentinel/user.db` (CSRF; no audit row; the first read time stays) |
+| GET | `/reports/analytics?project=&from=&to=` | analytics (a missing value is `{value: null, reason}`); the same answer as the `v2` key of `sentinel stats` |
 | GET | `/audit?project=` | audit log |
 
 ### Added in Phase F
@@ -112,9 +113,11 @@ Only Phase F routes exist; every other route above answers `404 E_NOT_FOUND` unt
 | `sentinel report <slug> [--json]` | any | write and print reports |
 | `sentinel run export|import` | H | bundle |
 | `sentinel dashboard [--port N] [--no-open]` | H | start or attach to the server |
+| `sentinel notifications [--unread] [--json] [--project P] [read <id>\|--all]` | any | list notifications, or mark them read |
+| `sentinel stats [--from D] [--to D] [--format json\|md]` | any | the 0.1 keys plus a `v2` key from the registry (read-only; never creates it) |
 | `sentinel backup` | H | copy registry |
 | `sentinel audit export` | H | audit log |
 
-Unchanged: `init`, `doctor`, `routing`, `sync-adapters`, `run update` (legacy runs only; refused with `E_TRANSITION` on version 2 runs), `run finish`, `resume`, `sync`, `spec set`, `metrics record`, `stats`, `shared`, `clean`, `scrub`, `release-check`, `qa-data`, `stage render`, `stage run`, `change-map`, `selftest`.
+Unchanged: `init`, `doctor`, `routing`, `sync-adapters`, `run update` (legacy runs only; refused with `E_TRANSITION` on version 2 runs), `run finish`, `resume`, `sync`, `spec set`, `metrics record`, `shared`, `clean`, `scrub`, `release-check`, `qa-data`, `stage render`, `stage run`, `change-map`, `selftest`.
 
 Exit codes: 0 ok, 1 failure, 2 usage, 3 boundary violation (kept), 4 shared-repo conflict (kept), 5 refused transition, 6 human action required.

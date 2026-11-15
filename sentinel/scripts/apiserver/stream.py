@@ -10,6 +10,8 @@ import queue
 import sqlite3
 import threading
 
+from util import connect_ro
+
 from .projects import scrub_obj
 
 BATCH = 1000
@@ -151,7 +153,7 @@ class Hub:
         db = self.projects.db_path(project, config)
         if not db.exists():
             return None
-        conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+        conn = connect_ro(db, timeout=5)
         conn.row_factory = sqlite3.Row
         return conn
 

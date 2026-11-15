@@ -94,3 +94,9 @@ Baseline: 0.1.0b7, commit `aa1481c`, `python3 sentinel/scripts/selftest.py` give
 - 2026-11-15: PE-01 review fixes (d046d60): all 16 findings fixed, 25 of 25 mutants killed. Merged into v1.1-core with PE-02 and Phase G; Phase G acceptance scenarios AC-VER-04n/04o/03g restored to approved wording; dashboard fixtures test no longer rewrites the repo (record with SENTINEL_RECORD_FIXTURES=1). Skill: native step runs `task run` first when no prompt yet.
 - Evidence (merged tree): unittest 895 OK (1 skipped), selftest 196 passed, dashboard lint clean, vitest 54, playwright 199 passed (1 skipped: AC-DSH-06g needs user namespaces).
 - Phases E and G auto-approved (delegated) 2026-11-15. Still pending the user's confirmation: acceptance audit action wording (Phase F `accepted`/`rejected` used; Phase E AC-VER-04a says `acceptance`).
+
+## Phase H notes
+
+- Part A (notifications + analytics), main tree: Opus review 3 major (clip-before-scrub secret leak, concurrent user.db writes, read-only URI not escaped), minors, 6 surviving mutants; all fixed, all listed mutants killed. Lead time counts COMPLETED and FAILED runs, not CANCELLED (the approved analytics.feature fixture overrides the orchestrator's COMPLETED-only choice). `sentinel notifications read` denied to agents (E_ACTOR in task processes). Scrubber gained a GitHub token pattern.
+- Evidence part A: unittest 962 OK (1 skipped), selftest 213 passed, dashboard lint clean, vitest 98, playwright 214 (1 skipped). Process slips: some fixes written before their tests; mutation runs confirm the tests fail on old behaviour.
+- Part B (audit chain, export, backup/restore, security suite): worktree branch `v1.1-phase-h-b`; Opus review 6 major, fixes in progress.

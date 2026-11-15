@@ -856,6 +856,7 @@ def main():
         phase_f_checks(tmp)
         phase_g_checks(tmp)
         phase_e_checks(tmp)
+        phase_h_a_checks(tmp)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))
@@ -1146,6 +1147,103 @@ def phase_g_checks(tmp):
         conf = json.loads(body)
         check("AC-CFG-06a the configuration answer carries the sha256 of the file and sourced values", status == 200 and len(conf["sha256"]) == 64 and all("source" in i for i in conf["items"]), body[:200].decode())
         check("AC-INS-06a a mutating contract route is still not offered", call("/api/v1/projects/ws-g/configuration/import", cookie, "POST")[0] in (403, 404))
+    finally:
+        srv.stop()
+
+
+def phase_h_a_checks(tmp):
+    print("notifications and analytics (phase H part A)")
+    import http.client
+    import stat as stat_mod
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from apiserver import userdir
+    from apiserver.server import ApiServer
+    home = tmp / "home-h"
+    home.mkdir()
+    env = {**ENV, "HOME": str(home), "XDG_CONFIG_HOME": ""}
+
+    def sh(args, cwd=None):
+        r = subprocess.run(CLI + args, cwd=cwd, capture_output=True, text=True, env=env)
+        return r.returncode, r.stdout, r.stderr
+    w = tmp / "ws-h"
+    w.mkdir()
+    git_repo(w / "backend", "build.gradle")
+    git_repo(w / "frontend", "next.config.ts")
+    sh(["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    fresh = tmp / "ws-h-fresh"
+    fresh.mkdir()
+    git_repo(fresh / "backend", "build.gradle")
+    git_repo(fresh / "frontend", "next.config.ts")
+    sh(["--dir", str(fresh), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    cfgdir = home / ".config" / "sentinel"
+    code, out, err = sh(["--dir", str(w), "run", "new", "h-run", "--type", "feature"])
+    check("a version 2 run is created for the notification checks", code == 0, err[-200:])
+    check("sentinel notifications creates nothing when no project is registered", sh(["notifications", "--json"])[0] == 0 and not cfgdir.exists())
+    userdir.ensure_dir(cfgdir)
+    data = userdir.load_projects(cfgdir)
+    data["projects"].append({"id": "ws-h", "name": "ws-h", "path": str(w.resolve()), "added_at": "2026-11-14T00:00:00Z"})
+    userdir.save_projects(cfgdir, data)
+    code, out, err = sh(["notifications", "--json"])
+    listing = json.loads(out) if code == 0 else {}
+    texts = [n["text"] for n in listing.get("items", [])]
+    check("AC-NOT-01a a new run gives the notification Run started, computed from the events table", code == 0 and "Run started" in texts and listing.get("unread", 0) >= 1, out[-200:] + err[-200:])
+    check("AC-NOT-01d reading notifications does not create user.db", not (cfgdir / "user.db").exists())
+    code, out, err = sh(["notifications", "read", "--all"])
+    db = cfgdir / "user.db"
+    check("AC-NOT-01o user.db is created 0600 by the first mark read", code == 0 and db.exists() and stat_mod.S_IMODE(db.stat().st_mode) == 0o600, err[-200:])
+    code, out, err = sh(["notifications", "--unread"])
+    check("AC-NOT-01i notifications --unread prints nothing after read --all", code == 0 and out.strip() == "", out[-200:])
+    code, out, err = sh(["notifications", "read", "ws-h:abc"])
+    check("AC-NOT-01k a malformed notification id is refused", code != 0 and "E_VALIDATION" in err, err[-200:])
+    code, out, err = sh(["--dir", str(w), "stats"])
+    stats = json.loads(out) if code == 0 else {}
+    check("AC-ANL-01f stats keeps its 0.1 keys and adds v2", all(k in stats for k in ("runs", "by_tier", "escalated_runs", "outcomes", "avg_rounds", "stage_isolation", "tokens_by_stage", "seconds_by_stage")) and stats.get("v2", {}).get("runs", {}).get("total") == 1, out[-200:] + err[-200:])
+    code, out, err = sh(["--dir", str(w), "stats", "--format", "md", "--from", "2000-01-01"])
+    check("AC-ANL-01g stats --format md prints a Markdown table", code == 0 and "| Metric | Value |" in out and "| runs.total | 1 |" in out, out[-200:])
+    code, out, err = sh(["--dir", str(w), "stats", "--from", "2026-13-01"])
+    check("AC-ANL-01h a bad date exits 2 naming the argument", code == 2 and "--from" in err, err[-200:])
+    registry = fresh / ".sentinel" / "sentinel.db"
+    existed = registry.exists()
+    code, out, err = sh(["--dir", str(fresh), "stats"])
+    check("AC-ANL-01i stats opens no registry that does not exist and creates none", code == 0 and json.loads(out)["v2"] == {"value": None, "reason": "no registry"} and registry.exists() == existed, out[-200:] + err[-200:])
+    before = hashlib.sha256((w / ".sentinel" / "sentinel.db").read_bytes()).hexdigest()
+    sh(["--dir", str(w), "stats"])
+    check("AC-ANL-01l analytics never write to the registry", hashlib.sha256((w / ".sentinel" / "sentinel.db").read_bytes()).hexdigest() == before)
+
+    srv = ApiServer(cfgdir, port=0, user="dev", git_name="Dev User", dispatch=False)
+    srv.start()
+    try:
+        def call(path, cookie=None, method="GET", csrf=None):
+            conn = http.client.HTTPConnection("127.0.0.1", srv.port, timeout=20)
+            conn.putrequest(method, path, skip_host=True, skip_accept_encoding=True)
+            conn.putheader("Host", f"127.0.0.1:{srv.port}")
+            if cookie:
+                conn.putheader("Cookie", f"sentinel_session={cookie}")
+            if csrf:
+                conn.putheader("X-Sentinel-CSRF", csrf)
+            if method == "POST":
+                conn.putheader("Content-Type", "application/json")
+                conn.putheader("Content-Length", "2")
+            conn.endheaders()
+            if method == "POST":
+                conn.send(b"{}")
+            resp = conn.getresponse()
+            body = resp.read()
+            headers = dict(resp.getheaders())
+            conn.close()
+            return resp.status, headers, body
+        status, headers, _ = call(f"/auth?t={srv.token}")
+        cookie = headers["Set-Cookie"].split(";", 1)[0].split("=", 1)[1]
+        check("AC-NOT-01j the notification routes need the session cookie", call("/api/v1/notifications")[0] == 401)
+        status, _, body = call("/api/v1/notifications", cookie)
+        answer = json.loads(body)
+        check("AC-NOT-03c the API serves notifications with only id, project, run, level, text, link, at and read_at", status == 200 and answer["items"] and all(set(n) == {"id", "project", "run", "level", "text", "link", "at", "read_at"} for n in answer["items"]), body[:200].decode())
+        nid = answer["items"][0]["id"]
+        status, _, body = call(f"/api/v1/notifications/{nid}/read", cookie, "POST")
+        check("AC-NOT-01j marking read without the CSRF value is refused", status == 403 and b"E_CSRF" in body, body[:200].decode())
+        status, _, body = call("/api/v1/reports/analytics?project=ws-h", cookie)
+        check("AC-ANL-01n the analytics route answers the v2 section", status == 200 and json.loads(body)["runs"]["total"] == 1, body[:200].decode())
+        check("AC-ANL-01o an unknown analytics query parameter is refused", call("/api/v1/reports/analytics?project=ws-h&sql=select", cookie)[0] == 400)
     finally:
         srv.stop()
 
