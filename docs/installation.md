@@ -75,7 +75,7 @@ What you get:
 |---|---|
 | `/sentinel <task>` | runs a feature or bug fix through the pipeline at the right tier |
 | `/sentinel-setup` | connects the team's shared repo, picks the project shape, writes the config |
-| `/sentinel-resume` | continues an interrupted run |
+| `/sentinel-resume` | continues an interrupted run (`sentinel next <slug> --json` for a version 2 run) |
 | `/sentinel-status` | setup health, open runs, statistics |
 | `/sentinel-sync` | publishes a finished run to the shared repo, after approval |
 | `/sentinel-change-map` | builds the HTML map of what a run changed |

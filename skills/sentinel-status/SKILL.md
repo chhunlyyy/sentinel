@@ -10,3 +10,4 @@ Report the state of Sentinel in this workspace. Read only; change nothing.
 3. Runs: read `.sentinel/runs/*/state.json`. For each run give the slug, the tier (and the starting tier if it changed), the completed stages, the rounds used, and whether it is open or finished with its outcome.
 4. Run `sentinel stats` and summarize: the number of runs, the tier mix, escalations, average rounds, and tokens and seconds per stage when recorded.
 5. Finish with the single most useful next action, for example `sentinel resume <slug>` for an open run, or `sentinel sync pull` when the shared repo is behind.
+6. For a version 2 run, `sentinel report <slug>` writes and prints its report; use it for the run's state, evidence and acceptance, and `sentinel next <slug> --json` for what is allowed now.

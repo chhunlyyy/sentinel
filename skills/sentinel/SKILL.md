@@ -1,6 +1,6 @@
 ---
 name: sentinel
-description: Runs a tiered build pipeline for any feature or bug fix. Picks an effort tier from the size and risk of the task, then runs only the stages that tier needs (repro, specifier, coder, cleaner, hardener, reviewer, QA, regression promotion, release check, docs, rollout notes, retrospective). Use when asked to "run sentinel", to use /sentinel, "do this properly end to end", or to implement a feature or fix a bug with the right level of rigor. The requester can override the tier with "light" or "full".
+description: Drives a Sentinel run for any feature or bug fix. A version 2 run follows `sentinel next`, which says what is allowed and what a human must decide; a 0.1 run (--tier, --adhoc, --legacy) uses a tiered pipeline of repro, specifier, coder, cleaner, hardener, reviewer, QA, regression promotion, release check, docs, rollout notes and retrospective. Use when asked to "run sentinel", to use /sentinel, "do this properly end to end", or to implement a feature or fix a bug with the right level of rigor.
 ---
 
 You are the orchestrator. The pipeline contract is `pipeline.md`, next to this file; this file is how you drive it. The config is `sentinel.config.yaml` at the workspace root. While you orchestrate you do not write source code; the stages do.
@@ -9,7 +9,58 @@ You are the orchestrator. The pipeline contract is `pipeline.md`, next to this f
 
 Each stage is also installed as its own skill (`sentinel-repro`, `sentinel-spec`, `sentinel-code`, `sentinel-clean`, `sentinel-harden`, `sentinel-review`, `sentinel-qa`, `sentinel-promote`, `sentinel-docs`, `sentinel-rollout`, `sentinel-retro`, `sentinel-release-check`) so a requester can run one stage alone. If the requester wants only one stage, point them to that skill instead of starting a pipeline run.
 
-## Commands you use
+## Which flow applies
+
+A run created with --tier, --adhoc or --legacy is a 0.1 run, any other run is version 2. Follow "Version 2 runs" for a version 2 run and "Legacy runs (0.1)" for a 0.1 run. For an existing slug, read `.sentinel/runs/<slug>/state.json`: `"schema_version"` 2 means version 2. If `sentinel next <slug>` refuses a 0.1 run, it is a 0.1 run. If the requester gives no flag, create a version 2 run.
+
+## Setup check (every time, before anything else)
+
+Run `sentinel doctor`. If it reports a problem:
+
+- No `sentinel.config.yaml`: use the `sentinel-setup` skill, or run `sentinel init` and answer its questions together with the requester.
+- The shared repo is missing or not cloned: stop here. Ask the requester for the clone URL of their team's private shared repo (an empty private git repository their team owns; for a quick local trial, a bare repo on disk works). Then run `sentinel shared set <url>`. If that repo was empty, Sentinel commits starter files locally; tell the requester to publish them once with the command it prints. Do not triage or start a run until `sentinel doctor` no longer reports the shared repo.
+- Any other problem: show it to the requester. Continue only if it is something this task does not need.
+
+## Version 2 runs
+
+The engine decides what happens next. You ask it, do exactly that one thing, and ask again. You never decide order, loops, retries or acceptance.
+
+Create the run with `sentinel run new <slug> --type feature` (`--type` is one of feature, bug, docs, refactor, migration, security). Then loop:
+
+1. Run `sentinel next <slug> --json`. Read its `kind`. Exit code 0 means act; exit code 6 means a human must act.
+2. Do the single action for that kind, then go back to step 1.
+
+| `kind` | What you do |
+|---|---|
+| `task` | If the step's `adapter` is `"cli"`, run `sentinel task run <task-id>` (the engine starts the tool, checks its write boundary and records the result). If the `adapter` is `"native"`, start a fresh subagent whose task is the step's `prompt` file, wait for it to finish (it writes the step's `result` file), then run `sentinel task complete <task-id>`. |
+| `orchestrator` | Run the exact command or write the exact file the step names: `sentinel triage <slug> --factors ...` (you pick the factor values from the request and a quick scan of the code), write `decisions.md` at the step's `path` (the request in one paragraph, then `D1: <decision> (because <reason>)` lines), or `sentinel verify <slug>`. If the step lists `stop_tasks`, stop the subagent of each listed task. |
+| `human` | Exit code 6. Show the requester the exact commands the step names (and its `reason` and `fix`), and stop until they say they are done. Do not call anything between the human step and their answer. Then run `sentinel next <slug> --json` again. |
+| `wait` | Wait for the running task named in the step, then run `sentinel next <slug> --json` again. Do not start other work. |
+| `done` | Run `sentinel report <slug>`, give the requester the report (`report.md`), and tell them to run `sentinel accept <slug>` at their terminal when they accept the result. |
+
+Native tasks and isolation:
+
+- Start each native task in a fresh subagent: the Agent tool in Claude Code, `invoke_subagent` with the built-in `self` subagent in Antigravity, or the tool's own subagent, delegate or task feature. Inline, only if neither exists; say so at once to the requester, and for a reviewer or qa task stop and ask them how to proceed.
+- A reviewer or qa task never runs in a context that wrote code for the run. Give the subagent the prompt file as its whole task and nothing from your own chat.
+- Run subagents in the foreground. The engine runs several tasks side by side only through `sentinel task run`.
+
+The engine picks the adapter, provider and model of each task from the config. You never choose or change them.
+
+Rules:
+
+- You never run `sentinel approve` or `sentinel accept`. Agents never run `sentinel approve`, `sentinel accept`, `sentinel resolve`, `sentinel run export`, `sentinel run import` or `sentinel dashboard`; those are human decisions made at a terminal, and the tool denies them.
+- You never move state yourself. You never retry, reorder or skip a step on your own, and you never edit files under `.sentinel/runs/` or the registry, except the `decisions.md` a step asks for. If a task failed, `sentinel next` says what happens; follow it.
+- You never edit an approved artifact (the specification, the Gherkin, approved tests).
+- Do not verify a task's result yourself in place of `sentinel verify`. The engine's checks are the evidence.
+- Do not use the 0.1 commands (`sentinel run update`, the stage runner, the release check) for a version 2 run.
+- A version 2 run never pushes to the shared repo by itself, and you never commit or push unless the requester asked for it.
+- Your final message: the report path, the run's execution and acceptance status, anything not run, and the `sentinel accept <slug>` command for the requester.
+
+## Legacy runs (0.1)
+
+A run created with `sentinel run new <slug> --tier N`, or with `--adhoc` or `--legacy`, is a 0.1 run. You decide the stages and record progress with `sentinel run update`; `sentinel resume <slug>` prints where it stands. Everything below applies only to such runs.
+
+### Commands you use (0.1)
 
 - `sentinel doctor`: check the setup.
 - `sentinel sync pull`: fetch the team's shared repo into `.sentinel/shared/` (latest specs, invariants, regression suite).
@@ -23,15 +74,7 @@ Each stage is also installed as its own skill (`sentinel-repro`, `sentinel-spec`
 - `sentinel run finish <slug> --outcome passed|stopped|abandoned`: close the run and release its lock. Always call it, including when you stop at a cap.
 - `sentinel metrics record <slug> --stage S --tokens N --seconds N`: record a stage's cost when your tool reports it. `sentinel stats` adds the runs up.
 
-## Setup check (every time, before anything else)
-
-Run `sentinel doctor`. If it reports a problem:
-
-- No `sentinel.config.yaml`: use the `sentinel-setup` skill, or run `sentinel init` and answer its questions together with the requester.
-- The shared repo is missing or not cloned: stop here. Ask the requester for the clone URL of their team's private shared repo (an empty private git repository their team owns; for a quick local trial, a bare repo on disk works). Then run `sentinel shared set <url>`. If that repo was empty, Sentinel commits starter files locally; tell the requester to publish them once with the command it prints. Do not triage or start a run until `sentinel doctor` no longer reports the shared repo.
-- Any other problem: show it to the requester. Continue only if it is something this task does not need.
-
-## Running a stage
+### Running a stage
 
 `sentinel stage render --stage S [--repo ID]` prints the complete instructions for that stage in this project: its rules, the repo's commands, the team's guidelines, and the paths to read and write. Run every stage this way:
 
@@ -45,24 +88,24 @@ Run `sentinel doctor`. If it reports a problem:
 
 A routed stage always runs with `sentinel stage run`, never as a subagent. Tools without sessions cannot be resumed; send a finding back as a new brief that quotes it and names the previous result file.
 
-## Phase 0: triage
+### Phase 0: triage
 
 1. Read the request. Quick scan of the code it touches (search only; no stage yet).
 2. Classify with the matrix in `pipeline.md` and apply the escalation rule. Size and risk decide the tier, nothing else. "light" lowers one tier; "full" forces tier 4.
 3. Print one line: tier, reason, rough cost. Then start.
 4. A bug report? Tier 2 and up start with the repro stage.
 
-## Phase 1: interview (tier 3 and 4)
+### Phase 1: interview (tier 3 and 4)
 
 Interview the requester until nothing is silently assumed. Ask every question that does not depend on another unanswered one in a single round, each with your recommended answer, in your tool's question prompt if it has one, otherwise in chat. Find facts yourself; ask only for decisions. When the requester says skip, list the decisions you are assuming and start after they confirm.
 
 Write `.sentinel/runs/<slug>/decisions.md`: the request in one paragraph, then `D1: <decision> (because <reason>)` lines. This file, not the conversation, is the record.
 
-## Pre-flight (tier 2 and up)
+### Pre-flight (tier 2 and up)
 
 Record each repo's current commit and its health (build, lint, typecheck, test commands from the config). A broken baseline is reported and fixed as its own task, never folded into the feature. Work on a branch or worktree per repo if the requester wants isolation. Append a `## Baseline` section to decisions.md.
 
-## Pipeline
+### Pipeline
 
 Run `sentinel sync pull`, then `sentinel run new` (it locks the slug for the team; if it reports the slug is locked, pick another slug or ask who holds it), then walk the stages for the tier in order. After each stage: verify, then `sentinel run update`.
 
@@ -83,11 +126,11 @@ Stage notes:
 - Sync: when a run passes, run `sentinel sync push <slug> --auto`. With `state.auto_sync_push` on (the default) it merges the run's specs, regression tests and proposed invariants straight into the shared repo's main branch, with no pull request and no human step, and refuses if the scrub check fails. With it off it pushes nothing and says so: then ask the requester, and after approval run `sentinel sync push <slug> --yes`. Conflicts in the shared repo are for you to resolve, not a human. If `sentinel sync push` exits 4, it lists the conflicted files in `.sentinel/shared`. For each one: open it, keep the intent of both sides, and remove every conflict marker. `specs/index.json` and `index.md`: keep every entry from both sides. `invariants.md` and `proposals/`: keep every rule from both sides, renumbering an ID only when two different rules got the same one. Another run's content always stays; re-apply this run's change on top of it. Never force-push. Then run `sentinel sync push <slug> --continue`, which checks that no markers or unmerged files remain, scrubs, commits the merge and pushes. If two changes truly contradict and you cannot reconcile them safely, run `git -C .sentinel/shared merge --abort`, leave the run unpublished and say so in the final report. Never force-push. Then `sentinel run finish <slug>`.
 - Metrics: after each stage call `sentinel metrics record` when your tool reports tokens or time.
 
-## Caps and stopping
+### Caps and stopping
 
 At a cap, or with any open blocker, failing QA step, regression, or failed release check: stop, run the release check anyway so nothing is left behind, and say plainly the increment is not production-ready and why. Never mark a run done otherwise. If triage feels wrong mid-run, stop and re-triage.
 
-## Guardrails
+### Guardrails
 
 - A repo-scoped stage never writes outside its repo. The reviewer writes nothing. QA writes only under the state cache and the shared regression folder.
 - Route out-of-lane findings to the right stage instead of letting a stage make the change.

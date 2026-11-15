@@ -10,6 +10,8 @@ This is what happens, in order, when you ask your agent to run Sentinel on a tas
 4. **`sentinel doctor`** checks the config, the tools it needs, and that the shared repo is cloned.
 5. **`npx skills@latest add chhunlyyy/sentinel -a <agent>`** installs the Sentinel skills (`/sentinel` and the others) into your AI tool.
 
+For a version 2 run (any run created without `--tier`, `--adhoc` or `--legacy`) the `/sentinel` skill drives a loop around `sentinel next <slug> --json`: it runs the task, orchestrator action or wait the engine names, stops at every `human` step (exit code 6) and tells you the exact commands, and at the end runs `sentinel report <slug>` and tells you to run `sentinel accept <slug>`. The orchestrator never approves, accepts, retries, reorders or edits run state. The 0.1 description below applies to runs created with `--tier`, `--adhoc` or `--legacy`.
+
 Stages run inside whatever tool you work in, each in its own clean context. For each stage the orchestrator runs `sentinel stage render --stage <name>`, which prints that stage's full instructions for this project (your rules, the repo's commands, the team's guidelines, the paths to read and write), then runs it by the first of these your tool offers: a subagent (Claude Code's Agent tool, Antigravity's `invoke_subagent` with the built-in `self` subagent, or the tool's own equivalent); a fresh headless session of the same tool through `sentinel stage run`; and only if neither exists, inline in its own conversation, which it must announce, and which it may not do for the reviewer or for QA. It records how each stage ran (`subagent`, `headless` or `inline`), `sentinel stats` counts them, and the orchestrator checks every result itself before moving on.
 
 ## Every run

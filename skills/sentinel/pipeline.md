@@ -47,6 +47,24 @@ Shape effects, from `shape` in config:
 - fullstack-mobile: backend first, one sync checkpoint, then frontend and mobile in parallel against the same reconciled contract.
 - custom: `cross_repo` in config decides.
 
+## Version 2 runs
+
+A version 2 run is driven by the engine, not by this document's stage lists. `sentinel next <slug>` says what is allowed. The matrix above sets the tier; `sentinel triage` applies it. The "Pipeline by tier" block above describes 0.1 runs.
+
+Run states: CREATED, TRIAGED, PLANNED, SPECIFICATION_REVIEW, GHERKIN_REVIEW, EXECUTING, VERIFYING, then COMPLETED. NEEDS_HUMAN, BLOCKED and CANCELLED can interrupt a run; `sentinel next` names the human action.
+
+Two approval gates, both decided by a human at a terminal: the specification (SPECIFICATION_REVIEW) and the Gherkin scenarios (GHERKIN_REVIEW). After the second, the engine plans one TDD cycle per behavior group. A human also confirms the result with `sentinel accept` after COMPLETED.
+
+Stages per tier:
+
+| Tier | Gates | Execution | Verification |
+|---|---|---|---|
+| 1 | spec-lite, Gherkin | cycles | targeted + full tests, build, lint, typecheck, scope |
+| 2 | spec-lite, Gherkin | [repro as cycle 1 Red] cycles | as tier 1 + secret scan, dependency audit |
+| 3 | full spec, Gherkin | cycles, reviewer, targeted QA, promotion | as tier 2 + migration safety, docs |
+| 4 | full spec, Gherkin, security gate | cycles, hardener, reviewer, full QA, promotion | as tier 3 + mutation, rollout, retrospective |
+| docs | spec only | docs stage | link check, docs build if configured |
+
 ## Stage contracts
 
 | Stage | Question | Input | Output |

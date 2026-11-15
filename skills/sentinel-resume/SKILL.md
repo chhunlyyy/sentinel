@@ -10,3 +10,4 @@ Continue an interrupted Sentinel run.
 3. If the run has an `outcome`, it is finished; say so and stop.
 4. If a loop is capped, do not continue. Say the increment is not production-ready, list the open findings from the latest result files, and ask the user how to proceed.
 5. Otherwise read `.sentinel/runs/<slug>/decisions.md` and the newest `*-result.md` files in that folder, then continue from the next stage by following the `sentinel` skill (its "Running a stage" and "Pipeline" sections). Do not redo stages already in `completed`, and re-verify the last stage's result before building on it.
+6. For a version 2 run (`"schema_version"` 2 in `state.json`, or `sentinel next` accepts the slug), use `sentinel next <slug> --json` instead of `sentinel resume` and follow the "Version 2 runs" section of the `sentinel` skill.
