@@ -222,8 +222,16 @@ class Manual(unittest.TestCase):
                 self.assertIn(v["status"], ("pending", "done"))
                 if v["status"] == "done":
                     self.assertTrue(v["date"] and v["machine"])
-        self.assertIn("pending owner run on a machine that allows user namespaces (no CI exists)", data["AC-DSH-06g"]["evidence"])
-        self.assertIn("owner/CI to run in a loopback-only network namespace", data["AC-OPS-01i"]["evidence"])
+        # a pending item keeps its "pending owner" wording; a done item carries a date, a machine and what was run
+        wording = {"AC-DSH-06g": "pending owner run on a machine that allows user namespaces (no CI exists)",
+                   "AC-OPS-01i": "owner/CI to run in a loopback-only network namespace",
+                   "G9-screen-reader": "screen-reader"}
+        for key, text in wording.items():
+            with self.subTest(wording=key):
+                if data[key]["status"] == "pending":
+                    self.assertIn(text, data[key]["evidence"])
+                else:
+                    self.assertTrue(data[key]["date"] and data[key]["machine"])
         self.assertIn("screen-reader", data["G9-screen-reader"]["evidence"])
 
 

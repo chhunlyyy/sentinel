@@ -77,7 +77,15 @@ test.describe('network off', () => {
     test.skip(process.env.SENTINEL_NO_NET_CHILD === '1', 'already inside the network namespace');
     const probe = spawnSync('unshare', ['-rn', 'true']);
     test.skip(probe.status !== 0, `unshare -rn is not permitted in this environment (${String(probe.stderr).trim()}); needs user namespaces or root`);
-    const r = spawnSync('unshare', ['-rn', 'sh', '-c', 'ip link set lo up 2>/dev/null; npm test && SENTINEL_NO_NET_CHILD=1 npx playwright test --grep-invert AC-DSH-06g'], { cwd: root, encoding: 'utf8' });
+    // The wheel environment needs pip and the network, so build it here, outside the namespace, and hand it in.
+    let wheelEnv = process.env.SENTINEL_WHEEL_ENV;
+    if (!wheelEnv || !existsSync(join(wheelEnv, 'ready.json'))) {
+      wheelEnv = wheelEnv ?? mkdtempSync(join(tmpdir(), 'sentinel-wheel-env-ns-'));
+      const b = spawnSync('python3', [join(root, '..', 'tools', 'release_gate.py'), 'wheel-env', wheelEnv], { encoding: 'utf8' });
+      expect(b.status, b.stdout.slice(-1500) + b.stderr.slice(-1500)).toBe(0);
+    }
+    const r = spawnSync('unshare', ['-rn', 'sh', '-c', 'ip link set lo up 2>/dev/null; npm test && SENTINEL_NO_NET_CHILD=1 npx playwright test --grep-invert AC-DSH-06g'],
+      { cwd: root, encoding: 'utf8', env: { ...process.env, SENTINEL_WHEEL_ENV: wheelEnv } });
     expect(r.status, r.stdout.slice(-2000) + r.stderr.slice(-2000)).toBe(0);
   });
 });
