@@ -272,7 +272,7 @@ class Runtime(SV):
         return p, hp, m.group(2)
 
     def one_shot(self, *args, user=True, tty=False, mount=True):
-        cmd = ["docker", "run", "--rm", *(["-it"] if tty else []), *(["--user", self.me] if user else []),
+        cmd = ["run", "--rm", *(["-it"] if tty else []), *(["--user", self.me] if user else []),
                *(["-v", f"{self.ws}:/work"] if mount else []), *args]
         return docker(*cmd, timeout=120)
 
@@ -311,7 +311,7 @@ class Runtime(SV):
         self.assertEqual(page.status, 200)
         self.assertIn('<div id="root">', page.text)
         self.assertNotIn("UI not installed", page.text)
-        self.assertEqual([x["name"] for x in c.get("/api/v1/projects").json["projects"] if "name" in x], ["digital-hr"])
+        self.assertEqual([x["name"] for x in c.get("/api/v1/projects").json["items"] if "name" in x], ["work"])  # named after the mount point, see docs/dashboard.md
 
     def test_AC_OPS_07f_stopping_the_container_is_clean(self):
         p, hp, token = self.start()
@@ -335,8 +335,8 @@ class Runtime(SV):
         p.finish(30)
         p2, hp2, token2 = self.start(user=False, config=mount)
         self.assertNotEqual(token, token2)
-        projects = H(hp2, token2).login().get("/api/v1/projects").json["projects"]
-        self.assertEqual(len([x for x in projects if x.get("name") == "digital-hr"]), 1)
+        projects = H(hp2, token2).login().get("/api/v1/projects").json["items"]
+        self.assertEqual(len([x for x in projects if x.get("name") == "work"]), 1)
         listing = docker("run", "--rm", "-v", f"{vol}:/c", "--entrypoint", "cat", self.tag, "/c/projects.json").stdout
         self.assertEqual(listing.count("/work"), 1, listing)
 
@@ -394,7 +394,8 @@ class Runtime(SV):
         for tool in ("claude", "codex", "gemini", "aider", "opencode", "node", "npm"):
             with self.subTest(tool=tool):
                 r = self.one_shot("--entrypoint", "sh", self.tag, "-c", f"command -v {tool}", user=False, mount=False)
-                self.assertNotEqual(r.returncode, 0, r.stdout)
+                # 1 or 127 = the shell ran and found no such tool; 125/126 would be docker itself failing
+                self.assertIn(r.returncode, (1, 127), r.stderr)
                 self.assertEqual(r.stdout.strip(), "")
 
     def test_AC_OPS_07n_the_image_holds_no_secret(self):
@@ -406,6 +407,8 @@ class Runtime(SV):
                           "ls -A /home/sentinel/.config/sentinel; ls -A /home/sentinel | grep -v '^\\.\\(bash\\|profile\\|config\\)' ; "
                           "find / -xdev \\( -name .sentinel -o -name .claude -o -name .env -o -name 'credentials*' -o -name 'id_rsa*' \\) -not -path '/proc/*' -not -path '/usr/*' 2>/dev/null",
                           user=False, mount=False)
+        # find exits 1 on unreadable system folders; 125-127 would be docker or the shell failing
+        self.assertIn(r.returncode, (0, 1), r.stderr)
         self.assertEqual(r.stdout.strip(), "", r.stdout)
 
     def test_AC_SEC_10i_the_container_is_reachable_only_on_the_host_loopback(self):
