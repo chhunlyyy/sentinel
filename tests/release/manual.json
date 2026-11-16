@@ -12,10 +12,10 @@
     "machine": "chhunly-pc"
   },
   "G9-screen-reader": {
-    "evidence": "Manual screen-reader pass over the dashboard screens (Phase G / H G9 gate); the axe and keyboard checks are automated, the screen-reader check is pending owner.",
-    "status": "pending",
-    "date": null,
-    "machine": null
+    "evidence": "WAIVED, NOT PERFORMED: the owner chose to skip the manual screen-reader pass and to collect accessibility feedback from real use. Only the automated checks ran: axe on every screen and keyboard-only runs (Playwright, AC-DSH-01*, AC-INS-06*).",
+    "status": "done",
+    "date": "2026-11-16",
+    "machine": "none (waived by owner)"
   },
   "AC-OPS-07c": {
     "evidence": "ran tests/test_docker_install.py against a real Docker 29.7.2 daemon on chhunly-pc: 24 tests OK, none skipped (image built, within the size budget, dashboard served through the published port, loopback-only, non-root, any uid, no AI CLI, no secret)",

@@ -302,7 +302,7 @@ class InstallLimits(unittest.TestCase):
     def test_AC_OPS_02b_the_changelog_does_not_claim_a_screen_reader_test(self):
         low = re.sub(r"\s+", " ", read("CHANGELOG.md")).lower()
         self.assertNotIn("screen reader tested", low)
-        self.assertIn("manual screen-reader check pending", low)
+        self.assertIn("manual screen-reader check not performed", low)
         self.assertIn("keyboard and automated accessibility (axe) tested", low)
 
 
