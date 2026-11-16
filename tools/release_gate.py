@@ -6,7 +6,7 @@
 
 The gate runs, in order: the phase set hashes, the dashboard npm scripts (lint, typecheck, build, vitest, playwright),
 the release wheel and its offline install, the selftest, the unittest suite (with `-W default`) and the security suite;
-then it checks that every AC id of phases A to H appears in the name of a passing test (or is recorded as manual with
+then it checks that every AC id of phases A to I appears in the name of a passing test (or is recorded as manual with
 evidence), that the 23 mandatory scenarios of SPEC_CORE section 14 and the 20 dashboard criteria are accounted for,
 and writes the evidence file. It exits 1 and names the AC id when anything is missing. It never tags, publishes or pushes.
 
@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "1.1.0"
-PHASES = ["phaseA", "phaseB", "phaseC", "phaseD", "phaseE", "phaseF", "phaseG", "phaseH"]
+PHASES = ["phaseA", "phaseB", "phaseC", "phaseD", "phaseE", "phaseF", "phaseG", "phaseH", "phaseI"]
 ID_RE = re.compile(r"AC[-_]([A-Z]+)[-_](\d+)([a-z]+)(?![A-Za-z0-9])")
 FEATURE_ID_RE = re.compile(r"@(AC-[A-Z]+-\d+[a-z]+)\b")
 
@@ -61,7 +61,7 @@ def set_hash(features_dir):
 
 def recorded_hashes(status_text):
     out = {}
-    for m in re.finditer(r"\|\s*P([A-H])-00\s*\|[^\n]*?hash `([0-9a-f]{64})`", status_text):
+    for m in re.finditer(r"\|\s*P([A-I])-00\s*\|[^\n]*?hash `([0-9a-f]{64})`", status_text):
         out[f"phase{m.group(1)}"] = m.group(2)
     return out
 
@@ -457,7 +457,7 @@ def build_wheel(buildenv, tree, outdir, release):
     r = try_build_wheel(buildenv, tree, outdir, release)
     if r.returncode:
         raise RuntimeError("wheel build failed: " + r.stdout + r.stderr)
-    wheels = sorted(Path(outdir).glob("sentinel-*.whl"))
+    wheels = sorted(Path(outdir).glob("sentinel_pipeline-*.whl"))
     if not wheels:
         raise RuntimeError("no wheel was built: " + r.stdout)
     return wheels[-1]
@@ -470,7 +470,7 @@ class WheelEnv:
         self.buildenv = base / "buildenv"
         self.wheelhouse = base / "wheelhouse"
         self.venv = base / "venv"
-        self.wheel = sorted(self.wheelhouse.glob("sentinel-*.whl"))[-1]
+        self.wheel = sorted(self.wheelhouse.glob("sentinel_pipeline-*.whl"))[-1]
         ready = json.loads((base / "ready.json").read_text()) if (base / "ready.json").exists() else {}
         self.sentinel = Path(ready.get("sentinel") or self.venv / "bin" / "sentinel")
         root = Path(ready["tool_dir"]) if ready.get("tool_dir") else self.venv
@@ -504,19 +504,19 @@ def prepare_wheel_env(base, release=True):
         shutil.rmtree(tools, ignore_errors=True)
         shutil.rmtree(tbin, ignore_errors=True)
         uv_env = {**os.environ, "UV_TOOL_DIR": str(tools), "UV_TOOL_BIN_DIR": str(tbin), "UV_CACHE_DIR": str(base / "uvcache"), "UV_PYTHON_PREFERENCE": "system", "UV_OFFLINE": "1"}
-        cmd = [uv, "tool", "install", "--offline", "--no-index", "--find-links", str(wheelhouse), "sentinel"]
+        cmd = [uv, "tool", "install", "--offline", "--no-index", "--find-links", str(wheelhouse), "sentinel-pipeline"]
         r = run(wrap + cmd, env=uv_env)
         log.append(" ".join(cmd) + f"\nnetwork namespace: {'yes' if ns else 'no (user namespaces are not allowed here)'}\n" + r.stdout + r.stderr)
         if r.returncode == 0 and (tbin / "sentinel").exists():
             installer = "uv tool install"
-            ready = {"sentinel": str(tbin / "sentinel"), "tool_dir": str(tools / "sentinel")}
+            ready = {"sentinel": str(tbin / "sentinel"), "tool_dir": str(tools / "sentinel-pipeline")}
         else:
             log.append("uv tool install failed offline; falling back to pip\n")
     if installer is None:
         r = run([sys.executable, "-m", "venv", str(venv)])
         if r.returncode:
             raise RuntimeError("venv failed: " + r.stderr)
-        cmd = [str(venv / "bin" / "pip"), "install", "--no-index", "--find-links", str(wheelhouse), "sentinel"]
+        cmd = [str(venv / "bin" / "pip"), "install", "--no-index", "--find-links", str(wheelhouse), "sentinel-pipeline"]
         r = run(wrap + cmd)
         log.insert(0, " ".join(cmd) + f"\nnetwork namespace: {'yes' if ns else 'no (user namespaces are not allowed here)'}\n" + r.stdout + r.stderr)
         installer = "pip" + (" (uv is not installed)" if not uv else " (uv tool install did not work offline from the wheelhouse)")
@@ -525,7 +525,7 @@ def prepare_wheel_env(base, release=True):
             (base / "offline-install.log").write_text("\n".join(log))
             raise RuntimeError("offline install failed: " + r.stdout + r.stderr)
     (base / "offline-install.log").write_text(f"installer: {installer}\n" + "\n".join(log))
-    ready.update(wheel=str(sorted(wheelhouse.glob("sentinel-*.whl"))[-1]), namespace=ns, installer=installer)
+    ready.update(wheel=str(sorted(wheelhouse.glob("sentinel_pipeline-*.whl"))[-1]), namespace=ns, installer=installer)
     (base / "ready.json").write_text(json.dumps(ready))
     return WheelEnv(base)
 

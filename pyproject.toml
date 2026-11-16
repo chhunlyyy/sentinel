@@ -3,7 +3,7 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sentinel"
+name = "sentinel-pipeline"
 dynamic = ["version"]
 description = "Tiered build pipeline for AI coding agents: triage, spec, code, review, QA and release checks, driven by one config file."
 readme = "README.md"

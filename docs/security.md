@@ -97,6 +97,8 @@ commands) are advisory: other spellings of a command can pass a pattern. The `da
 a terminal (TTY). Run agents under a separate OS user if you need a hard boundary. The browser is opened on a private redirect file
 (mode 0600) so the token never appears in the browser's command line.
 
+The Docker image changes only where the server listens. Inside the container `sentinel dashboard --bind 0.0.0.0` is accepted only when the image sets `SENTINEL_CONTAINER=1` and the process runs in a container (`/.dockerenv` or `/run/.containerenv`); on a host it is refused with exit code 2, and the environment variable alone changes nothing. A server bound to `0.0.0.0` closes every connection from a peer that is not loopback or the container's default gateway with 403 before it reads the request (`--allow-peer IP` adds an address, for rootless Docker or Docker Desktop). Host and Origin accept only `localhost:PORT` and `127.0.0.1:PORT` (`--public-host`; outside a container its port must be the server's own port). Publish the port as `127.0.0.1:8765:8765` only; the image has no `EXPOSE`, so `-P` publishes nothing. The token, session cookie and CSRF rules are unchanged, and R1 applies to a process that can read the container's config volume. See [the dashboard guide](dashboard.md#docker).
+
 R1 has two known cases, and the security suite (`tests/security/`) asserts both so that a silent change in either
 direction fails the build:
 

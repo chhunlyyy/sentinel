@@ -4,7 +4,7 @@ Sentinel has two parts, installed separately:
 
 | Part | What it is | Installed with | Scope |
 |---|---|---|---|
-| The engine | The `sentinel` command: config, run state, stage prompts, release check, shared-repo sync | `uv tool install` (or `pipx`) | once per machine |
+| The engine | The `sentinel` command: config, run state, stage prompts, release check, shared-repo sync | `uv tool install sentinel-pipeline` (or `pipx`) | once per machine |
 | The skills | `/sentinel`, `/sentinel-setup`, one skill per stage and more, which your AI tool loads | `npx skills` | once per project (committed) or once per machine (`-g`) |
 
 Linux is the only platform tested so far.
@@ -24,19 +24,25 @@ Only if you use them: `mysql` and `mysqldump` for the MySQL QA data plugin, and 
 ## 2. Install the engine
 
 ```bash
-uv tool install git+https://github.com/chhunlyyy/sentinel
+uv tool install sentinel-pipeline
 sentinel --version
 ```
+
+The PyPI distribution is named `sentinel-pipeline` (the name `sentinel` is taken). The command is still `sentinel` and the Python package is still `sentinel`. The wheel includes the dashboard build, so nothing else needs to be built. No `uv`: `pipx install sentinel-pipeline` does the same.
+
+Installed the git version before (`uv tool install git+https://github.com/chhunlyyy/sentinel`)? Replace it: `uv tool uninstall sentinel && uv tool install sentinel-pipeline` (pipx: `pipx uninstall sentinel && pipx install sentinel-pipeline`).
 
 If `sentinel` is not found afterwards, run `uv tool update-shell` and open a new terminal (the command lives in `~/.local/bin`).
 
 ### The dashboard UI
 
-The dashboard UI (`sentinel dashboard`) is built from `dashboard/` and is included only in the release wheel, `sentinel-1.1.0-py3-none-any.whl`, which the maintainer attaches to the GitHub release. `uv tool install git+https://…` installs the CLI without the dashboard UI (it is not in the git source tree): everything on the command line works, and `sentinel dashboard` serves a "UI not installed" page. Choose one of:
+The dashboard UI (`sentinel dashboard`) is built from `dashboard/` and is included in the PyPI wheel, `sentinel_pipeline-1.1.0-py3-none-any.whl`. The developer path, `uv tool install git+https://github.com/chhunlyyy/sentinel`, installs the CLI without the dashboard UI (it is not in the git source tree): everything on the command line works, and `sentinel dashboard` serves a "UI not installed" page. Choose one of:
 
 ```bash
-# 1. the release wheel (no Node needed)
-uv tool install ./sentinel-1.1.0-py3-none-any.whl
+# 1. the PyPI release (no Node needed)
+uv tool install sentinel-pipeline
+# or the release wheel file
+uv tool install ./sentinel_pipeline-1.1.0-py3-none-any.whl
 
 # 2. a local checkout with the UI built first (needs Node and npm)
 git clone https://github.com/chhunlyyy/sentinel && cd sentinel
@@ -44,7 +50,15 @@ git clone https://github.com/chhunlyyy/sentinel && cd sentinel
 uv tool install .
 ```
 
-No `uv`: `pipx install git+https://github.com/chhunlyyy/sentinel` does the same. As a last resort, `pip install git+https://github.com/chhunlyyy/sentinel` inside a virtual environment.
+As a last resort, `pip install sentinel-pipeline` inside a virtual environment works too.
+
+### The dashboard in Docker
+
+If you only want the dashboard, run the image instead of installing the engine. The image has no AI tool and no secret; the CLI your AI tool uses stays on the host. See [the dashboard guide](dashboard.md#docker).
+
+```bash
+docker run --rm -it -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
+```
 
 ## 3. Install the skills
 
@@ -154,17 +168,17 @@ Then in your AI tool, start a new session (many tools only load skills at startu
 ## 7. Upgrade
 
 ```bash
-uv tool upgrade sentinel
+uv tool upgrade sentinel-pipeline
 npx skills@latest update
 ```
 
-Upgrade both parts together. Pinned installs stay on their tag until you reinstall with a new one.
+Upgrade both parts together (`pipx upgrade sentinel-pipeline` with pipx). Pinned installs stay on their tag until you reinstall with a new one.
 
 ## 8. Uninstall
 
 ```bash
 npx skills@latest remove          # choose the Sentinel skills
-uv tool uninstall sentinel
+uv tool uninstall sentinel-pipeline
 ```
 
 Your `sentinel.config.yaml` and `.sentinel/` folder are not touched; delete them yourself if you want them gone. If you used the older `sentinel sync-adapters`, delete the generated files it made: `.claude/agents/` stage agents and the managed block in `AGENTS.md`.
@@ -179,7 +193,7 @@ Your `sentinel.config.yaml` and `.sentinel/` folder are not touched; delete them
 | `/sentinel` says the command is missing | The engine is not installed or not on `PATH` for that tool's shell. Install it (step 2) and restart the tool. |
 | `sentinel doctor` says the shared repo is missing or not cloned | `sentinel shared set <url>` (or `sentinel sync pull` if the URL is already in the config). |
 | `npx skills add` cannot read the repo | If it is private, it uses your git credentials; check `git ls-remote https://github.com/chhunlyyy/sentinel.git` works for you. |
-| The skills and the engine disagree after an upgrade | Upgrade both: `uv tool upgrade sentinel` and `npx skills@latest update`. |
+| The skills and the engine disagree after an upgrade | Upgrade both: `uv tool upgrade sentinel-pipeline` and `npx skills@latest update`. |
 | `sentinel stats` shows stages ran inline, or the run reported "no subagents invoked" | Old skill text. Run `npx skills@latest update`, then start the run again. |
 | A tool runs old per-project agents instead of the skills | Delete the generated `.claude/agents/` files from the legacy `sync-adapters`. |
 

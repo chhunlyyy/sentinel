@@ -74,9 +74,9 @@ class Wheel(unittest.TestCase):
         cls.env = gate.wheel_env()
 
     def test_AC_OPS_02a_the_wheel_is_named_and_labelled_1_1_0(self):
-        self.assertEqual(self.env.wheel.name, f"sentinel-{VERSION}-py3-none-any.whl")
+        self.assertEqual(self.env.wheel.name, f"sentinel_pipeline-{VERSION}-py3-none-any.whl")
         with zipfile.ZipFile(self.env.wheel) as z:
-            meta = z.read(f"sentinel-{VERSION}.dist-info/METADATA").decode()
+            meta = z.read(f"sentinel_pipeline-{VERSION}.dist-info/METADATA").decode()
         self.assertRegex(meta, rf"(?m)^Version: {re.escape(VERSION)}$")
 
     def test_AC_OPS_01g_the_wheel_holds_every_runtime_file(self):
@@ -100,11 +100,11 @@ class Wheel(unittest.TestCase):
     def test_AC_OPS_01h_the_wheel_holds_nothing_it_should_not(self):
         bad = re.compile(r"(^|/)(tests|plan|node_modules|__pycache__)/|^dashboard/|\.map$|(^|/)\.env($|\.)|\.pyc$")
         self.assertEqual([n for n in wheel_names(self.env) if bad.search(n)], [])
-        self.assertTrue(all(n.startswith(("sentinel/", f"sentinel-{VERSION}.dist-info/")) for n in wheel_names(self.env)))
+        self.assertTrue(all(n.startswith(("sentinel/", f"sentinel_pipeline-{VERSION}.dist-info/")) for n in wheel_names(self.env)))
 
     def test_AC_OPS_01k_runtime_dependencies_are_unchanged(self):
         with zipfile.ZipFile(self.env.wheel) as z:
-            meta = z.read(f"sentinel-{VERSION}.dist-info/METADATA").decode()
+            meta = z.read(f"sentinel_pipeline-{VERSION}.dist-info/METADATA").decode()
         reqs = sorted(re.findall(r"(?m)^Requires-Dist: (.+)$", meta))
         self.assertEqual(reqs, ["jsonschema>=4", "pyyaml>=6"])
         self.assertRegex(meta, r"(?m)^Requires-Python: >=3\.10$")
@@ -269,7 +269,7 @@ class Installed(unittest.TestCase):
         # fill the cache (needs the network once), then install again with UV_OFFLINE=1
         r = subprocess.run([uv, "tool", "install", str(self.env.wheel)], capture_output=True, text=True, env=env, timeout=600)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        subprocess.run([uv, "tool", "uninstall", "sentinel"], capture_output=True, text=True, env=env)
+        subprocess.run([uv, "tool", "uninstall", "sentinel-pipeline"], capture_output=True, text=True, env=env)
         shutil.rmtree(self.root / "uvtools", ignore_errors=True)
         r = subprocess.run([uv, "tool", "install", str(self.env.wheel)], capture_output=True, text=True, env={**env, "UV_OFFLINE": "1"}, timeout=600)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

@@ -66,17 +66,27 @@ Each repo has its own stack profile (`flutter`, `spring-gradle`, `nextjs`, `node
 
 ## Install
 
-Two parts, each installed once. The engine is the `sentinel` command; the skills are what your AI tool shows as `/sentinel`.
+Two parts, each installed once. The engine is the `sentinel` command; the skills are what your AI tool shows as `/sentinel`. Put the engine on the host: your AI tool runs it there.
 
 ```bash
-# 1. the engine (the CLI; the dashboard UI is not in a git install, see below)
-uv tool install git+https://github.com/chhunlyyy/sentinel
+# 1. the engine, with the dashboard included (PyPI distribution "sentinel-pipeline", command "sentinel")
+uv tool install sentinel-pipeline
 
 # 2. the skills, for your AI tool (leave -a off to choose from a list)
 npx skills@latest add chhunlyyy/sentinel -a claude-code
 ```
 
-The dashboard UI is built from `dashboard/` and is shipped in the release wheel `sentinel-1.1.0-py3-none-any.whl`, which the maintainer attaches to the GitHub release. `uv tool install git+https://…` installs the CLI without the dashboard UI: `sentinel dashboard` then serves a "UI not installed" page. For the full dashboard install the release wheel (`uv tool install ./sentinel-1.1.0-py3-none-any.whl`), or build it from a local checkout with `cd dashboard && npm ci && npm run build`, then `cd .. && uv tool install .`. See the [installation guide](docs/installation.md#the-dashboard-ui).
+No `uv`? `pipx install sentinel-pipeline` does the same. Check it with `sentinel --version`.
+
+Only want the dashboard, without installing Python tools? One Docker command serves it for the workspace in the current folder (the container holds no AI tool and no secret; it publishes on `127.0.0.1` only):
+
+```bash
+docker run --rm -it -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
+```
+
+It prints `http://localhost:8765/auth?t=<token>`; open it. Add `--user $(id -u):$(id -g)` so files it writes in the workspace belong to you (then mount a private config folder you created with `mkdir -m 700 -p`, see the guide). On the host, `sentinel dashboard` picks a free port; `sentinel dashboard --port 8765` fixes it. See the [dashboard guide](docs/dashboard.md#docker).
+
+A git install (`uv tool install git+https://github.com/chhunlyyy/sentinel`) is the developer path: it has the CLI but not the dashboard UI. See the [installation guide](docs/installation.md#the-dashboard-ui) for building it from a checkout.
 
 Agent names for `-a` include `claude-code`, `antigravity-cli`, `codex`, `cursor`, `opencode`, `devin`, `windsurf`, `amp` and `pi`. Skills run with your agent's full permissions, so read what you install; Sentinel's are plain markdown in [skills/](skills/).
 
@@ -129,7 +139,7 @@ First time in a project, start with `/sentinel-setup` (or run `sentinel init` yo
 
 ## Status
 
-Version 1.1.0 (beta). The version 2 flow, the dashboard, the registry, notifications, analytics, the audit log and backups have a test suite of their own (unit, integration, browser and security tests; `python3 tools/release_gate.py` runs them all and checks that every approved acceptance criterion has a passing test). Known limits and residual risks are stated in [docs/security.md](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md): an agent that runs as your OS user can approve through a pseudo-terminal or the token file, and a provider CLI can run any command during a task. The dashboard cannot create projects or edit configuration yet. The 0.1 stages (specifier, reviewer, hardener, QA, promotion, docs, rollout, retrospective) have run for real on one project only, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The name "Sentinel" has not been checked for availability on package registries.
+Version 1.1.0 (beta). The version 2 flow, the dashboard, the registry, notifications, analytics, the audit log and backups have a test suite of their own (unit, integration, browser and security tests; `python3 tools/release_gate.py` runs them all and checks that every approved acceptance criterion has a passing test). Known limits and residual risks are stated in [docs/security.md](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md): an agent that runs as your OS user can approve through a pseudo-terminal or the token file, and a provider CLI can run any command during a task. The dashboard cannot create projects or edit configuration yet. The 0.1 stages (specifier, reviewer, hardener, QA, promotion, docs, rollout, retrospective) have run for real on one project only, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The PyPI distribution is named `sentinel-pipeline` because `sentinel` is taken; the command and the import package are still `sentinel`.
 
 ## License
 

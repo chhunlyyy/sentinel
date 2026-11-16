@@ -5,12 +5,12 @@
 Two parts, once per machine: the engine (the `sentinel` command) and the skills (what your AI tool shows as `/sentinel`).
 
 ```bash
-uv tool install git+https://github.com/chhunlyyy/sentinel
+uv tool install sentinel-pipeline
 ```
 
-A git install has the CLI but not the dashboard UI. For the dashboard install the release wheel (`uv tool install ./sentinel-1.1.0-py3-none-any.whl`) or build from a checkout; see [the dashboard UI](installation.md#the-dashboard-ui).
+The wheel includes the dashboard. (A git install, `uv tool install git+https://github.com/chhunlyyy/sentinel`, has the CLI but not the dashboard UI; see [the dashboard UI](installation.md#the-dashboard-ui).)
 
-No `uv`? `pipx install git+https://github.com/chhunlyyy/sentinel` works the same way. Upgrade with `uv tool upgrade sentinel`.
+No `uv`? `pipx install sentinel-pipeline` works the same way. Upgrade with `uv tool upgrade sentinel-pipeline` (or `pipx upgrade sentinel-pipeline`). Remove it with `uv tool uninstall sentinel-pipeline` (or `pipx uninstall sentinel-pipeline`).
 
 The skills are installed in step 5, after the project is set up. The [installation guide](installation.md) has prerequisites, per-tool details and troubleshooting.
 

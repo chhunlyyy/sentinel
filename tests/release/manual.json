@@ -16,5 +16,71 @@
     "status": "pending",
     "date": null,
     "machine": null
+  },
+  "AC-OPS-07c": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07d": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07f": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07g": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07h": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07i": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07k": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07l": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07m": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-OPS-07n": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
+  },
+  "AC-SEC-10i": {
+    "evidence": "docker is not usable on the machine that built this phase (the user is not in the docker group and rootless docker is blocked by user-namespace restrictions), so the image could not be built or run; pending owner run on a machine with docker: the test builds the image, starts it with -it and checks it. The static Dockerfile checks run everywhere. The run also covers a uid with no passwd entry (--user 4321:4321 with a private config mount) and the container's peer filter (requests arrive from the container gateway, accepted; --allow-peer is for rootless Docker and Docker Desktop).",
+    "status": "pending",
+    "date": null,
+    "machine": null
   }
 }

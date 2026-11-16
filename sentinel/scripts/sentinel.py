@@ -547,13 +547,15 @@ def is_tty():
 
 def human_identity():
     """(OS user, git name or None) of whoever runs the command."""
-    user = getpass.getuser()
-    name = None
-    try:
-        out = subprocess.run(["git", "var", "GIT_AUTHOR_IDENT"], capture_output=True, text=True, timeout=10).stdout
-        name = out.rsplit(" <", 1)[0].strip() or None if " <" in out else None
-    except (OSError, subprocess.SubprocessError):
-        pass
+    from apiserver.osuser import approver_name_env, os_user
+    user = os_user()
+    name = approver_name_env()
+    if name is None:
+        try:
+            out = subprocess.run(["git", "var", "GIT_AUTHOR_IDENT"], capture_output=True, text=True, timeout=10).stdout
+            name = out.rsplit(" <", 1)[0].strip() or None if " <" in out else None
+        except (OSError, subprocess.SubprocessError):
+            pass
     return user, name
 
 
@@ -1036,6 +1038,34 @@ def port_arg(text):
     return port
 
 
+def bind_arg(text):
+    """`--bind` takes only 0.0.0.0, and only inside the Sentinel container image (SENTINEL_CONTAINER=1 and a container marker)."""
+    from apiserver import netguard
+    if text != "0.0.0.0":
+        raise argparse.ArgumentTypeError("the only value is 0.0.0.0")
+    if not netguard.container_ok():
+        raise argparse.ArgumentTypeError("--bind 0.0.0.0 is allowed only inside the Sentinel container image "
+                                         "(SENTINEL_CONTAINER=1 and a container); on a host the server listens on 127.0.0.1 only")
+    return text
+
+
+def peer_arg(text):
+    """`--allow-peer` takes one IP address, the address a published port arrives from when it is not the container's gateway."""
+    import ipaddress
+    try:
+        return str(ipaddress.ip_address(text))
+    except ValueError:
+        raise argparse.ArgumentTypeError("use one IP address, for example 10.0.2.2") from None
+
+
+def public_host_arg(text):
+    """`--public-host` takes localhost:PORT or 127.0.0.1:PORT, the name a browser uses to reach a published port."""
+    name, sep, port = text.lower().partition(":")
+    if name not in ("localhost", "127.0.0.1") or not sep or not port.isdigit() or not 1024 <= int(port) <= 65535:
+        raise argparse.ArgumentTypeError("use localhost:PORT or 127.0.0.1:PORT with a port from 1024 to 65535")
+    return f"{name}:{int(port)}"
+
+
 def cmd_dashboard(args):
     """Start the local dashboard server, or attach to the one that runs. A human at a terminal only: both
     ways print a URL that holds the token."""
@@ -1047,7 +1077,7 @@ def cmd_dashboard(args):
     workspace = next((f for f in [Path(args.dir).resolve(), *Path(args.dir).resolve().parents]
                       if (f / CONFIG_NAME).exists()), None)
     from apiserver.lifecycle import run_dashboard
-    sys.exit(run_dashboard(workspace, args.port, args.no_open))
+    sys.exit(run_dashboard(workspace, args.port, args.no_open, args.bind, args.public_host, args.allow_peer))
 
 
 def cmd_task(args):
@@ -1409,6 +1439,15 @@ def main():
     dashboard = sub.add_parser("dashboard", help="start the local dashboard server, or attach to the running one (human, interactive terminal only)")
     dashboard.add_argument("--port", type=port_arg, help="port to listen on, 1024 to 65535 (default: a free port)")
     dashboard.add_argument("--no-open", action="store_true", help="do not open a browser")
+    dashboard.add_argument("--bind", type=bind_arg, metavar="0.0.0.0",
+                           help="container image only (needs SENTINEL_CONTAINER=1): listen on all interfaces of the container; "
+                                "publish the port on the host as 127.0.0.1:PORT only, never on another address")
+    dashboard.add_argument("--public-host", type=public_host_arg, metavar="HOST:PORT",
+                           help="also accept localhost:PORT or 127.0.0.1:PORT in Host and Origin (the published port) and print it in the URL; "
+                                "outside a container its port must be the server's own --port")
+    dashboard.add_argument("--allow-peer", type=peer_arg, action="append", default=[], metavar="IP",
+                           help="with --bind: also answer this peer address (repeatable); loopback and the container's default gateway are always "
+                                "answered, any other address is refused. For rootless Docker or Docker Desktop, where the published port arrives from another address")
     dashboard.set_defaults(func=cmd_dashboard)
 
     triage = sub.add_parser("triage", help="submit triage factors for a version 2 run; the engine sets the tier")
@@ -1515,6 +1554,10 @@ def main():
     if extra and not getattr(args, "passthrough", False):
         parser.error("unrecognized arguments: " + " ".join(extra))
     args.extra = extra
+    if args.cmd == "dashboard" and args.public_host and args.port != int(args.public_host.rpartition(":")[2]):
+        from apiserver import netguard
+        if not netguard.container_ok():
+            parser.error("--public-host outside the Sentinel container must name the server's own port: give --port with the same port")
     try:
         args.func(args)
     except SentinelError as err:

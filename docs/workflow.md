@@ -37,7 +37,7 @@ This is what happens, in order, when you ask your agent to run Sentinel on a tas
 
 ## Once per team and project (0.1 runs and setup)
 
-1. **Install** the `sentinel` command (`uv tool install git+https://github.com/chhunlyyy/sentinel`).
+1. **Install** the `sentinel` command (`uv tool install sentinel-pipeline`).
 2. **Create the team's shared repo**: an empty private git repository. It holds the project's invariants, specs and regression suite, so every teammate sees the same ones.
 3. **`sentinel init`** in your workspace. It asks for the shared repo URL (required), the project shape and each repo's stack, then writes `sentinel.config.yaml`, clones the shared repo into `.sentinel/shared/`, and fills an empty one with starter files (committed locally; you publish them once).
 4. **`sentinel doctor`** checks the config, the tools it needs, and that the shared repo is cloned.

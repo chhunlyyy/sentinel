@@ -7,11 +7,11 @@
 1. Install the new engine and check the version:
 
    ```bash
-   uv tool install --force git+https://github.com/chhunlyyy/sentinel@v1.1.0
+   uv tool install --force sentinel-pipeline
    sentinel --version
    ```
 
-   (pipx: `pipx install --force git+https://github.com/chhunlyyy/sentinel@v1.1.0`.) A git install has the CLI but not the dashboard UI. For the dashboard use the release wheel: `uv tool install --force ./sentinel-1.1.0-py3-none-any.whl` (see [installation](installation.md#the-dashboard-ui)). Requirements are unchanged: Python 3.10 or newer, `pyyaml` and `jsonschema`.
+   (pipx: `pipx install --force sentinel-pipeline`.) If you installed 0.1.0b7 from git, the tool is registered as `sentinel`; remove it first, because `uv tool install sentinel-pipeline` would otherwise leave two installs that both provide the `sentinel` command: `uv tool uninstall sentinel && uv tool install sentinel-pipeline` (pipx: `pipx uninstall sentinel && pipx install sentinel-pipeline`). The PyPI wheel (`sentinel_pipeline-1.1.0-py3-none-any.whl`) includes the dashboard. A git install (`git+https://github.com/chhunlyyy/sentinel@v1.1.0`) has the CLI but not the dashboard UI (see [installation](installation.md#the-dashboard-ui)). Requirements are unchanged: Python 3.10 or newer, `pyyaml` and `jsonschema`.
 2. Update the skills (`npx skills@latest update`, or pin with `npx skills@latest add chhunlyyy/sentinel@v1.1.0 --skill '*' -a <agent>`) so `/sentinel` drives version 2 runs.
 3. In each workspace run `sentinel doctor`. It exits 0 for a 0.1.0b7 config and lists the optional new settings the config does not have (`policies`, `providers`, `agents`, `tdd`, `verification`, `notifications`). None is required; see [config](config.md).
 4. If you use Claude Code, run `sentinel sync-adapters` again to get the new deny rules (below).

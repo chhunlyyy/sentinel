@@ -1,7 +1,7 @@
 """The HTTP layer: checks in a fixed order (Host, Origin, session cookie, route, CSRF, body), then the route handler.
 
-Standard library only. The server binds 127.0.0.1 and nothing else; there is no option, environment variable or
-configuration key that changes that.
+Standard library only. The server binds 127.0.0.1. The one exception is `--bind 0.0.0.0` inside the Sentinel container
+image (SENTINEL_CONTAINER=1 and container evidence, see netguard.py), where only loopback and the container gateway may connect.
 """
 import getpass
 import json
@@ -25,7 +25,8 @@ from urllib.parse import parse_qs, unquote
 from errors import SentinelError
 from paths import ROOT
 
-from . import auth, routes
+from . import auth, netguard, routes
+from .osuser import approver_name_env, os_user
 from .dispatch import Dispatcher
 from .projects import ProjectSet, scrub_obj
 from .status import HttpError, INTERNAL_MESSAGE, envelope, status_for
@@ -79,13 +80,14 @@ def setting(value, env_name, default):
 
 def identity():
     """(OS user, git user.name or None) of the process running the server."""
-    name = None
-    try:
-        out = subprocess.run(["git", "var", "GIT_AUTHOR_IDENT"], capture_output=True, text=True, timeout=10).stdout
-        name = out.rsplit(" <", 1)[0].strip() or None if " <" in out else None
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return getpass.getuser(), name
+    name = approver_name_env()
+    if name is None:
+        try:
+            out = subprocess.run(["git", "var", "GIT_AUTHOR_IDENT"], capture_output=True, text=True, timeout=10).stdout
+            name = out.rsplit(" <", 1)[0].strip() or None if " <" in out else None
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return os_user(), name
 
 
 class _HTTPServer(ThreadingHTTPServer):
@@ -106,8 +108,14 @@ class _HTTPServer(ThreadingHTTPServer):
 
 class ApiServer:
     def __init__(self, cfgdir, port=0, user=None, git_name=None, poll_interval=None, heartbeat=None,
-                 slow_timeout=None, dispatch=False, dispatch_interval=None, dist_dir=None, token=None, log_sink=None):
+                 slow_timeout=None, dispatch=False, dispatch_interval=None, dist_dir=None, token=None, log_sink=None,
+                 bind=None, public_host=None, allow_peers=()):
         self.cfgdir = Path(cfgdir)
+        self.bind = bind or BIND
+        if self.bind != BIND and not (self.bind == "0.0.0.0" and netguard.container_ok()):
+            raise ValueError("the server binds 127.0.0.1; 0.0.0.0 only inside the Sentinel container image")
+        self.allow_peers = tuple(allow_peers or ())
+        self.public_host = public_host.lower() if public_host else None
         self.requested_port = port
         self.user, self.git_name = (user, git_name) if user else identity()
         if user and git_name is None:
@@ -136,7 +144,7 @@ class ApiServer:
             sink(message)
 
     def start(self):
-        self.httpd = _HTTPServer((BIND, self.requested_port), Handler)
+        self.httpd = _HTTPServer((self.bind, self.requested_port), Handler)
         self.httpd.api = self
         self.port = self.httpd.server_address[1]
         self.started_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -175,11 +183,22 @@ class ApiServer:
         return (self.dispatcher or Dispatcher(self.projects, self.dispatch_interval, self.log)).once()
 
     # ---- checks
+    def peer_ok(self, peer):
+        """On the loopback bind every peer is local. On 0.0.0.0 (container only) only loopback, the gateway or an --allow-peer address."""
+        return self.bind == BIND or netguard.peer_allowed(peer, self.allow_peers)
+
     def host_ok(self, host):
-        return bool(host) and host.lower() in (f"127.0.0.1:{self.port}", f"localhost:{self.port}")
+        return bool(host) and host.lower() in self.allowed_hosts()
 
     def origin_ok(self, origin):
-        return origin.lower() in (f"http://127.0.0.1:{self.port}", f"http://localhost:{self.port}")
+        return origin.lower() in {f"http://{h}" for h in self.allowed_hosts()}
+
+    def allowed_hosts(self):
+        """127.0.0.1 and localhost with this port, plus the one public host the caller configured (`--public-host`)."""
+        hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
+        if self.public_host:
+            hosts.add(self.public_host)
+        return hosts
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -257,10 +276,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle(self):
         api = self.api
+        if not api.peer_ok(self.client_address[0]):
+            raise HttpError("E_HOST", "this server answers only the container's host side; see --allow-peer")
         if len(self.headers.get_all("Host") or []) > 1:
             raise HttpError("E_VALIDATION", "more than one Host header")
         if not api.host_ok(self.headers.get("Host")):
-            raise HttpError("E_HOST", "the Host header must be 127.0.0.1 or localhost with this server's port")
+            raise HttpError("E_HOST", "the Host header must be 127.0.0.1 or localhost with this server's port (or the configured public host)")
         origin = self.headers.get("Origin")
         if origin is not None and not api.origin_ok(origin):
             raise HttpError("E_ORIGIN", "the Origin header does not match this server")

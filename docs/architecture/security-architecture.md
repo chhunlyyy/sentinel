@@ -23,11 +23,11 @@ Requirements: `SPEC.md` section 23. Risks: `plan/v1.1/phase0/IMPLEMENTATION_RISK
 
 ## 2. Local API protection
 
-- Bind `127.0.0.1` on a random free port (or `--port`). Never `0.0.0.0`.
+- Bind `127.0.0.1` on a random free port (or `--port`). Never `0.0.0.0`, with one exception: inside the Sentinel container image (`SENTINEL_CONTAINER=1` and `/.dockerenv` or `/run/.containerenv` present) `--bind 0.0.0.0` is accepted, because Docker cannot publish a port that listens on the container's loopback. Then the server closes (403, before it parses the request) every peer that is not loopback or the container's default gateway from `/proc/net/route`; `--allow-peer <ip>` (repeatable) adds an address for rootless Docker or Docker Desktop. The container's port is published as `127.0.0.1:<port>:<port>` only, and the browser's `Host` is named with `--public-host localhost:<published port>`. Outside a container `ApiServer` refuses any bind but `127.0.0.1`.
 - Token: 32 random bytes per server start, stored at `~/.config/sentinel/server.json` (mode 0600) with port and pid.
 - The browser opens `http://127.0.0.1:<port>/auth?t=<token>`; the server sets `sentinel_session` (`HttpOnly`, `SameSite=Strict`, `Path=/`) and redirects to `/`, removing the token from the URL.
 - Every `/api` request needs the cookie. Mutating requests also need header `X-Sentinel-CSRF` equal to a value served in the page (double submit).
-- `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding defense). `Origin`, when present, must match.
+- `Host` must be `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding defense), plus, when `--public-host localhost:<published port>` is given, that one value (outside a container only the server's own port). `Origin`, when present, must match one of these.
 - No CORS headers. `Content-Security-Policy: default-src 'self'`.
 - Request body limit 1 MB; JSON only.
 
