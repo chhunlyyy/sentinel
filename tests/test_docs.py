@@ -173,6 +173,17 @@ class Commands(unittest.TestCase):
                     checked += 1
         self.assertGreater(checked, 40)
 
+    def test_AC_OPS_04f_selftest_help_prints_usage_and_runs_no_checks(self):
+        """The first release gate on a slow runner timed out: `selftest --help` ran the whole selftest (40 s locally, over
+        the 60 s allowed on the runner). It must answer at once."""
+        import time
+        t0 = time.time()
+        r = subprocess.run(CLI + ["selftest", "--help"], capture_output=True, text=True, timeout=20)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("usage: sentinel selftest", r.stdout)
+        self.assertNotIn("passed", r.stdout)
+        self.assertLess(time.time() - t0, 10)
+
     def test_AC_OPS_04f_a_word_that_is_not_a_subcommand_is_not_collected(self):
         self.assertEqual(commands_in("`sentinel skill file`", {"init"}), [])
         self.assertEqual(commands_in("`sentinel init --force`", {"init"}), [("init", "--force")])
