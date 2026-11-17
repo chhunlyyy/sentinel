@@ -74,3 +74,17 @@ In 1.1.0 the dashboard shows projects, repositories and configuration **read onl
 | Pause a run or request intervention | Not available in 1.1.0; you can cancel, resume and retry |
 
 Approving a specification or Gherkin set, accepting a run, cancelling, resuming, retrying and creating a task all work in the dashboard, and each is recorded in the audit with the channel `dashboard`.
+
+## The pictures in the README
+
+The screenshots, the animated tour and the terminal picture in the README are generated, not drawn by hand. The dashboard ones come from its built-in sample data (two imaginary projects, the same data the browser tests use), and the terminal picture runs a short real session in a throwaway workspace. To make them again:
+
+```bash
+cd dashboard
+npm ci && npm run build
+python3 scripts/terminal_demo.py     # runs real commands, writes docs/images/.terminal.txt
+node scripts/showcase.mjs            # screenshots and the frames of the tour
+python3 scripts/frames_to_gif.py     # builds dashboard-tour.gif and shrinks the PNGs (needs Pillow)
+```
+
+The images are in `docs/images/`. The README links them by their address on the `main` branch, so that they show on the PyPI page as well.

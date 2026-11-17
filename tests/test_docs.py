@@ -212,6 +212,25 @@ class Links(unittest.TestCase):
         self.assertGreater(count, 15)
 
 
+class Pictures(unittest.TestCase):
+    def test_AC_OPS_04g_every_picture_the_readme_links_exists_in_docs_images(self):
+        """The README links its pictures by their address on main (so PyPI shows them too); each must be a committed file."""
+        md = read("README.md")
+        names = re.findall(r"raw\.githubusercontent\.com/chhunlyyy/sentinel/main/docs/images/([A-Za-z0-9._-]+)", md)
+        self.assertGreater(len(names), 8)
+        for name in sorted(set(names)):
+            with self.subTest(picture=name):
+                self.assertTrue((ROOT / "docs" / "images" / name).is_file(), f"README links docs/images/{name}")
+        for name in names:
+            self.assertFalse(name.startswith("."), name)
+        # a picture nobody links is dead weight in the source archive
+        used = set(names)
+        for f in sorted((ROOT / "docs" / "images").iterdir()):
+            if f.is_file() and not f.name.startswith('.'):  # .terminal.txt is a git-ignored work file
+                with self.subTest(unused=f.name):
+                    self.assertIn(f.name, used | {"overview.svg", "workflow.svg"}, f"docs/images/{f.name} is not used by the README")
+
+
 class Versions(unittest.TestCase):
     def test_AC_OPS_04h_old_versions_appear_only_in_the_history_files(self):
         for path in DOC_FILES + SKILL_FILES:

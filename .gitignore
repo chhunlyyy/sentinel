@@ -15,3 +15,6 @@ dashboard/blob-report/
 
 # release gate output
 release-evidence.json
+# README picture work files
+docs/images/.frames/
+docs/images/.terminal.txt
