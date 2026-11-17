@@ -49,6 +49,8 @@ qa:
 - `start_commands`: how to start each service, keyed by repo id; each runs from that repo's directory. Written into the QA stage prompt. `{scripts}/qa-data` is accepted as an alias for `sentinel qa-data` (write `sentinel qa-data boot-args qa`).
 - `fixtures`: `sanitized` (preferred) or `clone` (copies real data; see [security.md](security.md)).
 - `db_clone`: `none`, or the MySQL plugin block below.
+- `scenario_run` (optional): the command the engine runs for QA scenarios as Red, Green and Refactor evidence (TDD-09). Placeholders `{scripts}` (the cycle's script folder under `.sentinel/cache/qa/tests/current/<slug>/<cycle id>`), `{report}` (the report file) and `{cycle}`. It runs from the repo directory (a relative path in it is looked up in the repo first, then in the workspace), after the engine started the repo's `start_commands` entry and waited for `ports`.
+- `scenario_report` (optional): path of the JUnit XML report `scenario_run` writes, relative to `.sentinel/cache/qa/` (no `..`, not absolute). One `testcase` per scenario, `name` is the scenario id (its `@AC-...` tag); a failure message starts with the Gherkin keyword of the failing step (`Then the form shows 5 days: ...`); an `<error>` or another start is a script error.
 
 ### MySQL plugin (`qa.db_clone`)
 
@@ -90,7 +92,7 @@ A list of check names. When omitted, the default is all of: `debug_output`, `tod
 | `comments` | Fails on added code comments. Active only when `rules.no_code_comments` is true. |
 | `secrets` | Fails on secret patterns in the diff (and gitleaks findings if gitleaks is installed), and on secrets or personal data in `.sentinel/shared`. |
 | `new_dependencies` | Prints a notice when a dependency manifest changed; a human must approve new dependencies. Does not fail the run. |
-| `test_infra` | Fails if test runners, configs, reports, or test-only dependencies remain in client repos. Active only when `rules.no_permanent_frontend_tests` is true. |
+| `test_infra` | Fails if test runners, configs, reports, or test-only dependencies remain in client repos. Active only when `rules.no_permanent_frontend_tests` is true. A QA-Red cycle commits no test file, so every test file or runner config in a client repo is flagged. Only a cycle that still has approved test files (a run planned before Phase J) has them skipped. |
 | `commands` | Runs each repo's build, lint, typecheck, and test commands. |
 
 Run it: `sentinel release-check`. It only checks repos that have uncommitted changes. Options: `--quick` skips all build, lint, typecheck and test commands; `--repo <id>` (repeatable) limits it to the repos your increment touched; `--skip build,lint` skips named commands (for example `build` while a dev server is running on that repo).
@@ -174,6 +176,89 @@ runners:
 - `unsafe_skip_permissions: true` appends `unsafe_args` and prints a warning. Leave it false unless you accept that the tool will act without asking.
 - Only `claude` and `agy` have been run for real in this project. Check the flags of `codex` and `gemini` against their own documentation.
 
+## notifications
+
+```yaml
+notifications:
+  desktop: true   # default; false hides "Enable desktop notifications" in the dashboard
+```
+
+`sentinel notifications` and the dashboard bell always work. `desktop` only controls whether the dashboard offers browser notifications: they are raised by the browser after you press "Enable desktop notifications" and the browser grants permission. Sentinel uses no operating system notification tool, no service worker and no push service.
+
+## policies
+
+```yaml
+policies:
+  max_parallel_tasks: 1        # default 1; tasks whose write scopes overlap never run together
+  task_timeout_seconds: 5400   # default 5400; a task that runs longer is killed and fails
+  test_timeout_seconds: 1800   # default 1800; the engine's own test and QA driver runs are killed after this
+  provider_retries: 1          # accepted by the schema; it has no effect in 1.1.0 (task retries use `limits` and `agents.<role>.max_retries`)
+  redact_env: [DATABASE_URL]   # extra environment variable names whose values the scrubber removes
+  human_required: [real_data_clone]   # added to the two mandatory approvals
+```
+
+Version 2 runs only. `human_required` can add gates (`real_data_clone` makes QA on a clone of real data wait for `sentinel resolve --approve-clone`; `security_gate`, `destructive_migration`) and can never remove the specification and Gherkin approvals: an empty list keeps both.
+
+## providers
+
+```yaml
+providers:
+  default: claude
+  fallback: [codex]    # tried in order when a runner is not installed or the provider fails
+  disabled: []         # runners that must not be used, even by routing
+```
+
+Providers are the runners defined under [runners](#runners). The engine picks the provider of every task from `agents` (or `routing`) and this block; the agent that drives the run never chooses. A disabled or missing provider in `fallback` is skipped. Sentinel stores no API keys: each provider CLI keeps its own credentials.
+
+## agents
+
+```yaml
+agents:
+  tdd_green: { runner: codex, model: gpt-5, max_retries: 3 }
+  reviewer: { runner: claude, model: opus }
+```
+
+A key is a task role: `specifier`, `test_designer`, `tdd_red`, `qa_red` (reads the `tdd_red` retry cap), `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `docs`, or a repo role such as `backend-coder`. `runner` and `model` resolve exactly like [routing](#routing-a-model-or-provider-per-stage-optional); `max_retries` overrides the retry limit of that role (the TDD roles `tdd_red`, `tdd_green` and `tdd_refactor` read `tdd` instead). Write scope is not set here: read-only roles (`specifier`, `test_designer`, `reviewer`, `qa`, `retrospective`) always get an empty write scope, a coder role gets its repo, and `repos[].write_scope` narrows a repo further. A task that writes outside its scope fails with `E_SCOPE` and parks the run for a human.
+
+## tdd
+
+```yaml
+tdd:
+  red_retries: 2       # defaults
+  green_retries: 3
+  refactor_retries: 2
+```
+
+Retry limits of the three phases of a TDD cycle (the same keys exist under `limits`; `tdd` is read first). At the limit the cycle stops and `sentinel resolve` asks a human.
+
+## verification
+
+```yaml
+verification:
+  mutation: tier4          # tier4 (default), always or never
+  migration_check: auto    # auto (default: when a migration file changed), always or never
+  disabled: []             # checks to turn off: targeted, build, lint, typecheck, hygiene, secret, deps, mutation, migration, extra, docs_links, docs_build
+  extra: []                # extra checks, the same shape as `extra_checks`
+```
+
+Verification is run by the engine, never by the agent. A check with no command, or turned off here, is recorded as not run; a configuration that would turn off a mandatory check is invalid.
+
+## test and production globs
+
+Per repo, `test_globs` and `production_globs` (and `test_infra_globs`) tell the TDD engine which files are tests and which are production code; Red may write only test files, Green only production files, and a file that matches both lists counts as a test file. Every shipped profile with a test runner names them; a repo entry overrides the profile key by key:
+
+```yaml
+repos:
+  - id: backend
+    path: ./api
+    role: backend
+    profile: spring-gradle
+    test_globs: [src/test/**, '**/*Test.java']
+    production_globs: [src/main/**]
+```
+
+A code repo with no usable globs cannot start execution. Globs are relative to the repo and may not contain `..`.
+
 ## rules
 
 All default to `false`. A rule only adds its text to the stage prompts and the release check when it is on.
@@ -184,7 +269,7 @@ All default to `false`. A rule only adds its text to the stage prompts and the r
 | `no_em_dashes` | Agents never write the em dash character. |
 | `no_coauthor_trailer` | No Co-Authored-By or AI attribution lines. |
 | `agents_never_run_git` | Agents never commit, push, stash, reset, or switch branches. |
-| `no_permanent_frontend_tests` | Client repos keep no permanent test suite; the release check fails if test infrastructure is left behind. |
+| `no_permanent_frontend_tests` | Client repos (role `frontend` or `mobile`) keep no permanent test suite. In a version 2 run their behavior groups use QA scenarios as the Red evidence (TDD-09): a `qa_red` task writes the scripts, the engine runs them through `qa.scenario_run`, and the exception is recorded in the cycle, the evidence rows, the events and the report. R12 refuses the run (NEEDS_HUMAN, `E_PRECONDITION`) when the QA driver is not usable: configure `qa.driver`, `qa.scenario_run`, `qa.scenario_report` and `qa.start_commands`, then run `sentinel resolve <slug> --refresh-config -m "..."`, or turn the rule off. The release check fails if test infrastructure is left behind. |
 
 ## limits
 
@@ -201,13 +286,13 @@ state:
   dir: .sentinel
   retention: { runs: 20, logs_days: 14 }
   shared_repo: git@host:myteam/myteam-sentinel-shared.git
-  auto_sync_push: true
+  auto_sync_push: false
   shared_ref: main
 ```
 
 - `dir`: local state folder. Contains `runs/`, `cache/`, `shared/` (a clone of the shared repo), and `generated/`.
 - `retention`: `sentinel clean` keeps the newest `runs` run folders and deletes cache files older than `logs_days`.
-- `auto_sync_push` (default `true`): when a run passes, `/sentinel` pushes its specs, regression tests and proposed invariants straight into the shared repo's main branch without asking and without a pull request. The scrub check still gates it, and the agent resolves merge conflicts. Set `false` to be asked first.
+- `auto_sync_push` (default `false` since 1.1.0; a config that does not set it means off): when set to `true`, a passing 0.1 run's specs, regression tests and proposed invariants are pushed straight into the shared repo's main branch without asking and without a pull request. The scrub check still gates it, and the agent resolves merge conflicts. Version 2 runs never push by themselves, whatever this says.
 - `shared_mode` (`git` default, or `local`): `local` means no shared repo. Rules, specs and regression tests live only in `.sentinel/shared/` on this machine (a plain folder, no git), run locks are files, and `sync push` only runs the scrub check. Set up with `sentinel init --local-only`; move to a team repo later with `sentinel shared set <url>`.
 - `shared_repo` (**required** unless `shared_mode: local`): clone URL of the team's private shared repo. `sentinel init` asks for it and `sentinel shared set <url>` changes it. `sentinel doctor` fails and `sentinel run new` refuses while it is missing or not cloned.
 - `shared_ref`: the branch, tag, or commit to use. Pin a tag or commit for reproducible runs.

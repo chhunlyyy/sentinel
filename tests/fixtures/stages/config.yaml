@@ -1,0 +1,6 @@
+version: 1
+state: {dir: .sentinel, shared_mode: local}
+rules: {no_permanent_frontend_tests: true}
+repos:
+  - {id: backend, path: backend, role: backend, profile: spring-gradle}
+  - {id: frontend, path: frontend, role: frontend, profile: nextjs}

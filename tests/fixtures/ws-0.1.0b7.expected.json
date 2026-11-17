@@ -1,0 +1,21 @@
+{
+  "resume_old_open": {
+    "slug": "old-open",
+    "tier": 2,
+    "next": "repro",
+    "pending": [
+      "repro",
+      "coder",
+      "release_check",
+      "metrics",
+      "changelog"
+    ],
+    "sessions": {},
+    "rounds": {
+      "review": 0,
+      "qa": 0,
+      "release_check": 0
+    },
+    "capped": []
+  }
+}

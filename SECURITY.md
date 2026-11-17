@@ -8,7 +8,7 @@ Please do not open a public issue for a security problem. Use GitHub's private v
 
 ## Supported versions
 
-Sentinel is in beta. Only the latest release receives fixes.
+Sentinel is in beta. Only the latest release (1.1.0) receives fixes.
 
 ## What to know
 

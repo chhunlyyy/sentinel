@@ -70,5 +70,48 @@
         ".*"
       ]
     }
-  ]
+  ],
+  "test_globs": [
+    "test/**",
+    "tests/**",
+    "__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*"
+  ],
+  "production_globs": [
+    "app/**",
+    "pages/**",
+    "src/**",
+    "components/**",
+    "lib/**"
+  ],
+  "test_report": {
+    "kind": "junit-xml",
+    "path": "{report_dir}/junit.xml"
+  },
+  "targeted_test": "JEST_JUNIT_OUTPUT_DIR={report_dir} JEST_JUNIT_OUTPUT_NAME=junit.xml JEST_JUNIT_CLASSNAME='{filename}' JEST_JUNIT_TITLE='{title}' npx jest --ci --reporters=default --reporters=jest-junit {files} -t '{selectors}'",
+  "failure_patterns": {
+    "compile": [
+      "SyntaxError",
+      "error TS\\d+"
+    ],
+    "missing_dependency": [
+      "Cannot find module"
+    ],
+    "environment": [
+      "ECONNREFUSED",
+      "EACCES"
+    ]
+  },
+  "scenario_ref": "@Scenario\\(\"([^\"]+)\"\\)",
+  "test_infra_globs": [
+    "jest.config.*",
+    "vitest.config.*",
+    "jest.setup.*",
+    "**/jest.config.*",
+    "**/vitest.config.*",
+    "**/jest.setup.*"
+  ],
+  "selector": "{method_re}",
+  "selector_join": "|"
 }

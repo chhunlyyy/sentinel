@@ -1,0 +1,48 @@
+{
+  "cycles": [
+    {
+      "behavior": "features/balance.feature :: Rule Remaining balance",
+      "evidence_ids": [
+        "e-8bc4c1a1b60f"
+      ],
+      "exception": null,
+      "id": "c-fd6fe04c0981",
+      "phase_tasks": {
+        "green": null,
+        "red": "t-4d3689c55c3f",
+        "refactor": null
+      },
+      "red_method": "test_file",
+      "repo": "backend",
+      "state": "PLANNED"
+    },
+    {
+      "behavior": "features/balance.feature :: Rule Carry-over",
+      "evidence_ids": [],
+      "exception": null,
+      "id": "c-73364fd1f612",
+      "phase_tasks": {
+        "green": null,
+        "red": "t-dd2a2f2036c5",
+        "refactor": null
+      },
+      "red_method": "test_file",
+      "repo": "backend",
+      "state": "PLANNED"
+    },
+    {
+      "behavior": "features/request_form.feature",
+      "evidence_ids": [],
+      "exception": null,
+      "id": "c-27e7f048f573",
+      "phase_tasks": {
+        "green": null,
+        "red": "t-0e47c6d79068",
+        "refactor": null
+      },
+      "red_method": "test_file",
+      "repo": "frontend",
+      "state": "PLANNED"
+    }
+  ]
+}

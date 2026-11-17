@@ -4,3 +4,14 @@ __pycache__/
 dist/
 *.egg-info/
 .venv/
+
+# dashboard (Phase G)
+dashboard/node_modules/
+dashboard/dist/
+sentinel/dashboard_dist/
+dashboard/test-results/
+dashboard/playwright-report/
+dashboard/blob-report/
+
+# release gate output
+release-evidence.json

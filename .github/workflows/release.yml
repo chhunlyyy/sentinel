@@ -1,0 +1,156 @@
+# Sentinel release workflow (Phase I). Prepared in the repository; it runs only when a tag "v*" is pushed.
+#
+#   gate  ->  build  ->  publish-pypi  ->  publish-image
+#
+# gate:           tools/release_gate.py on a clean checkout of the tag; fails unless the evidence says "release_ready"
+#                 (every manual check in tests/release/manual.json recorded as done). The gate is not weakened here.
+# build:          the dashboard, then the wheel and sdist with SENTINEL_RELEASE=1, uploaded once as the "dist" artifact.
+# publish-pypi:   uploads exactly that artifact with PyPI trusted publishing (no API token). Environment "pypi".
+# publish-image:  builds the Dockerfile and pushes ghcr.io/chhunlyyy/sentinel:<version> and :latest with the GITHUB_TOKEN.
+#
+# Repository settings this needs are listed in docs/operations.md ("Release workflow and repository settings").
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+# one release run per ref; a second push of the same tag waits instead of racing the first
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/chhunlyyy/sentinel
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: The tag must be v plus the version in sentinel/VERSION
+        run: |
+          version="$(cat sentinel/VERSION)"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match sentinel/VERSION (expected v${version})"
+            exit 1
+          fi
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "22.18.0"
+      - name: Python dependencies of the gate
+        run: python -m pip install "pyyaml>=6" "jsonschema>=4"
+      - name: Dashboard dependencies and browser
+        run: |
+          cd dashboard
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Allow user namespaces (for the loopback-only install check)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Release gate
+        run: python tools/release_gate.py
+      - name: Release must be ready, not only a candidate
+        run: |
+          python - <<'PY'
+          import json, sys
+          ev = json.load(open("release-evidence.json"))
+          if ev.get("release_ready") is True:
+              print("release ready")
+              sys.exit(0)
+          print(f"::error::{ev.get('status')}: the gate did not report release ready")
+          for item in ev.get("pending_owner", []):
+              print(f"::error::manual check pending owner: {item['id']}")
+          sys.exit(1)
+          PY
+
+  build:
+    needs: gate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "22.18.0"
+      - name: Build the dashboard
+        run: |
+          cd dashboard
+          npm ci
+          npm run build
+      - name: Build the wheel and sdist
+        run: |
+          python -m pip install "hatchling>=1.25"
+          SENTINEL_RELEASE=1 python -m hatchling build -t sdist -t wheel -d dist
+          ls -l dist
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1.12.4
+        with:
+          packages-dir: dist/
+
+  publish-image:
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - name: Image tags from the version
+        id: tags
+        run: |
+          version="$(cat sentinel/VERSION)"
+          tags="${IMAGE}:${version}"
+          # a pre-release (1.2.0b1, 1.2.0rc1, 1.2.0-x) does not move "latest"
+          if ! printf '%s' "${version}" | grep -Eq '[A-Za-z-]'; then
+            tags="${tags}"$'\n'"${IMAGE}:latest"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+      - uses: docker/setup-buildx-action@v3.10.0
+      - uses: docker/login-action@v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6.18.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}

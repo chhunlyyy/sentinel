@@ -1,14 +1,49 @@
 # Workflow, step by step
 
+A run created with `sentinel run new <slug>` is a **version 2 run**. A run created with `--legacy`, `--tier` or `--adhoc` is a **0.1 run**. This page describes the version 2 flow first, then the 0.1 flow, which is unchanged.
+
+## The version 2 flow
+
+You describe the work; the engine decides the order. The agent that drives the run (the `/sentinel` skill) asks `sentinel next <slug> --json` what is allowed, does that one thing, and asks again. Steps that need you stop with exit code 6 and name the exact command to run in your own terminal. The agent never approves, accepts, retries, reorders or edits run state.
+
+```
+run new > triage > specification > [approve] > Gherkin > [approve] > TDD cycles > verify > report > [accept]
+```
+
+Steps in square brackets are yours, in an interactive terminal (or in the dashboard, for the two approvals).
+
+1. **`sentinel run new <slug> --type feature`** creates the run (type is one of feature, bug, docs, refactor, migration, security, chore; `--repos a,b` limits the repos). It records the baseline commit of every repo and a snapshot of the config. Creating a run authorizes nothing.
+2. **Triage.** `sentinel triage <slug> --factors repos=2,files=8,auth=1,...` submits the seven factors. The engine takes the highest tier among them and may raise the tier later (a review blocker raises tier 2 or 3); it never lowers it. A tier 3 or 4 run also needs recorded decisions from the interview before it is planned.
+3. **Specification.** A specifier task writes `specs/<slug>.md` in the shared folder. The engine checks the sections the tier needs and the requirement ids; a bad specification goes back to the specifier with the errors.
+4. **Spec review and approve.** `sentinel review <slug> spec` shows the specification (and the diff to the earlier version). `sentinel approve <slug> spec` asks you to type the first 8 characters of its hash. `--request-changes -m "..."` sends it back; `--reject` cancels the run. Any byte change after approval invalidates it and both gates must be passed again.
+5. **Gherkin.** A test designer task writes the `.feature` files. The engine validates the subset, the tags that link scenarios to requirements and the 15 coverage categories.
+6. **Gherkin review and approve.** `sentinel review <slug> gherkin`, then `sentinel approve <slug> gherkin`, the same way. A docs-only run skips this gate. Execution starts only when both approvals are valid.
+7. **TDD cycles.** The engine groups scenarios into behaviors and plans one cycle per behavior: a Red task writes failing tests and the engine runs them and classifies the failure; a Green task makes them pass without touching approved tests; a Refactor task cleans up and the engine re-runs the tests. Every phase is checked by the engine, within the task's write scope, and recorded as evidence. A phase that keeps failing stops at its retry cap and asks a human (`sentinel resolve <slug>`).
+8. **Verify.** `sentinel verify <slug>` (or the agent, when `next` says so) runs the independent checks: targeted and full tests against the baseline, build, lint, typecheck, hygiene, secrets, dependencies, migrations, mutation at tier 4, scope. Agent claims are never evidence. Findings are routed back to a new cycle.
+9. **Report.** `sentinel report <slug>` writes `report.json` and `report.md`: acceptance rules, evidence, trace from requirements to scenarios, tests and code.
+10. **Accept.** `sentinel accept <slug>` shows the result and asks for the hash prefix (`--reject -m "..."` rejects). Execution status (completed, failed, cancelled) and acceptance status (pending, accepted, rejected) are separate; a rejected run never becomes accepted.
+
+A version 2 run **never pushes to the shared repo by itself**, whatever `state.auto_sync_push` says. Publishing is a separate, explicit `sentinel sync push`.
+
+Everything above is also visible in the [dashboard](dashboard.md), including the two approvals and acceptance. The terminal always works.
+
+Useful commands during a run: `sentinel next <slug>` (what is allowed now), `sentinel resolve <slug>` (a human decision on a parked run), `sentinel task run <task-id>` and `sentinel task complete <task-id>` (run a queued task, or finish a native one), `sentinel run export <slug>` and `sentinel run import <bundle>` (move a run between machines), `sentinel run finish <slug>` (close it; version 2 runs need a terminal). `sentinel stage run` and `sentinel resume` are for 0.1 runs only.
+
+## 0.1 runs
+
+A run created with `--legacy`, `--tier N` or `--adhoc` follows the 0.1 pipeline below: tiers, stages, `sentinel run update`, `sentinel resume`, the shared repo lock, the stage runner. Nothing in it changed in 1.1.0, and runs started by an earlier 0.1 release keep working as they are (see the [migration guide](migration-1.1.md)). New commands refuse 0.1 runs, and the version 2 commands described above are refused for them.
+
 This is what happens, in order, when you ask your agent to run Sentinel on a task. Steps marked with a tier only run at that tier or above (see the table at the end of this section).
 
-## Once per team and project
+## Once per team and project (0.1 runs and setup)
 
-1. **Install** the `sentinel` command (`uv tool install git+https://github.com/chhunlyyy/sentinel`).
+1. **Install** the `sentinel` command (`uv tool install sentinel-pipeline`).
 2. **Create the team's shared repo**: an empty private git repository. It holds the project's invariants, specs and regression suite, so every teammate sees the same ones.
 3. **`sentinel init`** in your workspace. It asks for the shared repo URL (required), the project shape and each repo's stack, then writes `sentinel.config.yaml`, clones the shared repo into `.sentinel/shared/`, and fills an empty one with starter files (committed locally; you publish them once).
 4. **`sentinel doctor`** checks the config, the tools it needs, and that the shared repo is cloned.
 5. **`npx skills@latest add chhunlyyy/sentinel -a <agent>`** installs the Sentinel skills (`/sentinel` and the others) into your AI tool.
+
+For a version 2 run (any run created without `--tier`, `--adhoc` or `--legacy`) the `/sentinel` skill drives a loop around `sentinel next <slug> --json`: it runs the task, orchestrator action or wait the engine names, stops at every `human` step (exit code 6) and tells you the exact commands, and at the end runs `sentinel report <slug>` and tells you to run `sentinel accept <slug>`. The orchestrator never approves, accepts, retries, reorders or edits run state. The 0.1 description below applies to runs created with `--tier`, `--adhoc` or `--legacy`.
 
 Stages run inside whatever tool you work in, each in its own clean context. For each stage the orchestrator runs `sentinel stage render --stage <name>`, which prints that stage's full instructions for this project (your rules, the repo's commands, the team's guidelines, the paths to read and write), then runs it by the first of these your tool offers: a subagent (Claude Code's Agent tool, Antigravity's `invoke_subagent` with the built-in `self` subagent, or the tool's own equivalent); a fresh headless session of the same tool through `sentinel stage run`; and only if neither exists, inline in its own conversation, which it must announce, and which it may not do for the reviewer or for QA. It records how each stage ran (`subagent`, `headless` or `inline`), `sentinel stats` counts them, and the orchestrator checks every result itself before moving on.
 
@@ -50,7 +85,7 @@ Stages run inside whatever tool you work in, each in its own clean context. For 
 
 **18. Retrospective (tier 4).** Proposes new project-wide rules when this run exposed a defect that could recur. It writes `proposed-invariants.md` and never edits `invariants.md` directly; the proposals go to the shared repo for the team to review.
 
-**19. Scrub and sync.** `sentinel scrub` removes tokens, emails, credentials and machine paths from the run records, and `sentinel scrub --check` must pass. With `state.auto_sync_push` on (the default) `sentinel sync push <slug> --auto` runs by itself; with it off you approve first and it runs with `--yes`. It commits the new specs, regression tests and proposed invariants straight to the shared repo's main branch, with no pull request and no human step, after merging anything teammates pushed meanwhile. If the merge conflicts, `sync push` exits 4 and lists the files; the agent resolves them keeping both sides and runs `sentinel sync push <slug> --continue`. It never force-pushes and refuses if the scrub check fails.
+**19. Scrub and sync.** `sentinel scrub` removes tokens, emails, credentials and machine paths from the run records, and `sentinel scrub --check` must pass. With `state.auto_sync_push: true` set in the config, `sentinel sync push <slug> --auto` runs by itself; when it is not set (the default since 1.1.0) you approve first and it runs with `--yes`. It commits the new specs, regression tests and proposed invariants straight to the shared repo's main branch, with no pull request and no human step, after merging anything teammates pushed meanwhile. If the merge conflicts, `sync push` exits 4 and lists the files; the agent resolves them keeping both sides and runs `sentinel sync push <slug> --continue`. It never force-pushes and refuses if the scrub check fails.
 
 **20. Finish.** `sentinel run finish <slug>` closes the run and releases the lock. Metrics (tokens and time per stage, rounds used, estimated versus final tier) are in `metrics.json`, and `sentinel stats` adds them up. The orchestrator gives you a final report: what was built, what each stage found and fixed, QA and regression results, the release-check result, open minor findings, and the paths to the change map, PR draft and rollout notes.
 

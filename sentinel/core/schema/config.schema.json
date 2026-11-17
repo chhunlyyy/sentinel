@@ -66,6 +66,12 @@
               },
               "mutate": {
                 "type": "string"
+              },
+              "audit": {
+                "type": "string"
+              },
+              "docs": {
+                "type": "string"
               }
             }
           },
@@ -77,6 +83,87 @@
           },
           "guidelines": {
             "type": "string"
+          },
+          "test_globs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+            }
+          },
+          "production_globs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+            }
+          },
+          "targeted_test": {
+            "type": "string"
+          },
+          "scenario_ref": {
+            "type": "string"
+          },
+          "test_report": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "junit-xml"
+                ]
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          },
+          "failure_patterns": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "test_infra_globs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
+            }
+          },
+          "selector": {
+            "type": "string"
+          },
+          "selector_join": {
+            "type": "string"
+          },
+          "summary_patterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "migration_lane": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "tool_versions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         }
       }
@@ -219,6 +306,15 @@
             "sanitized",
             "clone"
           ]
+        },
+        "scenario_run": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenario_report": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+$"
         }
       }
     },
@@ -310,6 +406,16 @@
         }
       }
     },
+    "notifications": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "desktop": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
     "rules": {
       "type": "object",
       "additionalProperties": false,
@@ -354,6 +460,31 @@
           "type": "integer",
           "minimum": 1,
           "default": 3
+        },
+        "specifier_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "test_designer_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "red_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        },
+        "green_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3
+        },
+        "refactor_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
         }
       }
     },
@@ -367,7 +498,7 @@
         },
         "auto_sync_push": {
           "type": "boolean",
-          "default": true
+          "default": false
         },
         "retention": {
           "type": "object",
@@ -474,6 +605,192 @@
       "type": "object",
       "additionalProperties": {
         "type": "string"
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "runner": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "max_retries": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel_tasks": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "task_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5400
+        },
+        "test_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1800
+        },
+        "redact_env": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "provider_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "human_required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "providers": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fallback": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default": {
+          "type": "string"
+        }
+      }
+    },
+    "tdd": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "red_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "green_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refactor_retries": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mutation": {
+          "enum": [
+            "tier4",
+            "always",
+            "never"
+          ],
+          "default": "tier4"
+        },
+        "migration_check": {
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ],
+          "default": "auto"
+        },
+        "disabled": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "targeted",
+              "build",
+              "lint",
+              "typecheck",
+              "hygiene",
+              "secret",
+              "deps",
+              "mutation",
+              "migration",
+              "extra",
+              "docs_links",
+              "docs_build"
+            ]
+          }
+        },
+        "extra": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "added_lines",
+                  "changed_paths"
+                ]
+              },
+              "repo": {
+                "type": "string"
+              },
+              "path_regex": {
+                "type": "string"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "exclude_path_regex": {
+                "type": "string"
+              },
+              "exclude_line_regex": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "status": {
+                "enum": [
+                  "any",
+                  "modified",
+                  "added"
+                ]
+              },
+              "must_match": {
+                "type": "string"
+              }
+            }
+          }
+        }
       }
     }
   }

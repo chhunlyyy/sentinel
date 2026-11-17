@@ -1,10 +1,10 @@
 # Beta testing guide
 
-Version 0.1.0b0. Thank you for testing. This is an internal beta: it works end to end for one team on one stack, and most of it has not been exercised by anyone else yet. Your reports are the point of this phase.
+Version 0.1 (the tiered pipeline). Thank you for testing. This is an internal beta: it works end to end for one team on one stack, and most of it has not been exercised by anyone else yet. Your reports are the point of this phase.
 
 ## 1. Set up (10 minutes)
 
-1. Install the engine: `uv tool install git+https://github.com/chhunlyyy/sentinel`, then the skills for your tool: `npx skills@latest add chhunlyyy/sentinel -a <agent>` (see the README install section).
+1. Install the engine: `uv tool install sentinel-pipeline` (or `uv tool install git+https://github.com/chhunlyyy/sentinel` for the latest source), then the skills for your tool: `npx skills@latest add chhunlyyy/sentinel -a <agent>` (see the README install section).
 2. Run the self-test. It builds a throwaway workspace in your temp folder and touches nothing else:
 
    ```bash
@@ -47,7 +47,7 @@ Please try at least one of each and tell us how it went:
 - Codex, Gemini, Cursor and `agy` flags are unverified.
 - Stage isolation depends on each tool's subagent feature. Claude Code is tested; Antigravity's `invoke_subagent` and the others are not yet confirmed in a Sentinel run. Check `sentinel stats` after a run for inline stages.
 - The self-test covers the mechanics (config, prompts, locks, boundary check, scrubber, release check), not the quality of what an agent writes.
-- Upgrade both parts: `uv tool upgrade sentinel` and `npx skills@latest update`.
+- Upgrade both parts: `uv tool upgrade sentinel-pipeline` and `npx skills@latest update`.
 - There is no Windows support and no installer yet.
 
 ## 5. How to report a problem
@@ -72,4 +72,4 @@ Also welcome: anything that was confusing in the docs, any step you had to guess
 ## 7. Backing out
 
 - Sentinel only adds `sentinel.config.yaml`, the `.sentinel/` folder, generated agent and skill files, and (for non-Claude tools) a marked block in `AGENTS.md`. Delete those to remove it.
-- Remove the skills with `npx skills remove` and the engine with `uv tool uninstall sentinel`. If you used the legacy `sentinel sync-adapters`, back up your agent files first; it overwrites generated ones.
+- Remove the skills with `npx skills remove` and the engine with `uv tool uninstall sentinel-pipeline`. If you used the legacy `sentinel sync-adapters`, back up your agent files first; it overwrites generated ones.

@@ -63,5 +63,41 @@
       ]
     }
   ],
-  "http_server": "spring"
+  "http_server": "spring",
+  "test_globs": [
+    "src/test/**"
+  ],
+  "production_globs": [
+    "src/main/**"
+  ],
+  "test_report": {
+    "kind": "junit-xml",
+    "path": "build/test-results/test/*.xml"
+  },
+  "targeted_test": "./gradlew test {selectors}",
+  "failure_patterns": {
+    "compile": [
+      "error: cannot find symbol",
+      "error: package .* does not exist",
+      "Compilation failed"
+    ],
+    "missing_dependency": [
+      "Could not resolve",
+      "Could not find"
+    ],
+    "environment": [
+      "Connection refused",
+      "Permission denied"
+    ]
+  },
+  "scenario_ref": "@Scenario\\(\"([^\"]+)\"\\)",
+  "test_infra_globs": [
+    "build.gradle*",
+    "settings.gradle*",
+    "**/build.gradle*",
+    "**/settings.gradle*",
+    "gradle.properties"
+  ],
+  "selector": "--tests '*{test}'",
+  "selector_join": " "
 }

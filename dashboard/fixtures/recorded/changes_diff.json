@@ -1,0 +1,25 @@
+{
+  "additions": 1,
+  "binary": false,
+  "deletions": 0,
+  "hunks": [
+    {
+      "header": "@@ -0,0 +1 @@",
+      "lines": [
+        {
+          "new": 1,
+          "old": null,
+          "text": "class Leave {}",
+          "type": "add"
+        }
+      ],
+      "new_start": 1,
+      "old_start": 0
+    }
+  ],
+  "mode": "inline",
+  "path": "src/Leave.java",
+  "repo": "backend",
+  "status": "added",
+  "truncated": false
+}

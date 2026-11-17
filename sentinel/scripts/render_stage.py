@@ -95,6 +95,14 @@ def build_context(config, repo, workspace, stage=None):
     }
     for key in ("build", "lint", "typecheck", "test", "mutate"):
         flat[f"commands.{key}"] = commands.get(key, "") or "(none)"
+    # Phase D: placeholders of the TDD stage templates. The profile ones come from the repo's tooling; the cycle ones
+    # are filled per task by the engine (the defaults let `render_stage.py` render a template without a task).
+    tools = {k: repo.get(k) if repo and k in repo else profile.get(k) for k in ("targeted_test", "scenario_ref")}
+    flat["targeted_test"] = tools["targeted_test"] or "(none)"
+    flat["scenario_ref"] = tools["scenario_ref"] or "(none)"
+    for key in ("cycle_behavior", "scenario_keys", "scenario_texts", "write_scope", "readonly_files", "failing_tests",
+                "related_tests", "task_objective", "qa_scripts"):
+        flat[key] = "(supplied with the task)"
     return flat
 
 

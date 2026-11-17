@@ -1,0 +1,103 @@
+{
+  "items": [
+    {
+      "commands": {
+        "build": "",
+        "lint": "",
+        "mutate": "",
+        "test": "/usr/bin/python3 $WORKSPACE/bin/faketest full",
+        "typecheck": ""
+      },
+      "current_branch": "master",
+      "default_branch": "master",
+      "guidelines": null,
+      "id": "backend",
+      "path": "backend",
+      "profile": "generic",
+      "remote": null,
+      "role": "backend",
+      "validation": [
+        {
+          "fix": "",
+          "message": "backend exists",
+          "name": "exists",
+          "status": "passed"
+        },
+        {
+          "fix": "",
+          "message": "a git repository",
+          "name": "git",
+          "status": "passed"
+        },
+        {
+          "fix": "",
+          "message": "default branch master",
+          "name": "branch",
+          "status": "passed"
+        },
+        {
+          "fix": "",
+          "message": "writable",
+          "name": "writable",
+          "status": "passed"
+        },
+        {
+          "fix": "",
+          "message": "profile generic",
+          "name": "profile",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "commands": {
+        "build": "",
+        "lint": "",
+        "mutate": "",
+        "test": "/usr/bin/python3 $WORKSPACE/bin/faketest full",
+        "typecheck": ""
+      },
+      "current_branch": "master",
+      "default_branch": "master",
+      "guidelines": null,
+      "id": "frontend",
+      "path": "frontend",
+      "profile": "generic",
+      "remote": null,
+      "role": "frontend",
+      "validation": [
+        {
+          "fix": "",
+          "message": "frontend exists",
+          "name": "exists",
+          "status": "passed"
+        },
+        {
+          "fix": "",
+          "message": "a git repository",
+          "name": "git",
+          "status": "passed"
+        },
+        {
+          "fix": "",
+          "message": "default branch master",
+          "name": "branch",
+          "status": "passed"
+        },
+        {
+          "fix": "",
+          "message": "writable",
+          "name": "writable",
+          "status": "passed"
+        },
+        {
+          "fix": "",
+          "message": "profile generic",
+          "name": "profile",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "next": null
+}

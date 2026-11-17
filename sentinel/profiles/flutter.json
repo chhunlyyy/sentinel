@@ -62,5 +62,39 @@
         ".*"
       ]
     }
-  ]
+  ],
+  "test_globs": [
+    "test/**",
+    "integration_test/**"
+  ],
+  "production_globs": [
+    "lib/**"
+  ],
+  "test_report": {
+    "kind": "junit-xml",
+    "path": "{report_dir}/junit.xml"
+  },
+  "targeted_test": "flutter test --machine {files} --name '({selectors})' | tojunit --output {report_dir}/junit.xml",
+  "failure_patterns": {
+    "compile": [
+      "\\.dart:\\d+:\\d+: Error:",
+      "Compilation failed"
+    ],
+    "missing_dependency": [
+      "Could not resolve",
+      "pub get failed"
+    ],
+    "environment": [
+      "Connection refused",
+      "Permission denied"
+    ]
+  },
+  "scenario_ref": "@Scenario\\(\"([^\"]+)\"\\)",
+  "test_infra_globs": [
+    "dart_test.yaml",
+    "**/dart_test.yaml",
+    "test_driver/**"
+  ],
+  "selector": "{method_re}",
+  "selector_join": "|"
 }

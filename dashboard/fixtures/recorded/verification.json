@@ -1,0 +1,59 @@
+{
+  "acceptance": {
+    "acceptance_status": "pending",
+    "execution_status": "running",
+    "reasons": []
+  },
+  "acceptance_record": null,
+  "cycles": [
+    {
+      "behavior": "features/balance.feature :: Rule Remaining balance",
+      "exception": null,
+      "id": "c-fd6fe04c0981",
+      "red_method": "test_file",
+      "repo": "backend",
+      "state": "PLANNED"
+    },
+    {
+      "behavior": "features/balance.feature :: Rule Carry-over",
+      "exception": null,
+      "id": "c-73364fd1f612",
+      "red_method": "test_file",
+      "repo": "backend",
+      "state": "PLANNED"
+    },
+    {
+      "behavior": "features/request_form.feature",
+      "exception": null,
+      "id": "c-27e7f048f573",
+      "red_method": "test_file",
+      "repo": "frontend",
+      "state": "PLANNED"
+    }
+  ],
+  "evidence": [
+    {
+      "classification": "valid_red",
+      "command": "faketest targeted",
+      "cycle_id": "c-fd6fe04c0981",
+      "exit_code": 1,
+      "failed": 2,
+      "finished_at": "2026-11-14T09:00:05.000000Z",
+      "id": "e-8bc4c1a1b60f",
+      "kind": "test",
+      "model": null,
+      "name": null,
+      "output_artifact_id": null,
+      "passed": 0,
+      "provider": null,
+      "repo_id": null,
+      "round": null,
+      "skipped": null,
+      "started_at": "2026-11-14T09:00:00.000000Z",
+      "task_id": null,
+      "verdict": null
+    }
+  ],
+  "missing": [],
+  "round": null
+}

@@ -1,0 +1,162 @@
+{
+  "description": "SPEC_DASHBOARD section 22: the 20 acceptance criteria of the onboarding capability. LATER rows follow decision G-1 (dashboard projects, repos and configuration are read only in 1.1.0).",
+  "criteria": [
+    {
+      "n": 1,
+      "text": "A new user can install Sentinel and open the dashboard.",
+      "status": "automated",
+      "acs": [
+        "AC-INS-02a",
+        "AC-OPS-01b"
+      ]
+    },
+    {
+      "n": 2,
+      "text": "The user can provide or select the Sentinel installation path.",
+      "status": "LATER",
+      "reference": "G-1 (INS-08: the directory picker; the installation path is chosen when Sentinel is installed)"
+    },
+    {
+      "n": 3,
+      "text": "The dashboard can securely validate the installation.",
+      "status": "automated",
+      "acs": [
+        "AC-INS-03a",
+        "AC-INS-07a"
+      ]
+    },
+    {
+      "n": 4,
+      "text": "The dashboard can connect to or launch the Sentinel runtime through the trusted local integration.",
+      "status": "automated",
+      "acs": [
+        "AC-INS-04a",
+        "AC-SEC-01p"
+      ]
+    },
+    {
+      "n": 5,
+      "text": "The dashboard clearly reports missing dependencies and configuration.",
+      "status": "automated",
+      "acs": [
+        "AC-INS-03f",
+        "AC-INS-03a"
+      ]
+    },
+    {
+      "n": 6,
+      "text": "The user can create a project without manually editing configuration files.",
+      "status": "LATER",
+      "reference": "G-1 (PRJ-03)"
+    },
+    {
+      "n": 7,
+      "text": "The user can add multiple repositories to a project.",
+      "status": "LATER",
+      "reference": "G-1 (REP-05; the repository list is read only, AC-REP-03a)"
+    },
+    {
+      "n": 8,
+      "text": "The dashboard validates repository paths and access.",
+      "status": "automated",
+      "acs": [
+        "AC-REP-04a",
+        "AC-REP-04b"
+      ]
+    },
+    {
+      "n": 9,
+      "text": "The user can configure providers and agents through the dashboard.",
+      "status": "LATER",
+      "reference": "G-1 (PRV-02, AGT-08)"
+    },
+    {
+      "n": 10,
+      "text": "The user can configure workflows and project policies through the dashboard.",
+      "status": "LATER",
+      "reference": "G-1 (CFG-01, CFG-04)"
+    },
+    {
+      "n": 11,
+      "text": "The user can configure build, test, lint, and verification commands.",
+      "status": "LATER",
+      "reference": "G-1 (CFG-01, CFG-04)"
+    },
+    {
+      "n": 12,
+      "text": "The dashboard validates configuration before activation.",
+      "status": "LATER",
+      "reference": "G-1 (CFG-03)"
+    },
+    {
+      "n": 13,
+      "text": "Configuration changes are versioned and auditable.",
+      "status": "automated",
+      "acs": [
+        "AC-CFG-05a",
+        "AC-CFG-05d"
+      ]
+    },
+    {
+      "n": 14,
+      "text": "A project readiness check identifies missing required configuration.",
+      "status": "automated",
+      "acs": [
+        "AC-DSH-03a",
+        "AC-DSH-03f"
+      ]
+    },
+    {
+      "n": 15,
+      "text": "A ready project allows the user to create and start a task immediately.",
+      "status": "automated",
+      "acs": [
+        "AC-TSK-01a",
+        "AC-TSK-01l"
+      ]
+    },
+    {
+      "n": 16,
+      "text": "The first task still follows mandatory specification and Gherkin approval.",
+      "status": "automated",
+      "acs": [
+        "AC-TSK-02a",
+        "AC-TSK-02b"
+      ]
+    },
+    {
+      "n": 17,
+      "text": "A user can return later and manage projects and configuration without terminal-based setup.",
+      "status": "LATER",
+      "reference": "G-1 (PRJ-04, CFG-01)"
+    },
+    {
+      "n": 18,
+      "text": "Local runtime access and repository permissions are secured.",
+      "status": "automated",
+      "acs": [
+        "AC-SEC-01p",
+        "AC-TST-05c"
+      ]
+    },
+    {
+      "n": 19,
+      "text": "Existing CLI and file-based configuration workflows remain compatible.",
+      "status": "automated",
+      "acs": [
+        "AC-CFG-11a",
+        "AC-CFG-11f",
+        "AC-ORC-08b"
+      ]
+    },
+    {
+      "n": 20,
+      "text": "The system does not create a second orchestration engine inside the dashboard.",
+      "status": "automated",
+      "acs": [
+        "AC-INS-04a",
+        "AC-INS-06a"
+      ]
+    }
+  ]
+}

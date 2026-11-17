@@ -1,0 +1,16 @@
+{
+  "pid": 455321,
+  "port": 39077,
+  "projects": [
+    {
+      "id": "digital-hr",
+      "name": "digital-hr"
+    }
+  ],
+  "started_at": "2026-11-16T16:39:27Z",
+  "user": {
+    "name": "dev",
+    "role": "admin"
+  },
+  "version": "1.1.0"
+}

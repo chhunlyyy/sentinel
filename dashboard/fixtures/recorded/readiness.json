@@ -1,0 +1,206 @@
+{
+  "errors": [],
+  "items": [
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "sentinel.config.yaml passes the schema",
+      "name": "configuration",
+      "repo": null,
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "backend exists",
+      "name": "repo_exists",
+      "repo": "backend",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "a git repository",
+      "name": "repo_git",
+      "repo": "backend",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "default branch master",
+      "name": "repo_branch",
+      "repo": "backend",
+      "required": false,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "writable",
+      "name": "repo_writable",
+      "repo": "backend",
+      "required": false,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "profile generic",
+      "name": "repo_profile",
+      "repo": "backend",
+      "required": false,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "no build command is set",
+      "name": "build_command",
+      "repo": "backend",
+      "required": false,
+      "status": "not_configured"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "/usr/bin/python3 found; the command was not run",
+      "name": "test_command",
+      "repo": "backend",
+      "required": true,
+      "status": "not_checked"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "no lint command is set",
+      "name": "lint_command",
+      "repo": "backend",
+      "required": false,
+      "status": "not_configured"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "no typecheck command is set",
+      "name": "typecheck_command",
+      "repo": "backend",
+      "required": false,
+      "status": "not_configured"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "no mutate command is set",
+      "name": "mutate_command",
+      "repo": "backend",
+      "required": false,
+      "status": "not_configured"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "frontend exists",
+      "name": "repo_exists",
+      "repo": "frontend",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "a git repository",
+      "name": "repo_git",
+      "repo": "frontend",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "default branch master",
+      "name": "repo_branch",
+      "repo": "frontend",
+      "required": false,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "writable",
+      "name": "repo_writable",
+      "repo": "frontend",
+      "required": false,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "profile generic",
+      "name": "repo_profile",
+      "repo": "frontend",
+      "required": false,
+      "status": "passed"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "no build command is set",
+      "name": "build_command",
+      "repo": "frontend",
+      "required": false,
+      "status": "not_configured"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "/usr/bin/python3 found; the command was not run",
+      "name": "test_command",
+      "repo": "frontend",
+      "required": true,
+      "status": "not_checked"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "no lint command is set",
+      "name": "lint_command",
+      "repo": "frontend",
+      "required": false,
+      "status": "not_configured"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "no typecheck command is set",
+      "name": "typecheck_command",
+      "repo": "frontend",
+      "required": false,
+      "status": "not_configured"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "no mutate command is set",
+      "name": "mutate_command",
+      "repo": "frontend",
+      "required": false,
+      "status": "not_configured"
+    },
+    {
+      "checked_at": "2026-11-16T16:39:28Z",
+      "fix": "",
+      "message": "runner commands are installed",
+      "name": "provider",
+      "repo": null,
+      "required": false,
+      "status": "passed"
+    }
+  ],
+  "project": "digital-hr",
+  "state": "ready",
+  "workflow": null
+}

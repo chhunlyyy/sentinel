@@ -1,0 +1,16 @@
+ALTER TABLE tasks ADD COLUMN attempt INTEGER;
+ALTER TABLE tasks ADD COLUMN waiting_on TEXT;
+ALTER TABLE tasks ADD COLUMN pid INTEGER;
+ALTER TABLE tasks ADD COLUMN pid_started_at TEXT;
+ALTER TABLE tasks ADD COLUMN session_id TEXT;
+ALTER TABLE tasks ADD COLUMN task_sha256 TEXT;
+ALTER TABLE tasks ADD COLUMN reason TEXT;
+ALTER TABLE tasks ADD COLUMN timeout_seconds INTEGER;
+ALTER TABLE tasks ADD COLUMN max_retries INTEGER;
+ALTER TABLE tasks ADD COLUMN changed_files TEXT;
+ALTER TABLE tasks ADD COLUMN before_snapshot TEXT;
+ALTER TABLE tasks ADD COLUMN before_sha256 TEXT;
+ALTER TABLE tasks ADD COLUMN owner_pid INTEGER;
+ALTER TABLE tasks ADD COLUMN owner_started_at TEXT;
+ALTER TABLE tasks ADD COLUMN blocked_command TEXT;
+CREATE INDEX idx_task_deps_dep ON task_deps(depends_on);

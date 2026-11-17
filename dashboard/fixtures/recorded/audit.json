@@ -1,0 +1,47 @@
+{
+  "items": [
+    {
+      "action": "approve",
+      "actor": "dev",
+      "after_sha": "419a55c34ea0b329b07fae41049b92bd972273bb384ded5936cad7f26a641aa1",
+      "at": "2026-11-16T16:39:27.932087Z",
+      "before_sha": null,
+      "chain_sha": "8a449f7e354563eed6922b3e222f559f4430774dbb16c49584a075c49fdfde82",
+      "channel": "tty",
+      "id": 3,
+      "project": "digital-hr",
+      "reason": null,
+      "row_sha": "60848f8a6a63e7d5e4932dee0ba56529901888049507c0b11e12fcf5fe86eabd",
+      "target": "gherkin-run/specification"
+    },
+    {
+      "action": "approve",
+      "actor": "dev",
+      "after_sha": "23bb456fd291554a03625ccfba91486af8eb8c177aa1a8e3ec2959db071f6b68",
+      "at": "2026-11-16T16:39:27.848602Z",
+      "before_sha": null,
+      "chain_sha": "370211f40eb1d4718507becc75e83fc30f5c8b60d1e04384412d4277bc0a9393",
+      "channel": "tty",
+      "id": 2,
+      "project": "digital-hr",
+      "reason": null,
+      "row_sha": "8415ad6ef5f753f68cfe6be93ec80c6464cf3c6cc9095834de247abbdea04e4b",
+      "target": "leave-balance/gherkin"
+    },
+    {
+      "action": "approve",
+      "actor": "dev",
+      "after_sha": "45d2bab7f7200d35d73e8a16fd0d441005d4fdf9d4dd8748de7cbb753ee4e740",
+      "at": "2026-11-16T16:39:27.829227Z",
+      "before_sha": null,
+      "chain_sha": "a4aa5c9ba33091c70499b3383183178c48a5555596f3cf8680e7ee2663347463",
+      "channel": "tty",
+      "id": 1,
+      "project": "digital-hr",
+      "reason": null,
+      "row_sha": "4683cfbb4ea1336b429e66d06705c51f053c2e3829b4f763d86dd68987cff5c9",
+      "target": "leave-balance/specification"
+    }
+  ],
+  "next": null
+}

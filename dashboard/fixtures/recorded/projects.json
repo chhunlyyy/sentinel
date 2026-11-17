@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "active_runs": 3,
+      "added_at": "2026-11-14T00:00:00Z",
+      "id": "digital-hr",
+      "name": "digital-hr",
+      "path": "/ws/digital-hr",
+      "status": "available"
+    }
+  ],
+  "next": null
+}

@@ -1,0 +1,76 @@
+{
+  "checked_at": "2026-11-16T16:39:27Z",
+  "items": [
+    {
+      "fix": "",
+      "message": "installed at /home/chhunly/Desktop/Projects/sentinel/sentinel",
+      "name": "installation",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "fix": "",
+      "message": "1.1.0",
+      "name": "version",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "fix": "",
+      "message": "git found",
+      "name": "git",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "fix": "",
+      "message": "python 3.14.4",
+      "name": "python",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "fix": "",
+      "message": "pyyaml is installed",
+      "name": "pyyaml",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "fix": "",
+      "message": "jsonschema is installed",
+      "name": "jsonschema",
+      "required": false,
+      "status": "passed"
+    },
+    {
+      "fix": "",
+      "message": "/home/dev/.config/sentinel is writable",
+      "name": "registry_writable",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "fix": "",
+      "message": "project digital-hr: runner commands are installed",
+      "name": "provider",
+      "required": true,
+      "status": "passed"
+    },
+    {
+      "fix": "run `sentinel doctor` in the workspace and fix the first problem it names",
+      "message": "project digital-hr: local-only shared folder is not set up: run `sentinel sync pull`",
+      "name": "storage",
+      "required": true,
+      "status": "failed"
+    },
+    {
+      "fix": "",
+      "message": "project digital-hr: no problem found",
+      "name": "repo_access",
+      "required": true,
+      "status": "passed"
+    }
+  ],
+  "ready": false
+}
