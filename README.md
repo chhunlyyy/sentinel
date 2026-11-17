@@ -1,10 +1,23 @@
 # Sentinel
 
+[![PyPI](https://img.shields.io/pypi/v/sentinel-pipeline?label=PyPI)](https://pypi.org/project/sentinel-pipeline/) [![Python](https://img.shields.io/pypi/pyversions/sentinel-pipeline)](https://pypi.org/project/sentinel-pipeline/) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/chhunlyyy/sentinel/blob/main/LICENSE) [![Docker image](https://img.shields.io/badge/docker-ghcr.io%2Fchhunlyyy%2Fsentinel-2496ed?logo=docker&logoColor=white)](https://github.com/chhunlyyy/sentinel/pkgs/container/sentinel)
+
 Sentinel is a tiered build pipeline for AI coding agents. You describe a feature or a bug. Sentinel decides how much rigor the task needs, then runs only the stages that size of task requires: repro, spec, code, clean, harden, review, QA, regression promotion, release check, docs, rollout notes, and retrospective.
 
 It is provider-neutral. The pipeline is plain files and a small Python CLI. Any agent that can read a prompt and edit files can run a stage: Claude Code, Codex, Gemini CLI, Antigravity, Cursor, or a human.
 
-![Sentinel gives a team one agent workflow and one shared repo](docs/images/overview.svg)
+![A tour of the Sentinel dashboard: overview, approvals, a run, the specification review, workflow, TDD cycles, verification, trace and acceptance](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-tour.gif)
+
+*The local dashboard, with its built-in sample data (two imaginary projects). It runs on your machine and sends nothing anywhere.*
+
+```bash
+uv tool install sentinel-pipeline     # the engine, with the dashboard included
+sentinel --version                    # 1.1.0
+```
+
+No Python tools? One Docker command serves just the dashboard. See [Install](#install).
+
+![Sentinel gives a team one agent workflow and one shared repo](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/overview.svg)
 
 ## Why
 
@@ -22,13 +35,31 @@ run new > triage > specification > you approve > Gherkin > you approve > TDD cyc
 
 Two human approvals gate everything: the specification, then the Gherkin scenarios (`sentinel review`, `sentinel approve`, in a terminal or in the dashboard). After both, the engine runs one Red, Green and Refactor cycle per behavior with a write scope for every task, verifies the result with its own checks (an agent's claim is never evidence), writes a report, and waits for you to accept it (`sentinel accept`). Any provider CLI can run a task; the engine, not the agent, decides the order, the retries and the result. A version 2 run never pushes to the shared repo by itself. Read the [workflow guide](docs/workflow.md). Runs created with `--legacy`, `--tier` or `--adhoc` use the 0.1 pipeline below, which is unchanged.
 
+The start of a run in a terminal. The output is real, and the last command shows the point of the design: an agent runs without a terminal, so it cannot approve.
+
+![A terminal session: sentinel run new, triage and next, then sentinel approve refused with E_NOT_TTY](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/terminal-session.png)
+
 ## Dashboard
 
 `sentinel dashboard` starts a local dashboard on 127.0.0.1 and prints a one-time session URL. It shows runs, approvals, tasks, the workflow graph, logs, diffs, verification, the trace from requirement to code, notifications and reports, and lets you approve, accept, cancel and create tasks. It works offline and is read only for projects, repos and configuration in 1.1.0. See [the dashboard guide](docs/dashboard.md) and [operations](docs/operations.md) for notifications, stats, audit export and backup.
 
+The pictures use the dashboard's built-in sample data, not a real project.
+
+| Approve with the hash you typed | The workflow of a run |
+|:--|:--|
+| ![The specification review: Approve is chosen and the first 8 characters of the sha256 are typed and matched](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-specification-review.png) | ![The workflow of a run: both approval gates and the task graph](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-workflow.png) |
+| **Red, Green and Refactor cycles** | **From requirement to evidence** |
+| ![TDD cycles: one Red, Green and Refactor row per behavior, with task states and attempts](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-tdd.png) | ![The trace from a requirement through its acceptance criterion and cycle to files and test evidence](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-trace.png) |
+| **Verification the engine ran itself** | **What is waiting for you** |
+| ![Verification: the checks the engine ran, what was not run, and the missing evidence](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-verification.png) | ![My approvals: the specifications and Gherkin sets waiting for a decision](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-approvals.png) |
+| **Dark theme** | **Reports** |
+| ![A run in the dark theme with its controls, approvals and changes](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-run-dark.png) | ![Reports: lead time, acceptance rate and approval wait](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-reports.png) |
+
+The same screens are reachable with the keyboard, and the dashboard works with the network off. The pictures are made by [`dashboard/scripts/showcase.mjs`](dashboard/scripts/showcase.mjs), see [the dashboard guide](docs/dashboard.md#the-pictures-in-the-readme).
+
 ## How it works (0.1 tiers)
 
-![Stages by tier](docs/images/workflow.svg)
+![Stages by tier](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/workflow.svg)
 
 ```
 Tier 1  Coder
