@@ -40,6 +40,9 @@ Events are rows in the append-only `events` table (`docs/architecture/data-archi
 | `task.stop_requested` | (empty) `sentinel next` told the orchestrator once to stop the subagent of a cancelled or timed-out native task |
 | `cycle.planned` | cycle, behavior, repo, scenarios (count), retry_of |
 | `cycle.state_changed` | cycle, behavior, from, to, classification, reason |
+| `tdd.exception_planned` | cycle, repo, rule, method (`qa_scenario`), scenarios (ids); R12, one per QA-Red cycle |
+| `tdd.exception_recorded` | cycle, evidence (the accepted red row), rule, repo, scenarios; once per cycle, actor engine |
+| `run.config_refreshed` | from, to (config snapshot ids), sha256, old_sha256, changed_keys (dotted config keys that differ); `sentinel resolve --refresh-config` |
 | `green.rejected`, `refactor.rejected` | cycle, evidence, reason, failing |
 | `evidence.recorded` | kind, exit_code, passed, failed, classification, evidence, cycle, verdict |
 | `finding.created` / `finding.routed` / `finding.resolved` | severity, location, routed_to |

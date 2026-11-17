@@ -213,8 +213,20 @@ export interface WCycle {
   repo: string | null;
   behavior: string;
   state: string;
+  /** TDD-09: "test_file", or "qa_scenario" when QA scenarios replaced the test file */
+  red_method: string;
+  exception: { rule: string; replaced: string; by: string; repo: string } | null;
   phase_tasks: { red: string | null; green: string | null; refactor: string | null };
   evidence_ids: string[];
+}
+
+export interface WVerificationCycle {
+  id: string;
+  repo: string | null;
+  behavior: string;
+  state: string;
+  red_method: string;
+  exception: { rule: string; replaced: string; by: string; repo: string } | null;
 }
 
 export interface WTdd {
@@ -244,6 +256,7 @@ export interface WEvidence {
 }
 
 export interface WVerification {
+  cycles: WVerificationCycle[];
   /** the latest finished verification round, null before one finished */
   round: number | null;
   /** checks the round planned but left no row for, as "repo kind[ name]" */

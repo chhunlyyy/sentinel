@@ -1,8 +1,8 @@
 # Sentinel dashboard image (Phase I). It serves only the dashboard and the local API for a mounted workspace.
 # The AI-tool-facing CLI is installed on the host (`uv tool install sentinel-pipeline`); this image has no AI tool CLI,
 # no Node and no secret. Run it with:
-#   docker run --rm -it -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
-# Add --init after "docker run" (recommended). Always publish on 127.0.0.1 only; add --user $(id -u):$(id -g) so files written in /work belong to you.
+#   docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
+# The command includes --init (a small init process, so signals reach the server). Always publish on 127.0.0.1 only; add --user $(id -u):$(id -g) so files written in /work belong to you.
 # There is no EXPOSE on purpose: `docker run -P` would publish on every interface. There is no HEALTHCHECK: every API route needs
 # the session token, and a check must not hold one.
 

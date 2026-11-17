@@ -29,6 +29,8 @@ The first command that needs the registry creates `.sentinel/sentinel.db` and in
 - `sentinel stats` keeps its 0.1 keys (counting 0.1 runs) and adds a `v2` section; use `--from`, `--to` and `--format md` for ranges and tables.
 - Use the new commands: `sentinel next`, `review`, `approve`, `accept`, `report`, `resolve`, `verify`, `task`, `triage`, `dashboard`, `notifications`, `audit` and `backup`. Read [workflow](workflow.md), [dashboard](dashboard.md) and [operations](operations.md).
 
+- Configs with `rules.no_permanent_frontend_tests: true` and no QA scenario driver are now refused at R12 for frontend and mobile repos (run NEEDS_HUMAN, `E_PRECONDITION`, no cycle, no task). Before 1.1.0 the rule only produced the release check. To fix it, set `qa.driver`, `qa.scenario_run`, `qa.scenario_report` and a `qa.start_commands` entry for each client repo (see [config](config.md#qa)) and run `sentinel resolve <slug> --refresh-config -m "driver configured"` on the parked run; Sentinel shows which config keys change and asks you to type the first 8 characters of the new config hash. Or turn the rule off (`rules.no_permanent_frontend_tests: false`) and refresh the same way; frontend behaviors then use test files like backend ones.
+
 ## What is removed
 
 - `sentinel submit` is removed. It existed only in development builds of the version 2 flow; a version 2 task is run with `sentinel task run <task-id>`, and a native task is finished with `sentinel task complete <task-id>`.

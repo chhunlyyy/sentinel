@@ -85,3 +85,7 @@ Each point is a choice made where the documents conflict or say nothing. Approvi
 13. **Release gate checks every phase hash and every AC.** `AC-TST-01m` requires each AC id of phases A to H in a passing test name, so any AC left untested blocks the release unless it is recorded as manual. This may surface gaps in earlier phases late; that is intended.
 14. **Offline install needs a wheelhouse.** "pip install offline from the wheel" cannot fetch pyyaml and jsonschema, so the test prepares a wheelhouse with them first, then installs with `--no-index` in a network namespace.
 15. **Classifier.** `pyproject.toml` stays "Development Status :: 4 - Beta" unless the owner wants "5 - Production/Stable" for 1.1.0; no scenario checks it.
+
+## Superseded by Phase I (owner-approved 2026-11-17)
+
+- The wheel file name is `sentinel_pipeline-1.1.0-py3-none-any.whl` (PyPI distribution `sentinel-pipeline`). It replaces `sentinel-1.1.0-py3-none-any.whl` in the text of AC-OPS-02a and AC-OPS-01h. The Phase H `.feature` files are not edited.

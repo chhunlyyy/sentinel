@@ -18,16 +18,16 @@ The server listens on the loopback address only and accepts only requests for it
 The image `ghcr.io/chhunlyyy/sentinel` (tags `1.1.0` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
 
 ```bash
-docker run --rm -it -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
+docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
 ```
 
-It prints `http://localhost:8765/auth?t=<token>`; open that URL in your browser. The dashboard shows the project mounted at `/work` (always mount the workspace there); it is listed under the name `work`, the name of the mount folder, not the name of your folder on the host. Recommended: add `--init` after `docker run` (`docker run --rm -it --init -p 127.0.0.1:8765:8765 ...`). It runs a small init process in the container, so signals reach the server and no zombie process is left.
+It prints `http://localhost:8765/auth?t=<token>`; open that URL in your browser. The dashboard shows the project mounted at `/work` (always mount the workspace there); it is listed under the name `work`, the name of the mount folder, not the name of your folder on the host. The command includes `--init`: it runs a small init process in the container, so signals reach the server and no zombie process is left.
 
 - **Publish on 127.0.0.1 only.** Always write `-p 127.0.0.1:8765:8765`. A bare `-p 8765:8765` or `-p 0.0.0.0:8765:8765` exposes the dashboard to your network, and its token is the only protection. The image has no `EXPOSE` on purpose: `docker run -P` would publish every exposed port on all interfaces, so with this image `-P` publishes nothing. Inside the container the server listens on all interfaces because Docker needs that. `--bind 0.0.0.0` is accepted only when the image sets `SENTINEL_CONTAINER=1` and the process really runs in a container (`/.dockerenv` or `/run/.containerenv` exists); on a host it is refused with exit code 2. Bound that way, the server answers only a loopback peer and the container's default gateway (where a port published on `127.0.0.1` arrives from) and refuses every other address with 403 before it reads the request. With rootless Docker or Docker Desktop the published port can arrive from another address; the refusal then shows in the browser, and you add `--allow-peer <ip>` (repeatable) to the command with the address of the gateway or proxy. It accepts only `localhost:PORT` and `127.0.0.1:PORT` in the `Host` and `Origin` headers (`--public-host`).
 - **Another host port.** The server port stays 8765 inside the container; publish another host port and name it in `--public-host`. Because the command line replaces the image's default arguments, give the whole command:
 
   ```bash
-  docker run --rm -it -p 127.0.0.1:9000:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel dashboard --no-open --bind 0.0.0.0 --port 8765 --public-host localhost:9000
+  docker run --rm -it --init -p 127.0.0.1:9000:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel dashboard --no-open --bind 0.0.0.0 --port 8765 --public-host localhost:9000
   ```
 
   Outside a container `--public-host` must name the server's own `--port`; the different port is allowed only in the container.

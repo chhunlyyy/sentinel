@@ -81,7 +81,7 @@ No `uv`? `pipx install sentinel-pipeline` does the same. Check it with `sentinel
 Only want the dashboard, without installing Python tools? One Docker command serves it for the workspace in the current folder (the container holds no AI tool and no secret; it publishes on `127.0.0.1` only):
 
 ```bash
-docker run --rm -it -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
+docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
 ```
 
 It prints `http://localhost:8765/auth?t=<token>`; open it. Add `--user $(id -u):$(id -g)` so files it writes in the workspace belong to you (then mount a private config folder you created with `mkdir -m 700 -p`, see the guide). On the host, `sentinel dashboard` picks a free port; `sentinel dashboard --port 8765` fixes it. See the [dashboard guide](docs/dashboard.md#docker).

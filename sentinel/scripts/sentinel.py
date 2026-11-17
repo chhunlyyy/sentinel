@@ -307,15 +307,15 @@ def cmd_sync_adapters(args):
     print(f"agents written to {out}; skills written to .claude/skills: {', '.join(installed)}")
 
 
-HUMAN_ONLY_COMMANDS = ["Bash(sentinel approve:*)", "Bash(sentinel accept:*)", "Bash(sentinel resolve:*)",
-                       "Bash(sentinel --dir * approve *)", "Bash(sentinel --dir * accept *)", "Bash(sentinel --dir * resolve *)",
-                       "Bash(sentinel run export:*)", "Bash(sentinel run import:*)",
-                       "Bash(sentinel --dir * run export *)", "Bash(sentinel --dir * run import *)",
-                       "Read(~/.config/sentinel/**)", "Read(//**/.config/sentinel/server.json)",
-                       "Bash(cat ~/.config/sentinel/*)", "Bash(sentinel dashboard:*)", "Bash(sentinel --dir * dashboard *)",
-                       "Bash(sentinel notifications read:*)", "Bash(sentinel --dir * notifications read *)",
-                       "Bash(sentinel backup restore:*)", "Bash(sentinel --dir * backup restore *)",
-                       "Bash(sentinel audit export:*)", "Bash(sentinel --dir * audit export *)"]
+_HUMAN_SUBCOMMANDS = ["approve", "accept", "resolve", "run export", "run import", "dashboard", "notifications read", "backup restore",
+                      "audit export"]
+HUMAN_ONLY_COMMANDS = (
+    [f"Bash(sentinel {c}:*)" for c in _HUMAN_SUBCOMMANDS]
+    # the global --dir option in front of the command, as `--dir X` and as `--dir=X` (an abbreviation such as `--di X` cannot be
+    # matched by a pattern: the TTY check of each command is the real guard)
+    + [f"Bash(sentinel --dir * {c} *)" for c in _HUMAN_SUBCOMMANDS]
+    + [f"Bash(sentinel --dir=* {c} *)" for c in _HUMAN_SUBCOMMANDS]
+    + ["Read(~/.config/sentinel/**)", "Read(//**/.config/sentinel/server.json)", "Bash(cat ~/.config/sentinel/*)"])
 
 
 def _config_dir_rules():
@@ -841,8 +841,21 @@ def cmd_resolve(args):
     try:
         slug = check_slug(args.slug)
         user, _ = human_gate(engine, slug, "resolve")
+        typed = None
+        if args.refresh_config:
+            info = engine.refresh_config_preview(slug, comment=args.comment)
+            print(f"sentinel.config.yaml replaces the config snapshot of run {slug}; keys that change ({len(info['changed_keys'])}):")
+            for line in info["diff"] or ["(none)"]:
+                print(f"  {line}")
+            print(f"new config sha256: {info['new_sha256']}")
+            try:
+                typed = input("Type the first 8 characters of the new config sha256 to confirm: ")
+            except (EOFError, KeyboardInterrupt):
+                print("\ninput closed; nothing stored", file=sys.stderr)
+                sys.exit(1)
         run = engine.resolve(slug, user=user, channel="tty", comment=args.comment, waive=args.waive, approve_file=args.approve_file,
-                             approve_clone=args.approve_clone, approve_security=args.approve_security, resume=not args.no_resume)
+                             approve_clone=args.approve_clone, approve_security=args.approve_security, resume=not args.no_resume,
+                             refresh_config=args.refresh_config, config_sha_prefix=typed)
         print(f"run {slug} is {run['state']}")
     finally:
         engine.close()
@@ -1421,6 +1434,7 @@ def main():
     resolve.add_argument("--approve-file", metavar="PATH", help="approve a destructive migration file by its sha256")
     resolve.add_argument("--approve-clone", action="store_true", help="approve QA on a clone of real data")
     resolve.add_argument("--approve-security", action="store_true", help="approve the tier 4 security gate")
+    resolve.add_argument("--refresh-config", action="store_true", help="re-snapshot sentinel.config.yaml into the run, then resume it")
     resolve.add_argument("--no-resume", action="store_true", help="record the decision but leave the run parked")
     resolve.add_argument("-m", "--comment")
     resolve.set_defaults(func=cmd_resolve)

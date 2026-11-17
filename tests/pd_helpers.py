@@ -174,7 +174,7 @@ class PD(PCX):
         import re
         files = features or default_features(len(repos) > 1, len(repos) > 1)
         ids = sorted({a for t in files.values() for a in re.findall(r"@(AC-\d+)", t)}, key=lambda a: int(a[3:]))
-        self.write_spec(spec_text(slug, tier=tier, acs=tuple(f"{a} ({'REQ-2' if a == 'AC-4' else 'REQ-1'}): x" for a in ids), typ="feature"))
+        self.write_spec(spec_text(slug, tier=tier, acs=tuple(f"{a} ({'REQ-2' if a in ('AC-4', 'AC-5') else 'REQ-1'}): x" for a in ids), typ="feature"))
         assert self.submit("specifier", slug)["accepted"]
         self.approve("spec", slug)
         self.write_features(files, slug=slug)
@@ -285,6 +285,10 @@ def camel(name):
 code = (cfg.get("exec") or {}).get(role)
 if code:
     exec(code)
+elif role == "qa_red":
+    for sid, rel in re.findall(r"^- `([^`]+)` -> `([^`]+)`$", prompt, re.M):
+        write(rel, "scenario " + sid + "\n")
+    write_result()
 elif role == "tdd_red":
     keys = re.findall(r"^- `(features/[^`]+)`$", prompt, re.M)
     body = "".join('  @Scenario("%s")\n  void %s() {}\n' % (k, camel(k.split(" :: ")[1])) for k in keys)

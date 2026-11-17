@@ -34,6 +34,9 @@ The engine writes `.sentinel/runs/<slug>/tasks/<task-id>/task.json` (`task-v1`):
 
 The rendered stage prompt (existing `render_stage.py`) is generated from this file plus the stage template.
 
+
+Role `qa_red` (TDD-09): the Red task of a QA-scenario cycle. Its write scope is exactly `.sentinel/cache/qa/tests/current/<slug>/**`; the repo is read-only (a write into a repo is `E_SCOPE`), the real-data clone gate applies, `SENTINEL_TASK_ID` is set, and it reads the `tdd_red` retry cap. It writes one script per scenario (`<scenario id>.spec`); the engine, not the task, runs them.
+
 ## 2. Result contract
 
 The agent writes `result.json` (`agent-result-v1`): status (`completed`, `blocked`, `failed`), summary, changed files it claims, commands it ran with its own claimed results, findings, questions, out-of-lane notes, new dependencies.

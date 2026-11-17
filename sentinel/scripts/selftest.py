@@ -858,6 +858,7 @@ def main():
         phase_h_b_checks(tmp)
         phase_e_checks(tmp)
         phase_h_a_checks(tmp)
+        phase_j_checks(tmp)
 
         print("skills")
         sys.path.insert(0, str(ROOT / "scripts"))
@@ -892,7 +893,7 @@ def main():
         standalone_bad = []
         for stage_file in sorted((ROOT / "core" / "stages").glob("*.md")):
             stage_name = stage_file.stem
-            if (yaml.safe_load(stage_file.read_text().split("---\n")[1]) or {}).get("writes") in ("tests", "production", "gherkin"):
+            if (yaml.safe_load(stage_file.read_text().split("---\n")[1]) or {}).get("writes") in ("tests", "production", "gherkin", "qa_scripts"):
                 continue  # Phase D roles are driven by the engine, they have no standalone skill
             owners = [n for n in names if n != "sentinel" and f"--stage {stage_name}" in (skills_dir() / n / "SKILL.md").read_text()]
             if len(owners) != 1:
@@ -1247,6 +1248,161 @@ def phase_h_a_checks(tmp):
         check("AC-ANL-01o an unknown analytics query parameter is refused", call("/api/v1/reports/analytics?project=ws-h&sql=select", cookie)[0] == 400)
     finally:
         srv.stop()
+
+
+def phase_j_checks(tmp):
+    print("QA scenarios as Red evidence (phase J, TDD-09)")
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import jsonschema
+    import qa_scenarios as Q
+    from registry import Registry
+    schema = json.loads((ROOT / "core/schema/config.schema.json").read_text())
+    base = {"driver": "playwright", "ports": [4173], "start_commands": {"frontend": "true"}}
+
+    def qa_valid(**extra):
+        errors = jsonschema.Draft202012Validator(schema["properties"]["qa"]).iter_errors({**base, **extra})
+        return not list(errors)
+    check("AC-CFG-12d the qa.scenario_run and qa.scenario_report keys are validated",
+          qa_valid(scenario_run="node qa/run.js {scripts}", scenario_report="qa-report.xml") and not qa_valid(scenario_run="")
+          and not qa_valid(scenario_run=5) and not qa_valid(scenario_report="../outside.xml") and not qa_valid(unknown_key="x"))
+    check("AC-CFG-12e a qa section without the new keys stays valid", qa_valid(db_clone="none", fixtures="sanitized"))
+    cfg = {"rules": {Q.RULE: True}, "repos": [{"id": "web", "role": "frontend"}, {"id": "api", "role": "backend"}, {"id": "app", "role": "mobile"}]}
+    check("AC-TDD-09b the method follows the rule and the repo role",
+          [Q.method_for(cfg, r) for r in ("web", "api", "app")] == [Q.QA, Q.TEST, Q.QA]
+          and Q.method_for({**cfg, "rules": {Q.RULE: False}}, "web") == Q.TEST)
+    w = tmp / "ws-hj"
+    w.mkdir()
+    fake = w / "driver.py"
+    fake.write_text("import sys, os\nopen(sys.argv[2], 'w').write('<testsuite><testcase name=\"AC-1\"><failure message=\"Then x: nope\"/></testcase>'"
+                    "'<testcase name=\"AC-2\"/></testsuite>')\nsys.exit(1)\n")
+    good = {"qa": {"driver": "playwright", "scenario_run": f"{sys.executable} {fake} {{scripts}} {{report}} {{cycle}}", "scenario_report": "r.xml",
+                   "start_commands": {"web": "true"}}}
+    check("AC-CFG-12a a missing QA driver piece is named at R12", Q.driver_problem(good, w, "web") is None
+          and Q.driver_problem({"qa": {"driver": "none"}}, w, "web") == "QA driver is none"
+          and Q.driver_problem({}, w, "web") == "QA driver is not configured"
+          and Q.driver_problem({"qa": {**good["qa"], "scenario_run": "python3 /nonexistent/x.py"}}, w, "web").startswith("qa.scenario_run does not exist")
+          and Q.driver_problem({"qa": {**good["qa"], "start_commands": {}}}, w, "web") == "no QA start command for repo web")
+    ran = Q.run_driver(good, w, "web", w / "scripts", "c-1", w / "qa", 30, lambda: "now")
+    judged = Q.judge(ran, ["AC-1", "AC-2"])
+    check("AC-TDD-09n the engine runs the driver and judges per scenario (a pass before Green is unexpected)",
+          judged["class"] == "partial_pass" and judged["failing"] == ["AC-1"] and judged["passing"] == ["AC-2"], str(judged["class"]))
+    check("AC-TDD-09n a failure at a Then step on every scenario is the right reason",
+          Q.judge({"report": [("AC-1", "failure", "Then x: nope"), ("AC-2", "failure", "Then y: nope")], "output": ""}, ["AC-1", "AC-2"])["class"] == "assertion"
+          and Q.judge({"report": [("AC-1", "failure", "Given x: nope")], "output": ""}, ["AC-1"])["class"] == "setup_failure"
+          and Q.judge({"report": None, "output": "net::ERR_CONNECTION_REFUSED"}, ["AC-1"])["class"] == "app_not_running")
+    reg = Registry.open(w / ".sentinel")
+    cols = {r[1] for r in reg._c.execute("PRAGMA table_info(cycles)")}
+    ecols = {r[1] for r in reg._c.execute("PRAGMA table_info(evidence)")}
+    reg.close()
+    check("AC-SM-06a the registry keeps the cycle table and adds red_method and the evidence exception fields",
+          {"red_method", "approved_scripts"} <= cols and {"method", "exception", "scripts"} <= ecols)
+    schema_task = json.loads((ROOT / "core/schema/task-v1.schema.json").read_text())
+    check("AC-TDD-09i the qa_red role has a stage template and a task schema entry",
+          "qa_red" in schema_task["properties"]["role"]["enum"] and (ROOT / "core/stages/qa_red.md").is_file())
+    qa_red_end_to_end(tmp)
+
+
+def qa_red_end_to_end(tmp):
+    """A QA-Red cycle through the real CLI and engine with a fake agent and a fake QA driver: Red, Green, Refactor, exception record."""
+    w = tmp / "ws-hj-e2e"
+    w.mkdir()
+    git_repo(w / "frontend", "package.json")
+    run(CLI + ["--dir", str(w), "init", "--shape", "fullstack", "--non-interactive", "--local-only"])
+    d = ["--dir", str(w)]
+    bin_dir = w / "bin"
+    bin_dir.mkdir()
+    driver = bin_dir / "qadriver"
+    driver.write_text(f"""#!{sys.executable}
+import os, pathlib, sys
+scripts, report = sys.argv[1], sys.argv[2]
+mode = (pathlib.Path(__file__).resolve().parent / "mode.txt").read_text().strip()
+ids = sorted(f.split(".")[0] for f in os.listdir(scripts) if os.path.isfile(os.path.join(scripts, f)))
+body = "".join('<testcase name="%s">%s</testcase>' % (i, '<failure message="Then the form shows 5 days: got 0"/>' if mode == "red" else "") for i in ids)
+os.makedirs(os.path.dirname(report), exist_ok=True)
+pathlib.Path(report).write_text("<testsuite>" + body + "</testsuite>")
+sys.exit(1 if mode == "red" else 0)
+""")
+    driver.chmod(0o755)
+    agent = bin_dir / "qaagent"
+    agent.write_text(f"""#!{sys.executable}
+import json, os, pathlib, re, sys
+prompt = sys.argv[-1]
+result = re.search(r'Result file \\(absolute path\\): (\\S+)', prompt).group(1)
+ws = os.path.dirname(os.getcwd())
+role = re.search(r'- Role: (\\w+)', prompt).group(1)
+if role == "qa_red":
+    for sid, rel in re.findall(r'^- `([^`]+)` -> `([^`]+)`$', prompt, re.M):
+        p = pathlib.Path(ws, rel)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("scenario " + sid + "\\n")
+else:
+    p = pathlib.Path(os.getcwd(), "src/main/Form.js")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text((p.read_text() if p.exists() else "") + "// form\\n")
+pathlib.Path(result).write_text(json.dumps({{"schema": "agent-result-v1", "task_id": os.environ["SENTINEL_TASK_ID"], "status": "completed", "summary": "s"}}))
+""")
+    agent.chmod(0o755)
+    (bin_dir / "mode.txt").write_text("red")
+    py = sys.executable
+
+    def mutate(c):
+        c["repos"] = [{"id": "frontend", "path": "frontend", "role": "frontend", "profile": "generic", "test_globs": ["src/test/**"],
+                       "production_globs": ["src/main/**"], "commands": {"test": "true"}}]
+        c.update({"single_model": False, "rules": {"no_permanent_frontend_tests": True},
+                  "runners": {"qa": {"command": str(agent)}}, "agents": {r: {"runner": "qa"} for r in ("qa_red", "tdd_green", "tdd_refactor")},
+                  "qa": {"driver": "playwright", "start_commands": {"frontend": "true"}, "scenario_run": f"{py} {driver} {{scripts}} {{report}} {{cycle}}",
+                         "scenario_report": "qa-report.xml"}})
+    write_config(w, mutate)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from engine import Engine
+    slug = "qa-e2e"
+    run(CLI + d + ["run", "new", slug])
+    db_set(w, slug, state="PLANNED", tier=1, initial_tier=1)
+    sd = w / ".sentinel/shared/specs" / slug
+    (sd / "features").mkdir(parents=True, exist_ok=True)
+    (sd / "spec.md").write_text(lite_spec(slug))
+    eng = Engine(w / ".sentinel", w, yaml.safe_load((w / "sentinel.config.yaml").read_text()))
+    try:
+        def submit(role, feats=None):
+            for n, t in (feats or {}).items():
+                (sd / "features" / n).write_text(t)
+            tid = eng.create_task(slug, role, f"{role} work", ["frontend"], queue=True)["id"]
+            eng.start_task(tid, schedule=False)
+            (w / ".sentinel/runs" / slug / "tasks" / tid / "result.json").write_text(json.dumps(
+                {"schema": "agent-result-v1", "task_id": tid, "status": "completed", "summary": "done"}))
+            return eng.finish_task(tid)["completion"]
+
+        def approve(gate):
+            info = eng.pending_approval(slug, gate)
+            eng.decide(slug, gate, "approve", "human", prefix=info["sha256"][:8], approver="dev")
+        assert submit("specifier")["accepted"]
+        approve("spec")
+        assert submit("test_designer", FEATURES)["accepted"]
+        approve("gherkin")
+        eng.advance(slug)
+    finally:
+        eng.close()
+
+    def cycle():  # the first cycle; the second one waits for it
+        return db_all(w, "SELECT * FROM cycles ORDER BY ordinal")[0]
+
+    def task_run(mode):
+        (bin_dir / "mode.txt").write_text(mode)
+        step = json.loads(run(CLI + d + ["next", slug, "--json"])[1])
+        return run(CLI + d + ["task", "run", step["task"]]), step
+    (code, out), step = task_run("red")
+    c = cycle()
+    red = db_all(w, "SELECT * FROM evidence WHERE kind='red'")
+    check("AC-TDD-09m a QA-Red task writes the scripts, the engine runs the driver and accepts a failure at a Then step",
+          step.get("role") == "qa_red" and code == 0 and c["state"] == "RED_VERIFIED" and c["red_method"] == "qa_scenario"
+          and len(red) == 1 and red[0]["classification"] == "assertion" and red[0]["method"] == "qa_scenario"
+          and len(json.loads(c["approved_scripts"])) == 1 and db_all(w, "SELECT 1 FROM events WHERE type='tdd.exception_recorded'"), out[-300:])
+    (code, out), _ = task_run("green")
+    (code2, out2), _ = task_run("green")
+    c = cycle()
+    check("AC-TDD-09s Green and Refactor pass the same scripts through the driver and the cycle is accepted with the exception recorded",
+          code == 0 and code2 == 0 and c["state"] == "CYCLE_ACCEPTED" and len(db_all(w, "SELECT 1 FROM evidence WHERE method='qa_scenario' AND verdict='accepted'")) == 3
+          and len(db_all(w, "SELECT 1 FROM events WHERE type='tdd.exception_recorded'")) == 1, (out + out2)[-300:])
 
 
 def phase_h_b_checks(tmp):

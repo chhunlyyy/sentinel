@@ -197,7 +197,7 @@ class Docs(unittest.TestCase):
     def test_AC_OPS_06i_the_readme_quick_start_is_two_one_liners(self):
         text = read("README.md")
         self.assertIn("uv tool install sentinel-pipeline", text)
-        self.assertIn("docker run --rm -it -p 127.0.0.1:8765:8765", text)
+        self.assertIn("docker run --rm -it --init -p 127.0.0.1:8765:8765", text)
         self.assertIn("ghcr.io/chhunlyyy/sentinel", text)
         for rel in ("README.md", "docs/installation.md", "docs/quickstart.md", "docs/dashboard.md", "docs/migration-1.1.md"):
             for line in read(rel).splitlines():

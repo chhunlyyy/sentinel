@@ -57,7 +57,7 @@ As a last resort, `pip install sentinel-pipeline` inside a virtual environment w
 If you only want the dashboard, run the image instead of installing the engine. The image has no AI tool and no secret; the CLI your AI tool uses stays on the host. See [the dashboard guide](dashboard.md#docker).
 
 ```bash
-docker run --rm -it -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
+docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
 ```
 
 ## 3. Install the skills

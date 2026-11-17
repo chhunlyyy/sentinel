@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import machines
+import qa_scenarios as Q
 import scopes
 from errors import SentinelError
 from registry import _now
@@ -23,6 +24,12 @@ BLOCKING = ("blocker", "major")
 
 def plural(n, word):
     return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def display_name(cycle):
+    """Name of a cycle in people's text: the Rule name, else the feature file stem."""
+    label = cycle["behavior"] or ""
+    return label.split(":: Rule ", 1)[1] if ":: Rule " in label else Path(label.split(" :: ")[0]).stem
 
 
 class AcceptOps:
@@ -82,6 +89,7 @@ class AcceptOps:
             open_c = [cycle_name(c) for c in self.live_cycles(run) if c["state"] != "CYCLE_ACCEPTED"]
             if open_c:
                 reasons.append("cycles incomplete: " + ", ".join(open_c))
+        reasons += [f"tdd exception evidence missing: {c['repo_id']} {display_name(c)}" for c in self._exception_gaps(run)]
         latest = self.latest_round(run)
         rows = self.round_rows(run, latest["round"]) if latest and latest["finished_at"] else []
         bad = self._evidence_problems(run, rows)
@@ -136,6 +144,38 @@ class AcceptOps:
         if missing:
             reasons.append("required human approval missing: " + ", ".join(missing))
         return ("rejected" if reasons else "accepted"), reasons
+
+    def _exception_cycles(self, run):
+        return [c for c in self.live_cycles(run) if c["red_method"] == Q.QA and c["state"] == "CYCLE_ACCEPTED"]
+
+    def _exception_gaps(self, run):
+        """QA-Red cycles whose recorded exception is incomplete: no accepted red row, no exception field, no
+        tdd.exception_recorded event for the cycle, or script hashes that no longer match the QA cache (TDD-09)."""
+        events = self.reg.list_events(run["id"], "tdd.exception_recorded")
+        out = []
+        for c in self._exception_cycles(run):
+            red = self._accepted_evidence(c, "red")
+            ok = bool(red) and bool(red["exception"]) and any(e["payload"].get("cycle") == c["id"] for e in events)
+            if ok:
+                scripts = json.loads(red["scripts"] or "[]")
+                ok = bool(scripts) and not Q.changed_scripts(self.workspace, scripts, self._scripts_rel(run, c["id"])) \
+                    and not Q.changed_scripts(self.workspace, json.loads(c["approved_runner"] or "[]"))
+            if not ok:
+                out.append(c)
+        return out
+
+    def _tdd_exceptions(self, run):
+        out = []
+        for c in self._exception_cycles(run):
+            red, green = self._accepted_evidence(c, "red"), self._accepted_evidence(c, "green")
+            if not red:
+                continue
+            out.append({"repo": c["repo_id"], "cycle": c["id"], "name": display_name(c), "rule": Q.RULE, "method": Q.QA,
+                        "red_evidence": red["id"], "green_evidence": green["id"] if green else None,
+                        "scenarios": len(json.loads(c["scenarios"] or "[]")), "failed_before_green": json.loads(red["failing"] or "[]"),
+                        "script_hashes": [{"path": x["path"], "sha256": x["sha256"], "exported": False}
+                                          for x in json.loads(red["scripts"] or "[]")]})
+        return out
 
     def _missing_evidence(self, run, latest, rows):
         """The checks the round planned (its summary) that left no evidence row; a round without a plan owes one scope row per repo."""
@@ -218,7 +258,7 @@ class AcceptOps:
         """{"gaps": [text], "failures": [text]}: a missing link is a gap, a rejected cycle a failure (TRC-02)."""
         run = self._get_v2(slug)
         links = self.reg.rows("trace_links", run_id=run["id"])
-        tested = {l["from_id"] for l in links if l["from_kind"] == "scenario" and l["to_kind"] == "test"}
+        tested = {l["from_id"] for l in links if l["from_kind"] == "scenario" and l["to_kind"] in ("test", "qa_script")}
         evid = {l["from_id"] for l in links if l["from_kind"] == "cycle" and l["to_kind"] == "evidence"}
         gaps, failures = [], []
         for c in self.live_cycles(run):
@@ -227,7 +267,7 @@ class AcceptOps:
                 continue
             for k in self._scenario_keys(c):
                 if k not in tested:
-                    gaps.append(f"scenario {k.split(' :: ')[-1]} has no test link")
+                    gaps.append(f"scenario {k.split(' :: ')[-1]} has no " + ("QA script link" if c["red_method"] == Q.QA else "test link"))
             if c["id"] not in evid:
                 gaps.append(f"cycle {cycle_name(c)} has no evidence link")
         return {"gaps": gaps, "failures": failures}
@@ -324,6 +364,7 @@ class AcceptOps:
                                            "decided_at": h["decided_at"] if h else None, "comment": h["comment"] if h else None}}
         else:
             rep["acceptance"] = {"status": "not reached", "acceptance_status": run["acceptance_status"]}
+        rep["tdd_exceptions"] = self._tdd_exceptions(run)
         rep["trace"] = {**self.trace_summary(slug), "links": len(reg.rows("trace_links", run_id=run["id"]))}
         rep["cost"] = {"tokens": tokens_total if unreported < len(tasks) else None, "cost": cost_total if unreported < len(tasks) else None,
                        "partial": unreported > 0, "unreported_tasks": unreported,
@@ -347,6 +388,13 @@ class AcceptOps:
                     lines += [f"  - claim `{f['path']}`: {f['flag']}" for f in a["claim_flags"]]
             else:
                 lines += ["```json", json.dumps(sec, indent=2), "```"]
+            lines.append("")
+        if rep.get("tdd_exceptions"):
+            lines += ["## TDD exceptions", "", "QA scenarios were the Red evidence; no test files were committed.", ""]
+            for x in rep["tdd_exceptions"]:
+                lines.append(f"- {x['repo']} {x['name']}: {x['rule']}, {x['scenarios']} scenarios, red {x['red_evidence']}, "
+                             f"green {x['green_evidence']}, failed before Green: {', '.join(x['failed_before_green'])}")
+                lines += [f"  - script {h['path']} sha256 {h['sha256']} (not exported)" for h in x["script_hashes"]]
             lines.append("")
         return "\n".join(lines) + "\n"
 
@@ -485,7 +533,7 @@ class AcceptOps:
                 else:
                     self._event(run, "run.status_changed", machines.HUMAN, {"execution_status": "completed", "acceptance_status": "accepted",
                                                                              "reasons": [], "human_acceptance": "confirmed"})
-                # wording per Phase F AC-VER-04k; Phase E AC-VER-04a wording pending human confirmation
+                # wording per Phase F AC-VER-04k, confirmed by the owner 2026-11-17
                 self.reg.add_audit(who, channel, "accepted" if decision == "accept" else "rejected", slug, after_sha=current,
                                    reason=decision)
         if deferred is not None:

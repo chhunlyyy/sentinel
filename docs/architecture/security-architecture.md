@@ -52,7 +52,7 @@ No endpoint takes a shell string. All subprocess calls use argument lists.
 - CLI: `sentinel approve` refuses when `sys.stdin.isatty()` is false, shows the artifact hash, and requires typing the first 8 hex characters.
 - Dashboard: approval endpoint requires the session cookie and CSRF header, and the request body must include the full hash the reviewer saw. Stale hash: `409 E_APPROVAL_STALE`.
 - Records: approver identity (OS user, git `user.name`), channel (`tty` or `dashboard`), time, version, hash, decision, comment.
-- Generated agent configs (`sync-adapters`) add a deny rule for `sentinel approve*` and `sentinel accept*` where the tool supports one (Claude Code `permissions.deny`), and an explicit rule in the agent instructions otherwise. These deny rules are advisory (a pattern cannot cover every way to spell or wrap a command, for example `sentinel --dir X approve`); the TTY check in `sentinel approve` is the control.
+- Generated agent configs (`sync-adapters`) add a deny rule for `sentinel approve*` and `sentinel accept*` where the tool supports one (Claude Code `permissions.deny`), and an explicit rule in the agent instructions otherwise. These deny rules are advisory (a pattern cannot cover every way to spell or wrap a command; the rules name `--dir X` and `--dir=X` in front of each human-only command, but an abbreviation such as `--di X` cannot be covered); the TTY check in `sentinel approve` is the control.
 
 **Residual risk (R1):** an agent running as the same OS user could, in theory, script a pseudo-terminal or read the token file. Sentinel records the channel and identity and documents this. Strong separation needs a different OS user or a sandbox, which is out of scope for 1.1.0.
 
@@ -60,6 +60,7 @@ No endpoint takes a shell string. All subprocess calls use argument lists.
 
 - Detective scope enforcement (see `agent-runtime.md` section 6).
 - Child environment strips `SENTINEL_DASHBOARD_TOKEN` and `policies.redact_env`.
+- QA scenarios as Red evidence (TDD-09): the engine runs agent-written QA scripts through `qa.scenario_run` as the user, with the same child environment as `_run_tests` (secrets stripped, no `SENTINEL_TASK_ID`), in its own process group with a timeout and a 5 MB output cap. This is the same R1/R3 residual as running agent-written tests. The script writes the JUnit report itself, so "Red and Green are not stated by the agent" is all the evidence proves; the scripts and the runner files inside the workspace are hashed at Red and re-checked at Green, Refactor, acceptance and report, and the scripts of every live QA cycle of the repo are protected and run again at Green and Refactor. The scenario text in the `qa_red` prompt is a prompt-injection surface (residual).
 - Provider permission modes stay the provider's (for example `acceptEdits`). `unsafe_skip_permissions` stays opt-in with a warning.
 - **Residual risk (R3):** Sentinel cannot stop a provider CLI from running a command during a task. It detects file and git effects afterwards.
 

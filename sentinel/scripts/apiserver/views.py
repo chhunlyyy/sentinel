@@ -206,11 +206,18 @@ def workflow(reg, run):
     return {"nodes": nodes, "edges": edges, "gates": gates}
 
 
+def _exception(cycle):
+    """The recorded TDD exception of a cycle (TDD-09): QA scenarios replaced the test file; null for a test-file cycle."""
+    import qa_scenarios
+    return qa_scenarios.exception_doc(cycle.get("repo_id")) if cycle["red_method"] == qa_scenarios.QA else None
+
+
 def tdd(reg, run):
     evidence = reg.rows("evidence", run_id=run["id"])
     cycles = []
     for c in reg.rows("cycles", run_id=run["id"]):
         cycles.append({"id": c["id"], "repo": c.get("repo_id"), "behavior": c["behavior"], "state": c["state"],
+                       "red_method": c["red_method"], "exception": _exception(c),
                        "phase_tasks": {"red": c["red_task"], "green": c["green_task"], "refactor": c["refactor_task"]},
                        "evidence_ids": [e["id"] for e in evidence if e["cycle_id"] == c["id"]]})
     return {"cycles": cycles}
@@ -230,7 +237,9 @@ def verification(eng, run):
     human = eng.acceptance_rows(run)
     record = ({"decision": human[-1]["decision"], "approver": human[-1]["approver"], "channel": human[-1]["channel"],
                "at": human[-1]["decided_at"], "comment": human[-1]["comment"]} if human else None)
-    return {"evidence": evidence, "round": done["round"] if done else None, "missing": missing, "acceptance_record": record,
+    cycles = [{"id": c["id"], "repo": c.get("repo_id"), "behavior": c["behavior"], "state": c["state"], "red_method": c["red_method"],
+               "exception": _exception(c)} for c in reg.rows("cycles", run_id=run["id"])]
+    return {"cycles": cycles, "evidence": evidence, "round": done["round"] if done else None, "missing": missing, "acceptance_record": record,
             "acceptance": {"execution_status": run["execution_status"], "acceptance_status": run["acceptance_status"],
                            "reasons": reg.last_status_reasons(run["id"])}}
 

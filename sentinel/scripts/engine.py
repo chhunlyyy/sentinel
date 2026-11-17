@@ -19,6 +19,7 @@ from errors import SentinelError
 from controls import ControlOps
 from registry import Registry, _now
 from cycles import CycleOps
+from qa_cycles import QaCycleOps
 from runtime import RuntimeOps
 from tasks import TaskOps, retry_cap
 from verify import VerifyOps
@@ -52,7 +53,7 @@ R18_SOURCES = ("GHERKIN_APPROVED", "EXECUTING", "VERIFYING", "REVIEWING")
 UPSTREAM = "upstream specification approval invalidated"
 
 
-class Engine(CycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, RuntimeOps, TaskOps, ControlOps):
+class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, RuntimeOps, TaskOps, ControlOps):
     def __init__(self, state_dir, workspace, config, release_lock=None):
         self.channel = None
         self.actor_name = None
@@ -690,7 +691,7 @@ class Engine(CycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, RuntimeOps, T
                     missing = scopes.missing_globs(cfg, repo["id"])
                     if missing:
                         return "E_PRECONDITION", f"repo {repo['id']} has no {missing}"
-            return self._planning_problem(run)
+            return self._planning_problem(run) or self._qa_driver_problem(run)
         return None
 
     def _start(self, run, reason=None):
@@ -708,9 +709,11 @@ class Engine(CycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, RuntimeOps, T
         return self._park(run, problem) if problem else None
 
     def _park(self, run, problem):
-        code, why = problem
+        code, why, *audit = problem
         if code == "E_INTEGRITY":
             self.reg.add_audit("engine", "engine", "integrity_failed", f"{run['slug']}/execution", reason=why)
+        for action in audit:
+            self.reg.add_audit("engine", "engine", action, f"{run['slug']}/execution", reason=why)
         self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=why)
         return SentinelError(code, why, {"state": "NEEDS_HUMAN"})
 

@@ -18,6 +18,32 @@ ROUTED = ("blocker", "major")
 SECURITY_GATE = "security gate (tier 4) needs human approval"
 
 
+MISSING = object()  # a key that one of the two documents does not have
+
+
+def _flatten(value, prefix=""):
+    """{dotted key: leaf value} of a config document; a list is one leaf (its elements are not keys)."""
+    if isinstance(value, dict) and value:
+        out = {}
+        for k, v in value.items():
+            out.update(_flatten(v, f"{prefix}.{k}" if prefix else str(k)))
+        return out
+    return {prefix: value}
+
+
+def config_key_diff(old, new):
+    """[(key, old value or None, new value or None)] of the keys that differ between two config documents, sorted by key."""
+    a, b = _flatten(old or {}), _flatten(new or {})
+    return [(k, a.get(k, MISSING), b.get(k, MISSING)) for k in sorted(set(a) | set(b)) if a.get(k, MISSING) != b.get(k, MISSING)]
+
+
+def _show(value):
+    if value is MISSING:
+        return "(not set)"
+    text = json.dumps(value, default=str)
+    return text if len(text) <= 80 else text[:77] + "..."
+
+
 def cycle_name(cycle):
     """Short name of a cycle in messages: the Rule name or the feature file stem, lowercase with dashes."""
     label = cycle["behavior"] or ""
@@ -214,8 +240,46 @@ class ReviewOps:
         return True
 
     # ---- R20 decisions
+    def refresh_config_preview(self, slug, comment="preview"):
+        """What `resolve --refresh-config` would adopt: {"from", "old_sha256", "new_sha256", "changed_keys", "diff" (lines), "text"}.
+        Refused like the refresh itself: run not NEEDS_HUMAN or BLOCKED (E_PRECONDITION), no comment, a config that is not YAML
+        or does not match config.schema.json (E_VALIDATION). Stores nothing."""
+        import jsonschema
+        import yaml
+        from paths import ROOT
+        run = self._get_v2(slug)
+        if run["state"] not in ("NEEDS_HUMAN", "BLOCKED"):
+            raise SentinelError("E_PRECONDITION", f"the config snapshot is refreshed on a NEEDS_HUMAN or BLOCKED run, run is {run['state']}",
+                                {"state": run["state"]})
+        if not (comment or "").strip():
+            raise SentinelError("E_VALIDATION", "refreshing the config snapshot needs a comment")
+        text = (self.workspace / "sentinel.config.yaml").read_text(encoding="utf-8")
+        try:
+            new = yaml.safe_load(text)
+        except yaml.YAMLError as err:
+            raise SentinelError("E_VALIDATION", f"sentinel.config.yaml is not valid YAML: {err}") from err
+        if not isinstance(new, dict):
+            raise SentinelError("E_VALIDATION", "sentinel.config.yaml must hold a mapping")
+        schema = json.loads((ROOT / "core" / "schema" / "config.schema.json").read_text())
+        errors = [f"{'/'.join(map(str, e.path)) or '(root)'}: {e.message}" for e in jsonschema.Draft202012Validator(schema).iter_errors(new)
+                  if not re.match(r"repos/\d+/(test|production)_globs", "/".join(map(str, e.path)))]
+        if errors:
+            raise SentinelError("E_VALIDATION", "sentinel.config.yaml does not match config.schema.json: " + "; ".join(errors[:5]),
+                                {"errors": errors[:20]})
+        before = run.get("config_snapshot_id")
+        row = self.reg.get_config_version(before) if before else None
+        try:
+            old = yaml.safe_load(row["content"]) if row else None
+        except yaml.YAMLError:
+            old = None
+        old = old if isinstance(old, dict) else {}
+        diff = config_key_diff(old, new)
+        lines = [f"{k}: {_show(a)} -> {_show(b)}" for k, a, b in diff]
+        return {"from": before, "old_sha256": row["sha256"] if row else None, "new_sha256": sha_bytes(text.encode("utf-8")),
+                "changed_keys": [k for k, _, _ in diff], "diff": lines, "text": text}
+
     def resolve(self, slug, *, user, channel="tty", comment=None, waive=None, approve_file=None, approve_clone=False,
-                approve_security=False, resume=True):
+                approve_security=False, resume=True, refresh_config=False, config_sha_prefix=None):
         """A human's recorded decision on a parked run (R20): waive an open finding, approve a destructive migration file by
         its sha256, approve a real-data QA clone, approve the tier 4 security gate, then send the run back to where it was."""
         self._as_human(user, channel)
@@ -253,6 +317,22 @@ class ReviewOps:
                 self._approval(run, "real_data_clone", None, user, channel, comment, "qa clone")
                 self.reg.add_audit(user, channel, "resolve", f"{slug}/qa", reason="approve real-data clone")
                 done.append("clone")
+            if refresh_config:
+                info = self.refresh_config_preview(slug, comment=comment)
+                if (config_sha_prefix or "").strip().lower() != info["new_sha256"][:8]:
+                    raise SentinelError("E_VALIDATION", "type the first 8 characters of the new config sha256 to confirm the refresh",
+                                        {"expected_length": 8})
+                text, before = info["text"], info["from"]
+                cid = self.reg.store_config_version("workspace", text, author=user, channel=channel, comment=comment)
+                self.reg.update_run(slug, config_snapshot_id=cid)
+                self._event(run, "run.config_refreshed", machines.HUMAN,
+                            {"from": before, "to": cid, "sha256": info["new_sha256"], "old_sha256": info["old_sha256"],
+                             "changed_keys": info["changed_keys"]})
+                keys = info["changed_keys"]
+                shown = ", ".join(keys[:20]) + (f" (+{len(keys) - 20} more)" if len(keys) > 20 else "")
+                self.reg.add_audit(user, channel, "resolve_refresh_config", slug, after_sha=info["new_sha256"],
+                                   reason=f"config snapshot {before} -> {cid}: {comment}; changed keys: {shown or 'none'}")
+                done.append("config")
             if approve_security:
                 ap = self._latest_approval(run, "specification", "APPROVED")
                 self._approval(run, "security", ap["sha256"] if ap else None, user, channel, comment, "security gate")

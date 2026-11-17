@@ -2,7 +2,7 @@
 Feature: The dashboard in a container
   The image "ghcr.io/chhunlyyy/sentinel" (tags 1.1.0 and latest) serves only the dashboard and
   server use case. The AI-tool-facing CLI is installed on the host. One command starts it:
-  docker run --rm -it -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
+  docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
   It prints http://localhost:8765/auth?t=<token>; opening that shows the dashboard for the
   mounted workspace. The image holds no AI tool CLI and no secret and runs as a non-root user.
 

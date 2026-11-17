@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import release_gate as gate  # noqa: E402
 
-PHASES = ["phaseA", "phaseB", "phaseC", "phaseD", "phaseE", "phaseF", "phaseG", "phaseH", "phaseI"]
+PHASES = ["phaseA", "phaseB", "phaseC", "phaseD", "phaseE", "phaseF", "phaseG", "phaseH", "phaseI", "phaseJ"]
 
 
 def feature(ids):

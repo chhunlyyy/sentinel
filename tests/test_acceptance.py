@@ -168,7 +168,7 @@ class Accept(PE):
                          ("accept", self.eng.report_info(SLUG)["sha256"], "tty", "pilot ok"))
         run = self.run_row()
         self.assertEqual((run["state"], run["acceptance_status"]), ("COMPLETED", "accepted"))
-        # wording per Phase F AC-VER-04k; Phase E AC-VER-04a wording pending human confirmation
+        # wording per Phase F AC-VER-04k, confirmed by the owner 2026-11-17
         self.assertEqual([a["action"] for a in self.audit() if a["action"] in ("accepted", "rejected", "acceptance")], ["accepted"])
         self.assertEqual(self.eng.human_acceptance(run), "confirmed")
 

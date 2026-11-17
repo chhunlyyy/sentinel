@@ -29,7 +29,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "1.1.0"
-PHASES = ["phaseA", "phaseB", "phaseC", "phaseD", "phaseE", "phaseF", "phaseG", "phaseH", "phaseI"]
+PHASES = ["phaseA", "phaseB", "phaseC", "phaseD", "phaseE", "phaseF", "phaseG", "phaseH", "phaseI", "phaseJ"]
 ID_RE = re.compile(r"AC[-_]([A-Z]+)[-_](\d+)([a-z]+)(?![A-Za-z0-9])")
 FEATURE_ID_RE = re.compile(r"@(AC-[A-Z]+-\d+[a-z]+)\b")
 
@@ -61,7 +61,7 @@ def set_hash(features_dir):
 
 def recorded_hashes(status_text):
     out = {}
-    for m in re.finditer(r"\|\s*P([A-I])-00\s*\|[^\n]*?hash `([0-9a-f]{64})`", status_text):
+    for m in re.finditer(r"\|\s*P([A-J])-00\s*\|[^\n]*?hash `([0-9a-f]{64})`", status_text):
         out[f"phase{m.group(1)}"] = m.group(2)
     return out
 

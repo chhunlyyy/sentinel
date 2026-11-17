@@ -28,6 +28,7 @@ from util import sha_bytes
 DEFAULT_TIMEOUT = 5400
 DEFAULT_RETRIES = 2
 READ_ONLY_ROLES = {"specifier", "test_designer", "reviewer", "qa", "retrospective"}
+CYCLE_ROLES = ("tdd_red", "qa_red", "tdd_green", "tdd_refactor")  # qa_red: Red by QA scenarios (TDD-09)
 OPEN_STATES = ("CREATED", "QUEUED", "RUNNING", "WAITING_FOR_INPUT")
 RETRY_CODES = ("E_EXIT", "E_TIMEOUT", "E_RESULT_SCHEMA", "E_AGENT")
 STDERR_LINES, STDERR_LINE_CAP = 20, 500  # what a retry brief may carry of the last attempt
@@ -95,8 +96,8 @@ def retry_cap(config, role, task_cap=None):
     does not apply to it."""
     if _int(task_cap) and task_cap >= 0:
         return task_cap
-    if role.startswith("tdd_"):
-        phase = role[4:]
+    if role.startswith("tdd_") or role == "qa_red":
+        phase = "red" if role == "qa_red" else role[4:]
         for value in ((config.get("tdd") or {}).get(f"{phase}_retries"), (config.get("limits") or {}).get(f"{phase}_retries")):
             if _int(value) and value >= 0:
                 return value
@@ -131,16 +132,35 @@ class TaskOps:
         return self.run_dir(slug) / "tasks" / task_id
 
     def _run_config(self, run):
-        """The config the run started with (CFG-08)."""
+        """The config the run started with (CFG-08). A run without a stored snapshot (a legacy run) uses the live config; a run
+        whose stored snapshot is unreadable or no longer matches its hash does not: E_INTEGRITY, and the run is parked."""
         row = self.reg.get_config_version(run["config_snapshot_id"]) if run.get("config_snapshot_id") else None
-        if row:
+        if not row:
+            return self.config
+        why = None
+        if hashlib.sha256((row["content"] or "").encode("utf-8")).hexdigest() != row["sha256"]:
+            why = "its content no longer matches its stored hash"
+        else:
             try:
                 cfg = yaml.safe_load(row["content"])
             except yaml.YAMLError:
                 cfg = None
             if isinstance(cfg, dict):
                 return cfg
-        return self.config
+            why = "it is not a valid config document"
+        msg = f"the config snapshot of run {run['slug']} is unusable ({why}); refresh it with `sentinel resolve {run['slug']} --refresh-config`"
+        if not self.reg._in_tx and not getattr(self, "_parking_config", False):  # inside a transaction the raise rolls it back
+            self._parking_config = True
+            try:
+                with self.reg.transaction():
+                    fresh = self.reg.get_run_by_id(run["id"])
+                    self.reg.add_audit("engine", "engine", "integrity_failed", f"{run['slug']}/config", reason=msg)
+                    if fresh["state"] not in machines.RUN_FINAL and fresh["state"] != "NEEDS_HUMAN":
+                        self._move(fresh, "NEEDS_HUMAN", machines.ENGINE, reason=msg)
+                self._finish_up(run["slug"], fresh)
+            finally:
+                self._parking_config = False
+        raise SentinelError("E_INTEGRITY", msg, {"run": run["slug"], "config_snapshot_id": run["config_snapshot_id"]})
 
     def adapter_for(self, runner, slug=None):
         """The adapter object for a runner name ("native" or a runner of the config)."""
@@ -158,6 +178,7 @@ class TaskOps:
     def create_task(self, slug, role, objective=None, repos=None, **kw):
         """Create a CREATED task and its task-v1 file. Keywords: write, read, timeout_seconds, max_retries,
         depends_on, cycle_id, retry_of, brief, must_follow_tdd, readonly_approved."""
+        self._refuse_tdd_red_for_qa(role, kw.get("cycle_id"))
         self._tdd_precheck(slug, role, repos if isinstance(repos, list) else [])
         with self.reg.transaction():
             run = self._get_v2(slug)
@@ -193,6 +214,8 @@ class TaskOps:
         names = [r for r in repos if isinstance(r, str)] if isinstance(repos, list) else []
         if role in ("tdd_red", "tdd_green", "tdd_refactor") and names:
             write, readonly_approved = self._tdd_permissions(run, cfg, role, names[0], write, readonly_approved)
+        elif role == "qa_red":
+            write = self._qa_red_scope(run, write)
         adapter, provider, model = select_adapter(cfg, role, names[0] if names else None)
         if timeout_seconds is None:
             policy = (cfg.get("policies") or {}).get("task_timeout_seconds")
@@ -316,7 +339,7 @@ class TaskOps:
                     snap[repo["id"]] = boundary.changed_state(path, self._watch_globs(cfg, repo["id"]))
                     had_state[repo["id"]] = (path / self.state_dir.name).exists()
         text = json.dumps({"repos": snap, "config": self._config_digests(), "had_state": had_state,
-                           "shared": self._shared_state(run["slug"])}, indent=2)
+                           "shared": self._shared_state(run["slug"]), "qa": self._qa_tree_state(run["slug"])}, indent=2)
         (tdir / "before.json").write_text(text, encoding="utf-8")
         return text, hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -544,6 +567,7 @@ class TaskOps:
         approved = (sealed.get("permissions") or {}).get("readonly_approved") or []
         task_repos = set(self._task_repos(task, tdir))
         changed, violations, records, cache = [], [], [], {}
+        qa_runner = self.qa_runner_paths(run)
         state_name = self.state_dir.name
         for repo in cfg.get("repos") or []:
             if not (isinstance(repo, dict) and repo.get("id")):
@@ -571,6 +595,8 @@ class TaskOps:
                         violations.append(("repo_not_allowed", full))
                 elif IGNORE_RULES.search(n):
                     violations.append(("ignore_rules_changed", full))
+                elif task["role"] in ("tdd_green", "tdd_refactor") and full in qa_runner:
+                    violations.append(("outside_write_scope", full))  # the QA runner is test infrastructure: Red's, then nobody's
                 elif any(scopes.glob_match(g, full) for g in approved):
                     violations.append(("approved_test_changed", full))
                 elif task["role"] in ("tdd_green", "tdd_refactor") and (
@@ -592,6 +618,14 @@ class TaskOps:
                                     "after_sha256": now_shared.get(n)})
                     if not any(scopes.glob_match(g, n) for g in scope):
                         violations.append(("outside_write_scope", f"{state_name}/shared/{n}"))
+            if doc.get("qa") is not None:
+                was_qa, now_qa = doc["qa"], self._qa_tree_state(run["slug"])
+                base = self._scripts_rel(run)
+                for kind, text in self._qa_tree_violations(run, task, was_qa, now_qa):
+                    changed.append(text)
+                    records.append({"repo_id": None, "path": text, "before_sha256": was_qa.get(text[len(base) + 1:]),
+                                    "after_sha256": now_qa.get(text[len(base) + 1:])})
+                    violations.append((kind, text))
         return sorted(changed), violations, records
 
     def _task_repos(self, task, tdir):
@@ -745,7 +779,7 @@ class TaskOps:
                 extra["session_id"] = session_id
             for rec in v["records"]:
                 self.reg.insert_row("changed_files", {"run_id": run["id"], "task_id": task_id, "cycle_id": task["cycle_id"],
-                                                      "phase": task["role"] if task["role"].startswith("tdd_") else None, **rec})
+                                                      "phase": task["role"] if task["role"] in CYCLE_ROLES else None, **rec})
             for kind in sorted({k for k, _ in v["violations"]} if v["code"] == "E_SCOPE" else ()):
                 self._task_event(run, task_id, "task.scope_violation", machines.ENGINE,
                                  {"paths": [t for k, t in v["violations"] if k == kind], "kind": kind})
@@ -779,7 +813,7 @@ class TaskOps:
             self.link_fix_task_files(task_id)
         if v["state"] == "COMPLETED" and task["role"] in ("specifier", "test_designer"):
             row["completion"] = self.task_completed(run0["slug"], task["role"], task_id)
-        if v["state"] == "COMPLETED" and task["role"] in ("tdd_red", "tdd_green", "tdd_refactor"):
+        if v["state"] == "COMPLETED" and task["role"] in CYCLE_ROLES:
             row["verification"] = self.verify_phase(task_id)
         if v["state"] == "COMPLETED" and task["role"] in ("reviewer", "qa"):
             row["findings"] = self.after_review_task(task_id)
@@ -792,14 +826,15 @@ class TaskOps:
         attempt = task["attempt"] or 1
         if run["state"] in machines.RUN_FINAL:
             return None
-        tdd = task["role"].startswith("tdd_") and task["cycle_id"]
+        tdd = task["role"] in CYCLE_ROLES and task["cycle_id"]
         if attempt <= cap:
             retry = self._make_retry(run, task, v, attempt)
             if tdd:
                 self._after_retry_created(run, self._task_row(task["id"]), retry)
             return retry["id"]
         if tdd:
-            self._cap_reached(run, self._cycle(task["cycle_id"]), task["role"][4:], f"{v['code']}: {v['message']}")
+            self._cap_reached(run, self._cycle(task["cycle_id"]), "red" if task["role"] == "qa_red" else task["role"][4:],
+                              f"{v['code']}: {v['message']}")
         elif run["state"] != "NEEDS_HUMAN":
             why = f"{task['role']} task failed after {cap} retries"
             if task["role"] in ("tdd_green", "hardener"):  # a verification fix task
@@ -834,7 +869,7 @@ class TaskOps:
             timeout_seconds=cons["timeout_seconds"], max_retries=cons.get("max_retries"),
             cycle_id=(sealed.get("input") or {}).get("cycle_id"), retry_of=task["id"], attempt=attempt + 1,
             brief="\n".join(lines) + "\n", must_follow_tdd=cons.get("must_follow_tdd"),
-            readonly_approved=None if task["role"].startswith("tdd_") else perm.get("readonly_approved"), queue=True)
+            readonly_approved=None if task["role"] in CYCLE_ROLES else perm.get("readonly_approved"), queue=True)
 
     # ---- specifier / test_designer hook
     def _open_tasks(self, run, role):

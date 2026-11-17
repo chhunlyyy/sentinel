@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-11-15T15:32:23Z",
+  "checked_at": "2026-11-16T16:39:27Z",
   "items": [
     {
       "fix": "",
@@ -10,7 +10,7 @@
     },
     {
       "fix": "",
-      "message": "0.1.0b7",
+      "message": "1.1.0",
       "name": "version",
       "required": true,
       "status": "passed"

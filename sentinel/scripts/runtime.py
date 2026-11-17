@@ -298,7 +298,7 @@ class RuntimeOps:
                 ctx = render_stage.build_context(cfg, repo, self.workspace, role)
                 ctx.update(state_dir=str(self.state_dir), run_dir=str(self.run_dir(slug)),
                            shared_dir=str(self.state_dir / "shared"))
-                if role.startswith("tdd_"):
+                if role.startswith("tdd_") or role == "qa_red":
                     ctx.update(self.tdd_prompt_context(run, sealed))
                 parts.append(render_stage.render(template, ctx).replace("<slug>", slug))
             except KeyError as missing:
@@ -347,7 +347,7 @@ class RuntimeOps:
         else:
             code = 0
         retry = [t["id"] for t in self.reg.rows("tasks", retry_of=task_id)]
-        if code == 0 and retry and row["state"] == "COMPLETED" and row["role"].startswith("tdd_"):
+        if code == 0 and retry and row["state"] == "COMPLETED" and row["role"] in ("tdd_red", "qa_red", "tdd_green", "tdd_refactor"):
             code = 1  # a TDD phase the engine rejected: a retry is queued
         out = {"task_id": task_id, "state": row["state"], "error_code": row["error_code"], "reason": row["reason"],
                "provider": row["provider"], "adapter": row["adapter"], "run_state": run["state"],

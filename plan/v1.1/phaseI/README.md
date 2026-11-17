@@ -52,7 +52,9 @@ Command, run from `plan/v1.1/phaseI`:
 find features -name '*.feature' | LC_ALL=C sort | while read f; do printf '%s\0' "$f"; cat "$f"; printf '\0'; done | sha256sum
 ```
 
-Hash: `18b23bc34b26a39dfe0899fe9e96740e099926a811b0bd2a52a208d56ded7142`
+Hash: `07ba95852a5b185690095bf6bc0b012d24118949c82f2dfd39e3f76367cc742b`
+
+Owner-approved 2026-11-17: AC-OPS-06i's quoted Docker command gained `--init`; this replaces the earlier hash `18b23bc34b26a39dfe0899fe9e96740e099926a811b0bd2a52a208d56ded7142` (superseded).
 
 ## Open points for the reviewer
 

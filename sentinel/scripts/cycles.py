@@ -16,8 +16,6 @@ import hashlib
 import json
 import os
 import shutil
-import signal
-import subprocess
 import sys
 import tempfile
 import time
@@ -28,15 +26,21 @@ import binding
 import boundary
 import classifier
 import machines
+import qa_scenarios as Q
 import scopes
 import testsel
 from errors import SentinelError
 from registry import _new_id, _now
-from tasks import OPEN_STATES, retry_cap, _int
+from tasks import CYCLE_ROLES, OPEN_STATES, retry_cap, _int
 
-TDD_ROLES = ("tdd_red", "tdd_green", "tdd_refactor")
-PHASE = {"tdd_red": "red", "tdd_green": "green", "tdd_refactor": "refactor"}
-ROLE = {v: k for k, v in PHASE.items()}
+TDD_ROLES = CYCLE_ROLES
+PHASE = {"tdd_red": "red", "qa_red": "red", "tdd_green": "green", "tdd_refactor": "refactor"}
+ROLE = {"red": "tdd_red", "green": "tdd_green", "refactor": "tdd_refactor"}
+
+
+def role_for(cycle, phase):
+    """The task role of a phase: Red of a QA-scenario cycle is qa_red, everything else follows the phase name."""
+    return "qa_red" if phase == "red" and cycle.get("red_method") == Q.QA else ROLE[phase]
 # phase -> (cycle state before the task starts, cycle state while it runs)
 STATES = {"red": ("PLANNED", "RED_RUNNING"), "green": ("RED_VERIFIED", "GREEN_RUNNING"),
           "refactor": ("GREEN_VERIFIED", "REFACTOR_RUNNING")}
@@ -122,9 +126,14 @@ class CycleOps:
 
     def _insert_cycle(self, run, group, repo, ordinal, retry_of=None):
         scenarios = json.dumps([{"key": s["key"], "sha256": s["sha256"]} for s in group["scenarios"]])
+        method = Q.method_for(self._run_config(run), repo)
         cid = self.reg.insert_row("cycles", {"run_id": run["id"], "behavior": group["label"], "state": "PLANNED",
                                              "repo_id": repo, "ordinal": ordinal, "scenarios": scenarios,
-                                             "retry_of": retry_of})
+                                             "retry_of": retry_of, "red_method": method})
+        if method == Q.QA:
+            self._event(run, "tdd.exception_planned", machines.ENGINE,
+                        {"cycle": cid, "repo": repo, "rule": Q.RULE, "method": method,
+                         "scenarios": [Q.scenario_id(s["key"], s["text"]) for s in group["scenarios"]]})
         for s in group["scenarios"]:
             self.reg.remove_trace_links(run["id"], from_kind="scenario", from_id=s["key"], to_kind="cycle")
             self.reg.add_trace_link(run["id"], "scenario", s["key"], "cycle", cid)
@@ -168,9 +177,11 @@ class CycleOps:
         """Inside a transaction: validate with the cycle table (actor engine), write the row and the event."""
         machines.check_cycle(cycle["state"], to, machines.ENGINE)
         self.reg.update_row("cycles", cycle["id"], state=to, reason=reason, **fields)
-        self._event(run, "cycle.state_changed", machines.ENGINE,
-                    {"cycle": cycle["id"], "behavior": cycle["behavior"], "from": cycle["state"], "to": to,
-                     "classification": classification, "reason": reason})
+        payload = {"cycle": cycle["id"], "behavior": cycle["behavior"], "from": cycle["state"], "to": to,
+                   "classification": classification, "reason": reason}
+        if to == "CYCLE_ACCEPTED" and cycle.get("red_method") == Q.QA:
+            payload["red_method"] = Q.QA
+        self._event(run, "cycle.state_changed", machines.ENGINE, payload)
         return self._cycle(cycle["id"])
 
     def request_cycle_state(self, cycle_id, to, actor):
@@ -226,13 +237,13 @@ class CycleOps:
         else:
             scopes.check_widening(role, write, allowed)
         if readonly is None and role != "tdd_red":
-            readonly = self.approved_files(run, repo_id)
+            readonly = self.approved_files(run, repo_id) + self.approved_script_paths(run, repo_id)
         return write, readonly
 
     # ---- cycle tasks
     def _cycle_blockers(self, run, task):
         """["cycle <id>"] for every earlier cycle of the same repo that is not accepted: a Red waits for it."""
-        if task["role"] != "tdd_red" or not task["cycle_id"]:
+        if task["role"] not in ("tdd_red", "qa_red") or not task["cycle_id"]:
             return []
         cyc = self.reg.get_row("cycles", task["cycle_id"])
         if not cyc:
@@ -243,16 +254,16 @@ class CycleOps:
                 and c["id"] != cyc["id"]]
 
     def _objective(self, run, cycle, phase):
-        what = {"red": "Write failing tests for", "green": "Make the failing tests pass for",
+        what = {"red": "Write failing QA scenario scripts for" if cycle.get("red_method") == Q.QA else "Write failing tests for", "green": "Make the failing tests pass for",
                 "refactor": "Refactor without changing behavior, for"}[phase]
         first = (self.live_cycles(run) or [{}])[0].get("id")
         if phase == "red" and run["type"] == "bug" and cycle["id"] == first:
-            what = "Reproduce the reported bug: write a failing test for"
+            what = "Reproduce the reported bug: write a failing " + ("QA scenario script" if cycle.get("red_method") == Q.QA else "test") + " for"
         return f"{what} {cycle['behavior']} ({run['slug']})"
 
     def _phase_task(self, run, cycle, phase, retry_of=None, brief=None, attempt=1):
         """Inside a transaction: the task of a cycle phase; queued unless an earlier cycle of the repo is open."""
-        role = ROLE[phase]
+        role = role_for(cycle, phase)
         cfg = self._run_config(run)
         probe = {"role": role, "cycle_id": cycle["id"]}
         queue = not self._cycle_blockers(run, probe)
@@ -270,7 +281,7 @@ class CycleOps:
         todo = [c for c in self.live_cycles(run) if c["state"] == "PLANNED" and not c["red_task"]]
         if not todo:
             return []
-        for repo in dict.fromkeys(c["repo_id"] for c in todo):
+        for repo in dict.fromkeys(c["repo_id"] for c in todo if c["red_method"] != Q.QA):
             self._tdd_precheck(slug, "tdd_red", [repo])
         made = []
         with self.reg.transaction():
@@ -306,20 +317,7 @@ class CycleOps:
             timeout = (cfg.get("policies") or {}).get("test_timeout_seconds")
             timeout = timeout if _int(timeout) and timeout > 0 else TEST_TIMEOUT
             started, began = _now(), time.time()
-            proc = subprocess.Popen(cmd, shell=True, cwd=str(path), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                    env=adapters.child_env(cfg), start_new_session=True)
-            try:
-                raw, _ = proc.communicate(timeout=timeout)
-                code = proc.returncode
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError):
-                    pass
-                raw, _ = proc.communicate()
-                code = 124
-                raw += f"\ntimed out after {timeout} seconds\n".encode()
-            text = raw.decode("utf-8", errors="replace")
+            code, text, _ = Q.run_command(cmd, path, adapters.child_env(cfg), timeout)
             return {"command": cmd, "exit_code": code, "output": text, "started_at": started, "finished_at": _now(),
                     "report": classifier.read_report(path, tools.get("test_report"), report_dir, began - 2), "cwd": repo_id,
                     "repo_sha": boundary.git(path, "rev-parse", "HEAD").strip()}
@@ -331,7 +329,7 @@ class CycleOps:
         return scrub.Scrubber(self.workspace, scrub.env_values(self.workspace))
 
     def _store_evidence(self, run, kind, repo_id, *, task=None, cycle=None, ran=None, cl=None, verdict=None, reason=None,
-                        failing=None, counts=None, tests=None):
+                        failing=None, counts=None, tests=None, extra=None):
         """Inside a transaction: an evidence row written by the engine from its own test run, with the scrubbed output
         stored as a file (SEC-06). `ran` is _run_tests output (None when no test command ran)."""
         eid = _new_id("evidence")
@@ -339,7 +337,10 @@ class CycleOps:
                "kind": kind, "repo_id": repo_id, "classification": (cl or {}).get("classification"), "verdict": verdict,
                "reason": reason, "provider": task["provider"] if task else None, "model": task["model"] if task else None,
                "failing": json.dumps(failing if failing is not None else (cl or {}).get("failing", [])),
-               "tests": json.dumps(tests) if tests is not None else None}
+               "tests": json.dumps(tests) if tests is not None else None,
+               "method": cycle["red_method"] if cycle and kind in ("red", "green", "refactor") else None}
+        if extra:
+            row.update(extra)
         if counts is None and cl:
             counts = (cl["passed"], cl["failed"], cl["skipped"])
         if counts:
@@ -404,6 +405,8 @@ class CycleOps:
             return self._check_approved_tests(run, task)
         if task["role"] == "qa":
             return self.qa_gate(run, task)
+        if task["role"] == "qa_red":
+            return self.qa_gate(run, task) or self._check_qa_files(run, task)
         if task["role"] != "tdd_red":
             return None
         klass = self.ensure_baseline(run, task["repo_id"])
@@ -423,6 +426,8 @@ class CycleOps:
         verify = getattr(self, f"_verify_{phase}", None)
         if verify is None or cycle["state"] != STATES[phase][1] or run["state"] != "EXECUTING":
             return None
+        if cycle["red_method"] == Q.QA:
+            return self._verify_qa_locked(task_id, verify)
         if self.reg.rows("evidence", task_id=task_id):
             return None
         return verify(run, task, cycle)
@@ -458,9 +463,9 @@ class CycleOps:
                     changed.append(item["path"])
         return changed
 
-    def _integrity_stop(self, run, ref, changed):
-        """The run goes to NEEDS_HUMAN: a human edit of an approved test file (E_INTEGRITY). Returns the message."""
-        msg = "approved test file changed since Red: " + ", ".join(changed)
+    def _integrity_stop(self, run, ref, changed, what="test file", msg=None):
+        """The run goes to NEEDS_HUMAN: a human edit of an approved test file or QA script (E_INTEGRITY). Returns the message."""
+        msg = msg or f"approved {what} changed since Red: " + ", ".join(changed)
         with self.reg.transaction():
             run = self.reg.get_run_by_id(run["id"])
             self.reg.add_audit("engine", "engine", "integrity_failed", f"{run['slug']}/{ref}", reason=msg)
@@ -471,11 +476,22 @@ class CycleOps:
     def _check_approved_tests(self, run, task):
         """Before Green or Refactor starts: every approved test file of the repo must still have the bytes Red approved
         (Phase D point 11). A human edit is E_INTEGRITY: the run goes to NEEDS_HUMAN and the task does not start."""
+        cycle = self.reg.get_row("cycles", task["cycle_id"]) if task["cycle_id"] else None
+        if cycle and cycle["red_method"] == Q.QA:
+            return self._check_qa_files(run, task)
         changed = self._approved_changed(run, task["repo_id"])
         if not changed:
             return None
         msg = self._integrity_stop(run, task["id"], changed)
         return self._outcome(task["id"], blocked=True, error="E_INTEGRITY", reason=msg, files=changed)
+
+    def _check_qa_files(self, run, task):
+        """Before a QA task starts: the scripts of the repo's accepted QA cycles and the runner files are as Red approved them."""
+        gone = self.qa_changed(run, task["repo_id"])
+        if not gone:
+            return None
+        msg = self._integrity_stop(run, task["id"], gone, "QA script or runner file")
+        return self._outcome(task["id"], blocked=True, error="E_INTEGRITY", reason=msg, files=gone)
 
     def accepted_tests(self, run, cycle):
         """Test ids of every CYCLE_ACCEPTED cycle of the same repo, apart from `cycle`: the tests that must stay green."""
@@ -529,6 +545,8 @@ class CycleOps:
     def _verify_run(self, run, task, cycle, phase):
         """Green and Refactor: the engine runs the cycle's tests and those of the accepted cycles and judges them itself;
         every one must be present and pass ("rest unchanged")."""
+        if cycle["red_method"] == Q.QA:
+            return self._verify_qa(run, task, cycle, phase)
         cfg = self._run_config(run)
         repo = cycle["repo_id"]
         tools = scopes.test_tools(cfg, repo)
@@ -630,8 +648,10 @@ class CycleOps:
                     gaps.append(f"{phase} {col}")
             if e["classification"] != klass:
                 gaps.append(f"{phase} classification")
-            if phase != "refactor" and not [r for r in self.reg.rows("changed_files", cycle_id=cycle["id"])
-                                            if r["phase"] == f"tdd_{phase}"]:
+            if cycle["red_method"] == Q.QA:
+                gaps += self._qa_gaps(cycle, phase, e)
+            elif phase != "refactor" and not [r for r in self.reg.rows("changed_files", cycle_id=cycle["id"])
+                                              if r["phase"] == f"tdd_{phase}"]:
                 gaps.append(f"{phase} changed files")
             art = self.reg.get_row("artifacts", e["output_artifact_id"]) if e["output_artifact_id"] else None
             if art and e["output_sha256"]:
@@ -652,6 +672,13 @@ class CycleOps:
             self.reg.add_audit("engine", "engine", "integrity_failed", f"{run['slug']}/{cycle['id']}", reason=msg)
             self._park_run(run, msg)
             return "E_INTEGRITY", msg, {"changed": changed}
+        if cycle["red_method"] == Q.QA:
+            gone = self.qa_changed(run, cycle["repo_id"])
+            if gone:
+                msg = "approved QA script or runner file changed since Red: " + ", ".join(gone)
+                self.reg.add_audit("engine", "engine", "integrity_failed", f"{run['slug']}/{cycle['id']}", reason=msg)
+                self._park_run(run, msg)
+                return "E_INTEGRITY", msg, {"changed": gone}
         gaps, tampered = self._evidence_gaps(cycle)
         if gaps:
             msg = f"evidence incomplete for cycle {cycle['behavior']}"
@@ -724,7 +751,7 @@ class CycleOps:
         """{"gaps": [...], "failures": [...]}: missing links apart from cycles that failed (no item is in both)."""
         run = self._get_v2(slug)
         links = self.reg.rows("trace_links", run_id=run["id"])
-        tested = {r["from_id"] for r in links if r["from_kind"] == "scenario" and r["to_kind"] == "test"}
+        tested = {r["from_id"] for r in links if r["from_kind"] == "scenario" and r["to_kind"] in ("test", "qa_script")}
         with_evidence = {r["from_id"] for r in links if r["from_kind"] == "cycle" and r["to_kind"] == "evidence"}
         gaps, failures = [], []
         for c in self.live_cycles(run):
@@ -732,7 +759,8 @@ class CycleOps:
                 why = c["reason"] or "rejected"
                 failures.append({"kind": "cycle", "id": c["id"], "reason": "rejected: " + why[:1].upper() + why[1:]})
                 continue
-            gaps += [{"kind": "scenario", "id": k, "gap": "no test"} for k in self._scenario_keys(c) if k not in tested]
+            gaps += [{"kind": "scenario", "id": k, "gap": "no qa script" if c["red_method"] == Q.QA else "no test"}
+                     for k in self._scenario_keys(c) if k not in tested]
             if c["state"] != "CYCLE_ACCEPTED" or c["id"] not in with_evidence:
                 gaps.append({"kind": "cycle", "id": c["id"], "gap": "no evidence"})
         return {"gaps": gaps, "failures": failures}
@@ -758,6 +786,8 @@ class CycleOps:
         return [s["key"] for s in scenario_rows(cycle)]
 
     def _verify_red(self, run, task, cycle):
+        if cycle["red_method"] == Q.QA:
+            return self._verify_qa(run, task, cycle, "red")
         cfg = self._run_config(run)
         repo = cycle["repo_id"]
         tools = scopes.test_tools(cfg, repo)
@@ -866,7 +896,7 @@ class CycleOps:
     def _reject_phase(self, run, task, cycle, phase, reason, klass, lines):
         """Inside a transaction: a retry task, or at the cap REJECTED and NEEDS_HUMAN. Returns the retry task id."""
         cfg = self._run_config(run)
-        role = ROLE[phase]
+        role = role_for(cycle, phase)
         cap = task["max_retries"] if _int(task["max_retries"]) else retry_cap(cfg, role)
         attempt = task["attempt"] or 1
         if attempt > cap:
@@ -1026,7 +1056,12 @@ class CycleOps:
         red = [e for e in self.reg.rows("evidence", cycle_id=cycle["id"], kind="red") if e["verdict"] == "accepted"]
         related = self.related_tests(run, cycle)
         bullets = lambda items: "\n".join(f"- `{i}`" for i in items) or "(none)"  # noqa: E731
-        return {"cycle_behavior": cycle["behavior"], "scenario_keys": bullets(keys), "scenario_texts": scenarios,
+        qa_scripts = "(none)"
+        if cycle["red_method"] == Q.QA:
+            folder = self._scripts_rel(run, cycle["id"])
+            qa_scripts = "\n".join(f"- `{Q.scenario_id(k, texts.get(k, ''))}` -> `{folder}/{Q.scenario_id(k, texts.get(k, ''))}.spec`"
+                                  for k in keys)
+        return {"qa_scripts": qa_scripts, "cycle_behavior": cycle["behavior"], "scenario_keys": bullets(keys), "scenario_texts": scenarios,
                 "write_scope": ", ".join(perm["write"]) or "none", "readonly_files": bullets(perm.get("readonly_approved") or []),
                 "failing_tests": bullets(json_list(red[-1]["failing"]) if red else []), "related_tests": bullets(related),
                 "task_objective": sealed["objective"]}

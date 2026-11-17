@@ -25,9 +25,13 @@ class Checks(PE):
                 self.reset_ws()
 
     def _hygiene_frontend(self, approve):
-        self.boot_ver(rules={"no_permanent_frontend_tests": True})
+        # Phase J: with a QA driver the frontend cycle is QA-Red; these tests cover the interim skip for a test-file cycle of an older run
+        qa = {"driver": "playwright", "ports": [4173], "start_commands": {"frontend": "true", "backend": "true"},
+              "scenario_run": "true {scripts} {report}", "scenario_report": "qa-report.xml"}
+        self.boot_ver(rules={"no_permanent_frontend_tests": True}, qa=qa)
         self.change()
         cycle = next(c for c in self.cycles() if c["repo_id"] == "frontend")
+        self.eng.reg.update_row("cycles", cycle["id"], red_method="test_file")
         self.write_file("frontend/src/test/Form.test.ts", "test('x', () => {});\n")
         self.write_file("frontend/src/test/Other.spec.ts", "export default {};\n")
         if approve:

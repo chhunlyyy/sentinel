@@ -130,7 +130,7 @@ Rules: every Scenario has at least one `@AC-n` (inherited `@REQ` allowed from Fe
 
 ## 4. `task-v1` (summary)
 
-Required: `schema`, `id`, `run_id`, `role`, `objective`, `input`, `repos`, `permissions.read`, `permissions.write`, `constraints.timeout_seconds`, `expected_output.schema`. Optional: `provider`, `permissions.readonly_approved`, `constraints.max_retries`, `constraints.must_follow_tdd`. `role` enum: specifier, test_designer, tdd_red, tdd_green, tdd_refactor, repro, hardener, reviewer, qa, promotion, docs, rollout, retrospective. Full example: `docs/architecture/agent-runtime.md`.
+Required: `schema`, `id`, `run_id`, `role`, `objective`, `input`, `repos`, `permissions.read`, `permissions.write`, `constraints.timeout_seconds`, `expected_output.schema`. Optional: `provider`, `permissions.readonly_approved`, `constraints.max_retries`, `constraints.must_follow_tdd`. `role` enum: specifier, test_designer, tdd_red, qa_red, tdd_green, tdd_refactor, repro, hardener, reviewer, qa, promotion, docs, rollout, retrospective. Full example: `docs/architecture/agent-runtime.md`.
 
 ## 5. `agent-result-v1`
 

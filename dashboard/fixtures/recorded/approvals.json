@@ -1,20 +1,20 @@
 {
   "items": [
     {
-      "artifact_id": "ar-822f5bfbaf5b",
+      "artifact_id": "ar-db7abe1fcf1f",
       "gate": "gherkin",
       "project": "digital-hr",
-      "requested_at": "2026-11-15T15:32:23.777456Z",
+      "requested_at": "2026-11-16T16:39:27.957856Z",
       "sha256": "1f87455461d676fef9c8945cada797422777c900202c02b26c7e34ce367f966b",
       "slug": "gherkin-run",
       "state": "IN_REVIEW",
       "version": 1
     },
     {
-      "artifact_id": "ar-4a2ccecf5751",
+      "artifact_id": "ar-32d778b2c47d",
       "gate": "specification",
       "project": "digital-hr",
-      "requested_at": "2026-11-15T15:32:23.722750Z",
+      "requested_at": "2026-11-16T16:39:27.902656Z",
       "sha256": "8a7d55df0fc2de520e35661173ddf627ca22b365b09c6d761cb2d356d492edcd",
       "slug": "spec-run",
       "state": "IN_REVIEW",

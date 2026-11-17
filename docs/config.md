@@ -49,6 +49,8 @@ qa:
 - `start_commands`: how to start each service, keyed by repo id; each runs from that repo's directory. Written into the QA stage prompt. `{scripts}/qa-data` is accepted as an alias for `sentinel qa-data` (write `sentinel qa-data boot-args qa`).
 - `fixtures`: `sanitized` (preferred) or `clone` (copies real data; see [security.md](security.md)).
 - `db_clone`: `none`, or the MySQL plugin block below.
+- `scenario_run` (optional): the command the engine runs for QA scenarios as Red, Green and Refactor evidence (TDD-09). Placeholders `{scripts}` (the cycle's script folder under `.sentinel/cache/qa/tests/current/<slug>/<cycle id>`), `{report}` (the report file) and `{cycle}`. It runs from the repo directory (a relative path in it is looked up in the repo first, then in the workspace), after the engine started the repo's `start_commands` entry and waited for `ports`.
+- `scenario_report` (optional): path of the JUnit XML report `scenario_run` writes, relative to `.sentinel/cache/qa/` (no `..`, not absolute). One `testcase` per scenario, `name` is the scenario id (its `@AC-...` tag); a failure message starts with the Gherkin keyword of the failing step (`Then the form shows 5 days: ...`); an `<error>` or another start is a script error.
 
 ### MySQL plugin (`qa.db_clone`)
 
@@ -90,7 +92,7 @@ A list of check names. When omitted, the default is all of: `debug_output`, `tod
 | `comments` | Fails on added code comments. Active only when `rules.no_code_comments` is true. |
 | `secrets` | Fails on secret patterns in the diff (and gitleaks findings if gitleaks is installed), and on secrets or personal data in `.sentinel/shared`. |
 | `new_dependencies` | Prints a notice when a dependency manifest changed; a human must approve new dependencies. Does not fail the run. |
-| `test_infra` | Fails if test runners, configs, reports, or test-only dependencies remain in client repos. Active only when `rules.no_permanent_frontend_tests` is true. In a version 2 run the test files that TDD Red wrote and the engine approved in a cycle are not counted as left behind; any other test file or runner config still is. |
+| `test_infra` | Fails if test runners, configs, reports, or test-only dependencies remain in client repos. Active only when `rules.no_permanent_frontend_tests` is true. A QA-Red cycle commits no test file, so every test file or runner config in a client repo is flagged. Only a cycle that still has approved test files (a run planned before Phase J) has them skipped. |
 | `commands` | Runs each repo's build, lint, typecheck, and test commands. |
 
 Run it: `sentinel release-check`. It only checks repos that have uncommitted changes. Options: `--quick` skips all build, lint, typecheck and test commands; `--repo <id>` (repeatable) limits it to the repos your increment touched; `--skip build,lint` skips named commands (for example `build` while a dev server is running on that repo).
@@ -189,6 +191,7 @@ notifications:
 policies:
   max_parallel_tasks: 1        # default 1; tasks whose write scopes overlap never run together
   task_timeout_seconds: 5400   # default 5400; a task that runs longer is killed and fails
+  test_timeout_seconds: 1800   # default 1800; the engine's own test and QA driver runs are killed after this
   provider_retries: 1          # accepted by the schema; it has no effect in 1.1.0 (task retries use `limits` and `agents.<role>.max_retries`)
   redact_env: [DATABASE_URL]   # extra environment variable names whose values the scrubber removes
   human_required: [real_data_clone]   # added to the two mandatory approvals
@@ -215,7 +218,7 @@ agents:
   reviewer: { runner: claude, model: opus }
 ```
 
-A key is a task role: `specifier`, `test_designer`, `tdd_red`, `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `docs`, or a repo role such as `backend-coder`. `runner` and `model` resolve exactly like [routing](#routing-a-model-or-provider-per-stage-optional); `max_retries` overrides the retry limit of that role (the TDD roles `tdd_red`, `tdd_green` and `tdd_refactor` read `tdd` instead). Write scope is not set here: read-only roles (`specifier`, `test_designer`, `reviewer`, `qa`, `retrospective`) always get an empty write scope, a coder role gets its repo, and `repos[].write_scope` narrows a repo further. A task that writes outside its scope fails with `E_SCOPE` and parks the run for a human.
+A key is a task role: `specifier`, `test_designer`, `tdd_red`, `qa_red` (reads the `tdd_red` retry cap), `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `docs`, or a repo role such as `backend-coder`. `runner` and `model` resolve exactly like [routing](#routing-a-model-or-provider-per-stage-optional); `max_retries` overrides the retry limit of that role (the TDD roles `tdd_red`, `tdd_green` and `tdd_refactor` read `tdd` instead). Write scope is not set here: read-only roles (`specifier`, `test_designer`, `reviewer`, `qa`, `retrospective`) always get an empty write scope, a coder role gets its repo, and `repos[].write_scope` narrows a repo further. A task that writes outside its scope fails with `E_SCOPE` and parks the run for a human.
 
 ## tdd
 
@@ -266,7 +269,7 @@ All default to `false`. A rule only adds its text to the stage prompts and the r
 | `no_em_dashes` | Agents never write the em dash character. |
 | `no_coauthor_trailer` | No Co-Authored-By or AI attribution lines. |
 | `agents_never_run_git` | Agents never commit, push, stash, reset, or switch branches. |
-| `no_permanent_frontend_tests` | Client repos keep no permanent test suite; the release check fails if test infrastructure is left behind. |
+| `no_permanent_frontend_tests` | Client repos (role `frontend` or `mobile`) keep no permanent test suite. In a version 2 run their behavior groups use QA scenarios as the Red evidence (TDD-09): a `qa_red` task writes the scripts, the engine runs them through `qa.scenario_run`, and the exception is recorded in the cycle, the evidence rows, the events and the report. R12 refuses the run (NEEDS_HUMAN, `E_PRECONDITION`) when the QA driver is not usable: configure `qa.driver`, `qa.scenario_run`, `qa.scenario_report` and `qa.start_commands`, then run `sentinel resolve <slug> --refresh-config -m "..."`, or turn the rule off. The release check fails if test infrastructure is left behind. |
 
 ## limits
 

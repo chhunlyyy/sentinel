@@ -101,7 +101,7 @@ def build_context(config, repo, workspace, stage=None):
     flat["targeted_test"] = tools["targeted_test"] or "(none)"
     flat["scenario_ref"] = tools["scenario_ref"] or "(none)"
     for key in ("cycle_behavior", "scenario_keys", "scenario_texts", "write_scope", "readonly_files", "failing_tests",
-                "related_tests", "task_objective"):
+                "related_tests", "task_objective", "qa_scripts"):
         flat[key] = "(supplied with the task)"
     return flat
 

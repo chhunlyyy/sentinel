@@ -5,15 +5,41 @@
     "reasons": []
   },
   "acceptance_record": null,
+  "cycles": [
+    {
+      "behavior": "features/balance.feature :: Rule Remaining balance",
+      "exception": null,
+      "id": "c-fd6fe04c0981",
+      "red_method": "test_file",
+      "repo": "backend",
+      "state": "PLANNED"
+    },
+    {
+      "behavior": "features/balance.feature :: Rule Carry-over",
+      "exception": null,
+      "id": "c-73364fd1f612",
+      "red_method": "test_file",
+      "repo": "backend",
+      "state": "PLANNED"
+    },
+    {
+      "behavior": "features/request_form.feature",
+      "exception": null,
+      "id": "c-27e7f048f573",
+      "red_method": "test_file",
+      "repo": "frontend",
+      "state": "PLANNED"
+    }
+  ],
   "evidence": [
     {
       "classification": "valid_red",
       "command": "faketest targeted",
-      "cycle_id": "c-1d1274a830d9",
+      "cycle_id": "c-fd6fe04c0981",
       "exit_code": 1,
       "failed": 2,
       "finished_at": "2026-11-14T09:00:05.000000Z",
-      "id": "e-12aa024b55c6",
+      "id": "e-8bc4c1a1b60f",
       "kind": "test",
       "model": null,
       "name": null,

@@ -7,6 +7,7 @@ from pe_helpers import PE, SLUG
 
 SECTIONS = ["execution", "specification", "gherkin", "agents", "cycles", "verification", "regression", "findings", "changed_files",
             "acceptance", "trace", "cost"]
+JSON_KEYS = SECTIONS[:-2] + ["tdd_exceptions"] + SECTIONS[-2:]  # Phase J: report.json also holds tdd_exceptions; report.md only when one exists
 
 
 class Reports(PE):
@@ -27,7 +28,7 @@ class Reports(PE):
         code, out, err = self.cli("report", SLUG, "--json")
         self.assertEqual(code, 0, out + err)
         rep = json.loads(self.rpath().read_text())
-        self.assertEqual(list(rep), SECTIONS)
+        self.assertEqual(list(rep), JSON_KEYS)
         self.assertEqual(json.loads(out[:out.rindex("}") + 1]), rep)
         for key in ("specification", "gherkin"):
             self.assertEqual(sorted(rep[key]), ["approver", "decided_at", "decision", "sha256", "version"])

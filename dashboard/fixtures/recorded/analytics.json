@@ -6,13 +6,13 @@
   "approval_wait_seconds": {
     "gherkin": {
       "count": 1,
-      "median": 0.002037,
-      "p90": 0.002037
+      "median": 0.002143,
+      "p90": 0.002143
     },
     "specification": {
       "count": 3,
-      "median": 0.00126,
-      "p90": 0.201911
+      "median": 0.001349,
+      "p90": 0.214091
     }
   },
   "cost": {
@@ -84,7 +84,7 @@
     "by_role": {
       "specifier": {
         "count": 3,
-        "median_seconds": 0.01
+        "median_seconds": 0.009
       },
       "tdd_red": {
         "count": 3,

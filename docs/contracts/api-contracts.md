@@ -66,8 +66,8 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/tasks/{slug}/gherkin` | features, scenarios, tags, coverage table, hash |
 | POST | `/tasks/{slug}/approvals` | body `{gate, sha256, confirmation, decision, comment}` -> `approvals.decide` (human only). `sha256` is the full hash, `confirmation` its first 8 characters as typed |
 | GET | `/tasks/{slug}/workflow` | full graph: nodes (tasks, gates), edges, states |
-| GET | `/tasks/{slug}/tdd` | cycles with phases and evidence ids |
-| GET | `/tasks/{slug}/verification` | evidence list (round, repo, name, verdict), latest finished `round`, `missing` (planned checks without evidence), acceptance computation and `acceptance_record` (decision, approver, channel, at, comment; null while pending) |
+| GET | `/tasks/{slug}/tdd` | cycles with phases and evidence ids; each cycle has `red_method` (`test_file` or `qa_scenario`) and `exception` (`{rule, replaced, by, repo}` or null) |
+| GET | `/tasks/{slug}/verification` | `cycles` (id, repo, behavior, state, `red_method`, `exception`), evidence list (round, repo, name, verdict), latest finished `round`, `missing` (planned checks without evidence), acceptance computation and `acceptance_record` (decision, approver, channel, at, comment; null while pending) |
 | GET | `/tasks/{slug}/trace` | trace links and gaps |
 | GET | `/tasks/{slug}/changes` | per repo: base, branch, files, stats |
 | GET | `/tasks/{slug}/changes/diff?repo=&path=&mode=inline|split` | scrubbed diff |

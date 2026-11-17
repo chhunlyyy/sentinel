@@ -146,7 +146,7 @@ export const workflow = (w: T.Workflow, d: T.Run): W.WWorkflow => ({
 
 export const tdd = (t: T.TddAnswer): W.WTdd => ({
   cycles: t.cycles.map((c) => ({
-    id: c.id, repo: c.repo, behavior: c.behavior, state: c.state,
+    id: c.id, repo: c.repo, behavior: c.behavior, state: c.state, red_method: 'test_file', exception: null,
     phase_tasks: { red: c.phases[0]?.task_id ?? null, green: c.phases[1]?.task_id ?? null, refactor: c.phases[2]?.task_id ?? null },
     evidence_ids: c.phases.flatMap((p) => p.evidence_ids),
   })),
@@ -165,6 +165,7 @@ export function verification(r: RunData): W.WVerification {
   const taskOf = (id: string) => cycleOf(id)?.phases.find((p) => p.evidence_ids.includes(id))?.task_id ?? null;
   const v = r.verification;
   return {
+    cycles: r.tdd.cycles.map((c) => ({ id: c.id, repo: c.repo, behavior: c.behavior, state: c.state, red_method: 'test_file', exception: null })),
     round: v.round ? v.round.number : null,
     missing: v.missing.map((m) => `${m.repo ?? ''} ${m.kind}`.trim()),
     evidence: [
