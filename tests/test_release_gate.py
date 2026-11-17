@@ -99,6 +99,22 @@ class Honest(unittest.TestCase):
         problems, _ = gate.ac_problems(["AC-X-01a"], [{"name": "test_AC_X_01a_expected", "status": "skipped"}], {})
         self.assertEqual([p["id"] for p in problems], ["AC-X-01a"])
 
+    def test_AC_TST_04b_a_failed_test_is_reported_with_its_reason(self):
+        """On a remote runner the log is all there is: a failure must say why, not only which test."""
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "test_why.py").write_text(textwrap.dedent("""
+                import unittest
+                class T(unittest.TestCase):
+                    def test_AC_X_02a_needs_a_tool(self):
+                        self.assertIsNotNone(None, "uv is not installed (install it with pip install uv)")
+            """))
+            r = gate.collect_unittest(Path(d), Path(d))
+        failed = [x for x in r["results"] if x["status"] == "failed"]
+        self.assertEqual(len(failed), 1)
+        self.assertIn("uv is not installed", failed[0]["reason"])
+        problems, _ = gate.ac_problems(["AC-X-02a"], failed, {})
+        self.assertIn("uv is not installed", problems[0]["reason"])
+
     def test_AC_TST_04b_playwright_test_fail_and_empty_specs_are_not_passes(self):
         report = {"suites": [{"title": "f", "specs": [
             {"title": "AC-A-01a annotated", "tests": [{"status": "expected", "expectedStatus": "failed", "annotations": [{"type": "fail"}], "results": [{"status": "failed"}]}]},

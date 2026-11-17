@@ -152,7 +152,7 @@ def ac_problems(ids, results, manual):
         passed = [r for r in rs if r["status"] == "passed"]
         evidence = manual.get(i)
         if failed:
-            problems.append({"id": i, "reason": f"a test that carries it failed: {failed[0]['name']}"})
+            problems.append({"id": i, "reason": f"a test that carries it failed: {failed[0]['name']}" + (f" ({failed[0]['reason']})" if failed[0].get("reason") else "")})
         elif skipped and not (evidence and not passed):
             problems.append({"id": i, "reason": f"a test that carries it was skipped ({skipped[0].get('reason') or 'no reason'}): {skipped[0]['name']}"})
         elif passed:
@@ -297,11 +297,11 @@ class _Result(unittest.TestResult):
 
     def addFailure(self, test, err):
         super().addFailure(test, err)
-        self._set(test, "failed", str(err[1])[:200])
+        self._set(test, "failed", str(err[1])[:600])
 
     def addError(self, test, err):
         super().addError(test, err)
-        self._set(test, "failed", f"{type(err[1]).__name__}: {err[1]}"[:200])
+        self._set(test, "failed", f"{type(err[1]).__name__}: {err[1]}"[:600])
 
     def addSkip(self, test, reason):
         super().addSkip(test, reason)
@@ -614,10 +614,13 @@ def stage_unittest(name, start, top, evidence, results, problems, env, tmp):
     counts = {s: sum(1 for x in data["results"] if x["status"] == s) for s in ("passed", "failed", "skipped")}
     warns = len(re.findall(r"ResourceWarning", r.stderr))
     counts.update(ran=data["ran"], resource_warnings=warns, leaked_processes=len(data["leaked"]))
-    bad = [x["name"] for x in data["results"] if x["status"] == "failed"]
+    failed_rows = [x for x in data["results"] if x["status"] == "failed"]
+    bad = [x["name"] for x in failed_rows]
     notes = []
     if bad:
         notes.append(f"{len(bad)} failed: " + ", ".join(bad[:5]))
+        for x in failed_rows[:5]:  # the reason is what makes a failure on a remote runner debuggable
+            notes.append(f"  {x['name']}: {(x.get('reason') or 'no reason recorded').replace(chr(10), ' ')[:400]}")
     if warns:
         notes.append(f"{warns} ResourceWarning lines")
     if data["leaked"]:

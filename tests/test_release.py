@@ -263,7 +263,7 @@ class Installed(unittest.TestCase):
 
     def test_AC_OPS_01j_uv_tool_install_from_the_wheel(self):
         uv = shutil.which("uv")
-        self.assertIsNotNone(uv, "uv is not installed: pending owner run on a machine that has uv (no CI exists)")
+        self.assertIsNotNone(uv, "uv is not installed (install it with `pip install uv`; the release workflow does)")
         env = {**os.environ, "HOME": str(self.home), "UV_CACHE_DIR": str(self.root / "uvcache"), "UV_TOOL_DIR": str(self.root / "uvtools"),
                "UV_TOOL_BIN_DIR": str(self.root / "uvbin"), "UV_PYTHON_PREFERENCE": "system"}
         # fill the cache (needs the network once), then install again with UV_OFFLINE=1

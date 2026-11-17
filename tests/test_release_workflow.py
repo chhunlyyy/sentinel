@@ -127,6 +127,8 @@ class Workflow(unittest.TestCase):
     def test_review_the_gate_job_installs_what_the_gate_imports(self):
         text = runs("gate")
         self.assertIn('python -m pip install "pyyaml>=6" "jsonschema>=4"', text)
+        # AC-OPS-01j installs the wheel as a uv tool: the runner has no uv unless the gate job installs it
+        self.assertRegex(text, r'pip install [^\n]*"uv>=')
         self.assertIn("npx playwright install --with-deps chromium", text)
         self.assertNotIn("install-deps", text)
         self.assertLess(text.index("pip install"), text.index("tools/release_gate.py"))
