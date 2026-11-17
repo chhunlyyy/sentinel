@@ -746,7 +746,18 @@ def phase_f_checks(tmp):
     check("AC-TST-01g CLI commands work after the server stopped", code == 0)
 
 
+USAGE = """usage: sentinel selftest
+
+Builds a throwaway workspace and runs the engine, CLI and server checks against it (about a minute).
+It takes no options and changes nothing outside a temporary folder; the exit code is 1 if any check fails.
+"""
+
+
 def main():
+    # --help must print this, not start 200+ checks (the docs test asks every documented command for --help)
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(USAGE, end="")
+        return
     tmp = Path(tempfile.mkdtemp(prefix="sentinel-selftest-"))
     try:
         ws = tmp / "ws"
