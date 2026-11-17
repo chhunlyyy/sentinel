@@ -97,6 +97,12 @@ jobs:
           python -m pip install "hatchling>=1.25"
           SENTINEL_RELEASE=1 python -m hatchling build -t sdist -t wheel -d dist
           ls -l dist
+      # Fail here, before any upload: the metadata version of the wheel must be one the upload tool accepts
+      # (hatchling 1.33 writes 2.5, which twine < 7 rejects). Same major version as the publish action ships.
+      - name: Check the distribution metadata
+        run: |
+          python -m pip install "twine>=7,<8"
+          twine check --strict dist/*
       - uses: actions/upload-artifact@v4.6.2
         with:
           name: dist
@@ -115,7 +121,7 @@ jobs:
         with:
           name: dist
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@v1.12.4
+      - uses: pypa/gh-action-pypi-publish@v1.14.3
         with:
           packages-dir: dist/
 
