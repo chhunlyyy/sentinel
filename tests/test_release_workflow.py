@@ -134,6 +134,18 @@ class Workflow(unittest.TestCase):
         self.assertLess(text.index("pip install"), text.index("tools/release_gate.py"))
         self.assertLess(text.index("playwright install"), text.index("tools/release_gate.py"))
 
+    def test_review_the_publish_action_accepts_the_wheel_metadata_and_it_is_checked_early(self):
+        """First release run: hatchling 1.33 writes Metadata-Version 2.5; the publish action v1.12.4 (twine 6.1) rejected it.
+        v1.14+ ships twine 7, and the build job runs the same check before anything is uploaded."""
+        text = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+        m = re.search(r"pypa/gh-action-pypi-publish@v(\d+)\.(\d+)\.(\d+)", text)
+        self.assertTrue(m, "the PyPI publish action must be pinned by version")
+        self.assertGreaterEqual((int(m.group(1)), int(m.group(2))), (1, 14), "needs twine 7 for metadata version 2.5")
+        build = text.split("  build:")[1].split("  publish-pypi:")[0]
+        self.assertRegex(build, r'pip install "twine>=7')
+        self.assertIn("twine check --strict dist/*", build)
+        self.assertLess(build.index("twine check --strict"), build.index("upload-artifact"), "check before the artifact is handed to publish")
+
     def test_review_checkouts_keep_no_credentials(self):
         for name in JOBS:
             for s in steps(name):
