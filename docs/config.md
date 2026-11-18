@@ -223,6 +223,7 @@ The dashboard reads and writes this through the local API (all under `/api/v1/`,
 | `GET agents?project=<id>`, `PUT agents` | The effective runner and model of each role (the roles are the stage prompts in `sentinel/core/stages`) (project, then global, then `claude`). `PUT` with `scope: project` validates against the schema, writes `sentinel.config.yaml` atomically and records a configuration version; `sha256` guards against a stale edit (409). `scope: global` writes the file above. |
 | `GET orchestrator`, `PUT orchestrator` | The server-wide AI tool that resumes dashboard runs, chosen from the installed runners (or none). |
 | `POST projects`, `POST projects/register` | Create a workspace (like `sentinel init` without prompts, at least one repo) or register an existing one. |
+| `DELETE projects/{id}` | Remove the project from the dashboard. Nothing is deleted on disk (the folder, `sentinel.config.yaml` and `.sentinel` stay); refused with 409 while a run is active. |
 | `POST projects/{id}/repositories`, `DELETE projects/{id}/repositories/{repo}` | Edit `repos`. The last repo cannot be removed, nor any repo while a run is active. |
 | `GET profiles`, `GET fs/dirs?path=` | Stack profiles and allowed repo roles; a directory browser (folders only). |
 

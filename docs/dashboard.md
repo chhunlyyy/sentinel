@@ -15,7 +15,7 @@ The server listens on the loopback address only and accepts only requests for it
 
 ## Docker
 
-The image `ghcr.io/chhunlyyy/sentinel` (tags `1.2.1` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
+The image `ghcr.io/chhunlyyy/sentinel` (tags `1.2.2` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
 
 ```bash
 docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
@@ -63,7 +63,8 @@ Since 1.2.0 you can set up most things in the dashboard. Settings > Providers li
 | You want to | Do this |
 |---|---|
 | Create a project | "Create project" on the Projects screen, or `sentinel init` in the workspace, then `sentinel dashboard` there registers it |
-| Add or remove repos | Repositories tab of the project, or edit `repos` in `sentinel.config.yaml` |
+| Add or remove repos | Repositories tab of the project (a project keeps at least one repository), or edit `repos` in `sentinel.config.yaml` |
+| Delete a project | "Delete project" on the project page. It only removes the project from the dashboard; its folder, configuration and `.sentinel` state stay on disk. Refused while a run is active |
 | Pick the provider that drives runs | `sentinel dashboard claude` (a runner id), the list shown when you give none, or Settings > Providers |
 | Route an agent to a provider and model | Settings > Agents (this project or a global default), or `agents` in `sentinel.config.yaml` |
 | Change other settings, policies or commands | Edit `sentinel.config.yaml`; `sentinel doctor` validates it (see [config](config.md)) |

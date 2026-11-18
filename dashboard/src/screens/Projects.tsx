@@ -13,6 +13,43 @@ import { UnifiedText } from '../components/DiffView.tsx';
 import { formatTime, prefix } from '../format.ts';
 import { Link, enc, navigate, type Route } from '../router.tsx';
 import { useApp, useResource } from '../state/app.tsx';
+import { setFlash, takeFlash } from '../flash.ts';
+
+function DeleteProject({ pid, name }: { pid: string; name: string }) {
+  const app = useApp();
+  const act = useAction();
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <>
+      <div className="row">
+        <button type="button" className="danger" onClick={() => setConfirm(true)}>
+          Delete project
+        </button>
+      </div>
+      <ActionResult message={act.message} />
+      {confirm ? (
+        <ConfirmDialog
+          text={`Delete project ${name}? This removes it from the dashboard only. Its folder, sentinel.config.yaml and .sentinel state are NOT deleted.`}
+          confirmLabel="Delete project"
+          cancelLabel="Keep project"
+          danger
+          pending={act.pending}
+          onCancel={() => setConfirm(false)}
+          onConfirm={() => {
+            setConfirm(false);
+            void act
+              .run(() => calls.deleteProject(app.client, pid), () => `Deleted project ${name}`)
+              .then((r) => {
+                if (r === undefined) return;
+                setFlash(`Deleted project ${name}. Its folder, configuration and .sentinel state were kept.`);
+                navigate('/projects');
+              });
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
 
 function RegisterForm({ onDone }: { onDone: () => void }) {
   const app = useApp();
@@ -52,8 +89,10 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
 export function ProjectsScreen() {
   const res = useResource('projects', (c) => calls.projects(c), {});
   const [registering, setRegistering] = useState(false);
+  const [flash] = useState(() => takeFlash());
   return (
     <section>
+      {flash ? <ActionResult message={{ kind: 'ok', text: flash }} /> : null}
       <div className="page-head">
         <h1>Projects</h1>
         <div className="row">
@@ -144,12 +183,14 @@ export function ProjectScreen({ pid, tab, rest, route }: { pid: string; tab: str
               <>
                 <h1>{p.name}</h1>
                 <div className="banner danger">Unavailable: {p.reason ?? 'unknown reason'}</div>
+                <DeleteProject pid={pid} name={p.name} />
               </>
             );
           }
           return (
             <>
               <h1>{p.name}</h1>
+              <DeleteProject pid={pid} name={p.name} />
               <Tabs label="Project" items={TABS.map(([t, label]) => ({ to: `/projects/${enc(pid)}${t ? `/${t}` : ''}`, label, current: tab === t }))} />
               {tab === '' ? <OverviewTab pid={pid} /> : null}
               {tab === 'repositories' ? <RepositoriesTab pid={pid} /> : null}
@@ -333,9 +374,21 @@ function RepositoriesTab({ pid }: { pid: string }) {
                         </ul>
                       </td>
                       <td>
-                        <button type="button" className="secondary" aria-label={`Remove repository ${r.id}`} onClick={() => setConfirm(r.id)}>
+                        <button
+                          type="button"
+                          className="secondary"
+                          aria-label={`Remove repository ${r.id}`}
+                          disabled={page.items.length <= 1}
+                          aria-describedby={page.items.length <= 1 ? `last-repo-hint-${r.id}` : undefined}
+                          onClick={() => setConfirm(r.id)}
+                        >
                           Remove
                         </button>
+                        {page.items.length <= 1 ? (
+                          <p className="hint" id={`last-repo-hint-${r.id}`}>
+                            A project needs at least one repository. Add another first, or delete the project.
+                          </p>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

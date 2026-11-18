@@ -52,6 +52,7 @@ export const ROUTES = {
   createProject: { method: 'POST', pattern: '/api/v1/projects' },
   registerProject: { method: 'POST', pattern: '/api/v1/projects/register' },
   addRepository: { method: 'POST', pattern: '/api/v1/projects/{pid}/repositories' },
+  deleteProject: { method: 'DELETE', pattern: '/api/v1/projects/{pid}' },
   removeRepository: { method: 'DELETE', pattern: '/api/v1/projects/{pid}/repositories/{rid}' },
 } as const satisfies Record<string, Route>;
 

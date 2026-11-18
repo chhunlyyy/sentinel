@@ -692,6 +692,17 @@ route('POST', `${V}/projects/{pid}/repositories`, (c) => {
   return [201, E.repository(d.repositories.items[d.repositories.items.length - 1])];
 });
 
+route('DELETE', `${V}/projects/{pid}`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  if (!db.projects.some((x) => x.id === pid)) throw new ApiErr(404, 'E_NOT_FOUND', 'project not found');
+  const live = Object.entries(db.runs).some(([k, r]) => k.startsWith(`${pid}/`) && !['COMPLETED', 'CANCELLED'].includes(r.detail.state));
+  if (live) throw new ApiErr(409, 'E_PRECONDITION', 'a run is not finished', { fix: 'finish or cancel the runs first' });
+  db.projects.splice(db.projects.findIndex((x) => x.id === pid), 1);
+  delete db.projectData[pid];
+  db.runtime.projects = db.runtime.projects.filter((x) => x !== pid);
+  return [200, { removed: pid }];
+});
+
 route('DELETE', `${V}/projects/{pid}/repositories/{rid}`, (c) => {
   const pid = decodeURIComponent(c.params[0]);
   const d = proj(pid);

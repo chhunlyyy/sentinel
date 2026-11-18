@@ -468,6 +468,22 @@ def remove_repository(ctx, pid, rid):
 
 
 # ---- projects
+def delete_project(ctx, pid):
+    """Unregister the project. Nothing on disk is deleted: the folder, the configuration and .sentinel stay."""
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    if ctx.projects.probe(project)[0] == "available":
+        with ctx.projects.engine(project, ctx.user, "dashboard") as eng:
+            live = [r["slug"] for r in eng.reg.list_runs() if r["state"] not in FINAL]
+            if live:
+                raise conflict("a project with an active run cannot be deleted", runs=live[:10])
+            eng.reg.add_audit(ctx.user, "dashboard", "project_unregistered", project.id,
+                              reason="removed from the dashboard; files kept")
+    if not userdir.unregister_project(ctx.api.cfgdir, pid):
+        raise not_found(f"no project {pid}", project=pid)
+    return {"removed": pid}
+
+
 def create_project(ctx, body):
     from shared import looks_like_git_url
     check_fields(body, ("name", "path", "shared", "repos"), ("name", "path"))

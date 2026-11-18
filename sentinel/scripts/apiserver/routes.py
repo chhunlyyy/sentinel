@@ -109,6 +109,10 @@ def h_add_repository(ctx, pid):
     return 201, manage.add_repository(ctx, pid, ctx.body)
 
 
+def h_delete_project(ctx, pid):
+    return 200, manage.delete_project(ctx, pid)
+
+
 def h_remove_repository(ctx, pid, rid):
     return 200, manage.remove_repository(ctx, pid, rid)
 
@@ -397,6 +401,7 @@ ROUTES = [
     Route("POST", "create_project", "projects", h_create_project),
     Route("POST", "register_project", "projects/register", h_register_project),
     Route("POST", "add_repository", "projects/{pid}/repositories", h_add_repository),
+    Route("DELETE", "delete_project", "projects/{pid}", h_delete_project),
     Route("DELETE", "remove_repository", "projects/{pid}/repositories/{rid}", h_remove_repository),
     Route("GET", "providers", "providers", h_providers),
     Route("POST", "provider_test", "providers/{rid}/test", h_provider_test),
@@ -414,7 +419,7 @@ for _r in ROUTES:
 
 # Contract routes that Phase G and H build. Until then they answer 404, so this module is the only allow-list.
 UNBUILT = [(m, re.compile(p)) for m, p in [
-    ("PATCH|DELETE", r"projects/[^/]+"),
+    ("PATCH", r"projects/[^/]+"),
     ("POST", r"projects/[^/]+/archive"),
     ("PATCH|PUT", r"projects/[^/]+/repositories(/.*)?"),
     ("GET|POST|PUT|PATCH|DELETE", r"projects/[^/]+/configuration(/.*)?"), ("GET|PUT", r"configuration/global"),

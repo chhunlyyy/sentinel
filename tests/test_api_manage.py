@@ -257,6 +257,25 @@ class Projects(M):
         self.assertEqual(r.status, 409, r.text)
 
 
+class DeleteProject(M):
+    def test_delete_unregisters_and_keeps_files(self):
+        self.serve()
+        ws = self.ws
+        self.assertEqual(self.delete("/api/v1/projects/digital-hr", csrf="bad").status, 403)
+        r = self.delete("/api/v1/projects/digital-hr")
+        self.assertEqual((r.status, r.json), (200, {"removed": "digital-hr"}), r.text)
+        self.assertEqual(self.http.get("/api/v1/projects/digital-hr").status, 404)
+        self.assertEqual(self.delete("/api/v1/projects/digital-hr").status, 404)
+        self.assertTrue((ws / "sentinel.config.yaml").exists())
+
+    def test_delete_refused_with_live_run(self):
+        self.serve()
+        self.eng.create_run("live-two", "orchestrator", type="feature", baseline={})
+        r = self.delete("/api/v1/projects/digital-hr")
+        self.assertEqual((r.status, r.code), (409, "E_PRECONDITION"), r.text)
+        self.assertEqual(self.http.get("/api/v1/projects/digital-hr").status, 200)
+
+
 class Misc(M):
     def test_fs_dirs(self):
         self.serve()
