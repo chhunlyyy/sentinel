@@ -193,10 +193,36 @@ test.describe('project creation', () => {
     await expect(page.getByTestId('repo-row')).toHaveCount(1);
     expect((await api.requests()).filter((r) => r.method === 'DELETE').map((r) => r.path)).toEqual(['/api/v1/projects/solo/repositories/hr-frontend']);
 
-    await page.getByRole('button', { name: 'Remove repository hr-backend' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Remove repository' }).click();
-    await expect(page.getByTestId('action-result')).toContainText('a project needs at least one repository');
+    const last = page.getByRole('button', { name: 'Remove repository hr-backend' });
+    await expect(last).toBeDisabled();
+    await expect(last).toHaveAccessibleDescription('A project needs at least one repository. Add another first, or delete the project.');
     await expect(page.getByTestId('repo-row')).toHaveCount(1);
+
+    await page.getByRole('button', { name: 'Delete project' }).click();
+    const dlg = page.getByRole('dialog');
+    await expect(dlg).toContainText('NOT deleted');
+    await dlg.getByRole('button', { name: 'Keep project' }).click();
+    expect((await api.requests()).filter((r) => r.method === 'DELETE' && r.path === '/api/v1/projects/solo')).toEqual([]);
+    await page.getByRole('button', { name: 'Delete project' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete project' }).click();
+    await expect(heading(page, 'Projects')).toBeVisible();
+    await expect(page).toHaveURL(/\/projects$/);
+    await expect(page.getByTestId('action-result')).toContainText('Deleted project Solo');
+    await expect(page.getByRole('link', { name: 'Solo' })).toHaveCount(0);
+    expect((await api.requests()).filter((r) => r.method === 'DELETE').map((r) => r.path)).toContain('/api/v1/projects/solo');
+  });
+
+  test('a server 409 on project delete or repository remove is shown', async ({ page }) => {
+    await open(page, '/projects/digital-hr');
+    await page.getByRole('button', { name: 'Delete project' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete project' }).click();
+    await expect(page.getByTestId('action-result')).toContainText('a run is not finished');
+    await expect(heading(page, 'digital-hr')).toBeVisible();
+
+    await open(page, '/projects/digital-hr/repositories');
+    await page.getByRole('button', { name: /^Remove repository / }).first().click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Remove repository' }).click();
+    await expect(page.getByTestId('action-result')).toContainText('a run is not finished');
   });
 
   test('the empty state offers Create project, and a folder with a config can be registered', async ({ page, api }) => {

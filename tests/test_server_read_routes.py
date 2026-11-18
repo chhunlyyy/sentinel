@@ -438,7 +438,7 @@ class Closed(RR):
     def test_AC_INS_06a_mutating_routes_of_the_contract_are_still_not_offered(self):
         self.serve()
         before = sorted(str(p) for p in self.home.rglob("*"))
-        for method, path in [("PATCH", "/api/v1/projects/digital-hr"), ("DELETE", "/api/v1/projects/digital-hr"),
+        for method, path in [("PATCH", "/api/v1/projects/digital-hr"),
                              ("PUT", "/api/v1/projects/digital-hr/configuration"),
                              ("POST", "/api/v1/projects/digital-hr/configuration/restore/1"),
                              ("POST", "/api/v1/projects/digital-hr/configuration/import"),
