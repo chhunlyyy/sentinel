@@ -12,7 +12,7 @@ It is provider-neutral. The pipeline is plain files and a small Python CLI. Any 
 
 ```bash
 uv tool install sentinel-pipeline     # the engine, with the dashboard included
-sentinel --version                    # 1.2.0
+sentinel --version                    # 1.2.1
 ```
 
 No Python tools? One Docker command serves just the dashboard. See [Install](#install).
@@ -170,7 +170,7 @@ First time in a project, start with `/sentinel-setup` (or run `sentinel init` yo
 
 ## Status
 
-Version 1.2.0 (beta). The version 2 flow, the dashboard, the registry, notifications, analytics, the audit log and backups have a test suite of their own (unit, integration, browser and security tests; `python3 tools/release_gate.py` runs them all and checks that every approved acceptance criterion has a passing test). Known limits and residual risks are stated in [docs/security.md](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md): an agent that runs as your OS user can approve through a pseudo-terminal or the token file, and a provider CLI can run any command during a task. The dashboard cannot create projects or edit configuration yet. The 0.1 stages (specifier, reviewer, hardener, QA, promotion, docs, rollout, retrospective) have run for real on one project only, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The PyPI distribution is named `sentinel-pipeline` because `sentinel` is taken; the command and the import package are still `sentinel`.
+Version 1.2.1 (beta). The version 2 flow, the dashboard, the registry, notifications, analytics, the audit log and backups have a test suite of their own (unit, integration, browser and security tests; `python3 tools/release_gate.py` runs them all and checks that every approved acceptance criterion has a passing test). Known limits and residual risks are stated in [docs/security.md](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md): an agent that runs as your OS user can approve through a pseudo-terminal or the token file, and a provider CLI can run any command during a task. The dashboard cannot create projects or edit configuration yet. The 0.1 stages (specifier, reviewer, hardener, QA, promotion, docs, rollout, retrospective) have run for real on one project only, and the Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The PyPI distribution is named `sentinel-pipeline` because `sentinel` is taken; the command and the import package are still `sentinel`.
 
 ## License
 

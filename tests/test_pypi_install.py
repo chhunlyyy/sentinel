@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import release_gate as gate  # noqa: E402
 from sv_helpers import CONFIG, Http, TtyProc, free_port  # noqa: E402
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 DIST = "sentinel-pipeline"
 WHEEL = f"sentinel_pipeline-{VERSION}-py3-none-any.whl"
 DI = f"sentinel_pipeline-{VERSION}.dist-info"
