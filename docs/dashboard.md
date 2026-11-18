@@ -15,7 +15,7 @@ The server listens on the loopback address only and accepts only requests for it
 
 ## Docker
 
-The image `ghcr.io/chhunlyyy/sentinel` (tags `1.1.0` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
+The image `ghcr.io/chhunlyyy/sentinel` (tags `1.2.0` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
 
 ```bash
 docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
@@ -56,22 +56,26 @@ The bell in the header lists notifications. Opening one only takes you to the pa
 
 Every screen works with the keyboard alone, labels every control, and meets WCAG 2.1 AA in the automated checks. Everything that comes from runs, users or agents (specifications, logs, diffs, names, notification text) is shown as text; it is never interpreted as HTML and links in it are not followed.
 
-## What is read only in 1.1.0
+## Projects, providers and agents
 
-In 1.1.0 the dashboard shows projects, repositories and configuration **read only** (decision G-1). It points to the command or file for each change. A later release adds the forms.
+Since 1.2.0 you can set up most things in the dashboard. Settings > Providers lists the AI tools installed on this machine and picks the orchestrator; Settings > Agents routes each agent role to a provider and model. Projects has "Create project" (name, folder, one or more repositories, local or shared git) and "Register existing folder", and the Repositories tab adds and removes repositories.
 
 | You want to | Do this |
 |---|---|
-| Create a project | `sentinel init` in the workspace, then `sentinel dashboard` there registers it |
-| Add, edit, remove or reorder repos | Edit `repos` in `sentinel.config.yaml`, or run `sentinel init --force` |
-| Change settings, policies, providers, agents or commands | Edit `sentinel.config.yaml`; `sentinel doctor` validates it (see [config](config.md)) |
+| Create a project | "Create project" on the Projects screen, or `sentinel init` in the workspace, then `sentinel dashboard` there registers it |
+| Add or remove repos | Repositories tab of the project, or edit `repos` in `sentinel.config.yaml` |
+| Pick the provider that drives runs | `sentinel dashboard claude` (a runner id), the list shown when you give none, or Settings > Providers |
+| Route an agent to a provider and model | Settings > Agents (this project or a global default), or `agents` in `sentinel.config.yaml` |
+| Change other settings, policies or commands | Edit `sentinel.config.yaml`; `sentinel doctor` validates it (see [config](config.md)) |
 | Restore an earlier configuration | Copy the version from the history in the Projects screen into `sentinel.config.yaml` |
 | Import or export a project config | Copy the file |
 | Change the Sentinel installation | Reinstall, see [installation](installation.md) |
 | Generate agent configs and deny rules | `sentinel sync-adapters` |
-| Test a provider | `sentinel doctor --check-models` |
+| Test a provider | The Test button in Settings > Providers, or `sentinel doctor --check-models` |
 | Publish specs and regression tests | `sentinel sync push` (version 2 runs never push by themselves) |
-| Pause a run or request intervention | Not available in 1.1.0; you can cancel, resume and retry |
+| Pause a run or request intervention | Not available; you can cancel, resume and retry |
+
+A global default set under Settings > Agents is copied into the projects you create afterwards; the engine does not merge it at run time.
 
 Approving a specification or Gherkin set, accepting a run, cancelling, resuming, retrying and creating a task all work in the dashboard, and each is recorded in the audit with the channel `dashboard`.
 
