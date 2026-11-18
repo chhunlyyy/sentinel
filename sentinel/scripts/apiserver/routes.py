@@ -9,7 +9,7 @@ from paths import slug_problem
 import analytics
 import notifications
 
-from . import ops, readroutes, views
+from . import manage, ops, readroutes, views
 from .projects import scrub_obj
 from .status import HttpError
 
@@ -94,6 +94,55 @@ def h_create_run(ctx, pid):
     with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
         slug = ops.create_run(eng, project, config, ctx.body, ctx.user)
         return 201, ctx.clean(project, views.run_detail(eng, project, slug))
+
+
+def h_create_project(ctx):
+    return 201, views.project_item(ctx.projects, manage.create_project(ctx, ctx.body))
+
+
+def h_register_project(ctx):
+    created, project = manage.register_project(ctx, ctx.body)
+    return (201 if created else 200), views.project_item(ctx.projects, project)
+
+
+def h_add_repository(ctx, pid):
+    return 201, manage.add_repository(ctx, pid, ctx.body)
+
+
+def h_remove_repository(ctx, pid, rid):
+    return 200, manage.remove_repository(ctx, pid, rid)
+
+
+def h_providers(ctx):
+    return 200, manage.providers_view(ctx)
+
+
+def h_provider_test(ctx, rid):
+    return 200, manage.probe(ctx, rid)
+
+
+def h_agents(ctx):
+    return 200, manage.agents_get(ctx)
+
+
+def h_agents_put(ctx):
+    return 200, manage.agents_put(ctx, ctx.body)
+
+
+def h_fs_dirs(ctx):
+    return 200, manage.fs_dirs(ctx.query)
+
+
+def h_profiles(ctx):
+    return 200, manage.profiles_view()
+
+
+def h_orchestrator(ctx):
+    return 200, manage.orchestrator_view(ctx)
+
+
+def h_orchestrator_put(ctx):
+    return 200, manage.set_orchestrator(ctx, ctx.body)
 
 
 # ---- one run: reads
@@ -345,6 +394,18 @@ ROUTES = [
     Route("GET", "changes_diff", "tasks/{slug}/changes/diff", h_changes_diff),
     Route("GET", "notifications", "notifications", h_notifications),
     Route("POST", "notification_read", "notifications/{nid}/read", h_notification_read, ()),
+    Route("POST", "create_project", "projects", h_create_project),
+    Route("POST", "register_project", "projects/register", h_register_project),
+    Route("POST", "add_repository", "projects/{pid}/repositories", h_add_repository),
+    Route("DELETE", "remove_repository", "projects/{pid}/repositories/{rid}", h_remove_repository),
+    Route("GET", "providers", "providers", h_providers),
+    Route("POST", "provider_test", "providers/{rid}/test", h_provider_test),
+    Route("GET", "agents", "agents", h_agents),
+    Route("PUT", "agents_put", "agents", h_agents_put),
+    Route("GET", "fs_dirs", "fs/dirs", h_fs_dirs),
+    Route("GET", "profiles", "profiles", h_profiles),
+    Route("GET", "orchestrator", "orchestrator", h_orchestrator),
+    Route("PUT", "orchestrator_put", "orchestrator", h_orchestrator_put),
     Route("GET", "analytics", "reports/analytics", h_analytics),
 ]
 
@@ -353,12 +414,11 @@ for _r in ROUTES:
 
 # Contract routes that Phase G and H build. Until then they answer 404, so this module is the only allow-list.
 UNBUILT = [(m, re.compile(p)) for m, p in [
-    ("POST", r"projects"), ("POST", r"projects/register"), ("PATCH|DELETE", r"projects/[^/]+"),
+    ("PATCH|DELETE", r"projects/[^/]+"),
     ("POST", r"projects/[^/]+/archive"),
-    ("GET|POST|PATCH|DELETE|PUT", r"projects/[^/]+/repositories(/.*)?"),
+    ("PATCH|PUT", r"projects/[^/]+/repositories(/.*)?"),
     ("GET|POST|PUT|PATCH|DELETE", r"projects/[^/]+/configuration(/.*)?"), ("GET|PUT", r"configuration/global"),
-    ("GET", r"fs/dirs"), ("GET", r"providers"), ("POST", r"providers/[^/]+/test"), ("GET", r"agents"),
-    ("GET", r"workflows|policies|profiles"),
+    ("GET", r"workflows|policies"),
     ("POST", r"tasks/[^/]+/publish"),
 ]]
 

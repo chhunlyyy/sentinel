@@ -173,6 +173,7 @@ runners:
 - A runner is a command line. Sentinel builds: `command` + `args` + (`model_flag` model) + (`resume_flag` id) + the prompt (after `prompt_flag` if set, or on stdin when `input: stdin`).
 - `add_dir_flag`: the tool's flag for granting access to an extra directory (for example `--add-dir`). Sentinel passes the state folder, because stages run inside a repo but must read the brief and the invariants and write their result under `.sentinel/`. Without it, tools that sandbox file access to the working directory cannot do their job.
 - `output: json_response` reads `status`, `response`, and the session id (`session_field`, default `conversation_id`) from the JSON the tool prints.
+- `models`: model ids the dashboard offers for this runner (Settings > Agents). They are listed before the built-in suggestions for `claude` and `gemini`; "Custom" always accepts any id. A runner without `model_flag` offers none.
 - `unsafe_skip_permissions: true` appends `unsafe_args` and prints a warning. Leave it false unless you accept that the tool will act without asking.
 - Only `claude` and `agy` have been run for real in this project. Check the flags of `codex` and `gemini` against their own documentation.
 
@@ -209,6 +210,21 @@ providers:
 ```
 
 Providers are the runners defined under [runners](#runners). The engine picks the provider of every task from `agents` (or `routing`) and this block; the agent that drives the run never chooses. A disabled or missing provider in `fallback` is skipped. Sentinel stores no API keys: each provider CLI keeps its own credentials.
+
+### Global defaults and the dashboard
+
+`<config dir>/config.yaml` (`~/.config/sentinel/config.yaml`, mode 0600) can hold `agents` and `providers`, the defaults you set in the dashboard under Settings. The engine does not merge this file at run time. Its values are copied into the `sentinel.config.yaml` of every project created afterwards (`POST /api/v1/projects`); existing projects keep what they have until you change them. `sentinel init` does not seed them.
+
+The dashboard reads and writes this through the local API (all under `/api/v1/`, CSRF header on every change):
+
+| Route | Use |
+|-------|-----|
+| `GET providers`, `POST providers/{id}/test` | Installed runners, and a `--version` probe of one. |
+| `GET agents?project=<id>`, `PUT agents` | The effective runner and model of each role (the roles are the stage prompts in `sentinel/core/stages`) (project, then global, then `claude`). `PUT` with `scope: project` validates against the schema, writes `sentinel.config.yaml` atomically and records a configuration version; `sha256` guards against a stale edit (409). `scope: global` writes the file above. |
+| `GET orchestrator`, `PUT orchestrator` | The server-wide AI tool that resumes dashboard runs, chosen from the installed runners (or none). |
+| `POST projects`, `POST projects/register` | Create a workspace (like `sentinel init` without prompts, at least one repo) or register an existing one. |
+| `POST projects/{id}/repositories`, `DELETE projects/{id}/repositories/{repo}` | Edit `repos`. The last repo cannot be removed, nor any repo while a run is active. |
+| `GET profiles`, `GET fs/dirs?path=` | Stack profiles and allowed repo roles; a directory browser (folders only). |
 
 ## agents
 

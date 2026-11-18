@@ -443,7 +443,7 @@ class Dash(TtyProc):
 
     def __init__(self, test, args=("--no-open",), cwd=None, env=None, tty=True, workspace=None):
         e = {k: v for k, v in os.environ.items() if k not in ("XDG_CONFIG_HOME", "SENTINEL_TASK_ID", "SENTINEL_HOST", "HOST")}
-        e.update({"PYTHONDONTWRITEBYTECODE": "1", **(env or {})})
+        e.update({"PYTHONDONTWRITEBYTECODE": "1", "SENTINEL_ORCHESTRATOR": "none", **(env or {})})  # no provider prompt
         e = {k: v for k, v in e.items() if v is not None}  # a None value in `env` unsets the variable
         cmd = [sys.executable, SENTINEL, *(["--dir", str(workspace)] if workspace else []), "dashboard", *args]
         if tty:

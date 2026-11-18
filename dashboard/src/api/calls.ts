@@ -2,6 +2,7 @@ import * as A from './adapt.ts';
 import type { Client } from './client.ts';
 import { buildPath } from './routes.ts';
 import type * as T from './types.ts';
+import type * as O from './orchestration.ts';
 import type * as W from './wire.ts';
 
 // Typed wrappers over the route table. Run routes always carry ?project= so a slug used in two projects is unambiguous.
@@ -78,4 +79,16 @@ export const calls = {
   accept: async (c: Client, slug: string, project: string, body: { decision: string; comment?: string | null } & Record<string, unknown>) =>
     A.acceptance(await c.post<W.WRun>(buildPath('accept', { slug }, proj(project)), body)),
   control: async (c: Client, slug: string, project: string, body: unknown) => A.run(await c.post<W.WRun>(buildPath('control', { slug }, proj(project)), body)),
+  providers: (c: Client, project?: string) => c.get<O.ProvidersAnswer>(buildPath('providers', {}, { project })),
+  providerTest: (c: Client, id: string) => c.post<O.ProbeResult>(buildPath('providerTest', { id }), {}),
+  orchestrator: (c: Client) => c.get<O.OrchestratorAnswer>(buildPath('orchestrator')),
+  setOrchestrator: (c: Client, id: string | null) => c.put<O.OrchestratorAnswer>(buildPath('setOrchestrator'), { id }),
+  agents: (c: Client, project?: string) => c.get<O.AgentsAnswer>(buildPath('agents', {}, { project })),
+  saveAgents: (c: Client, body: O.SaveAgentsBody) => c.put<O.AgentsAnswer>(buildPath('saveAgents'), body),
+  fsDirs: (c: Client, path?: string) => c.get<O.DirsAnswer>(buildPath('fsDirs', {}, { path })),
+  profiles: (c: Client) => c.get<{ items: O.ProfileItem[] }>(buildPath('profiles')),
+  createProject: (c: Client, body: O.CreateProjectBody) => c.post<T.Project>(buildPath('createProject'), body),
+  registerProject: (c: Client, path: string) => c.post<T.Project>(buildPath('registerProject'), { path }),
+  addRepository: (c: Client, pid: string, body: O.NewRepo) => c.post<unknown>(buildPath('addRepository', { pid }), body),
+  removeRepository: (c: Client, pid: string, rid: string) => c.del<unknown>(buildPath('removeRepository', { pid, rid })),
 };

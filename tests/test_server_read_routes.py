@@ -438,13 +438,10 @@ class Closed(RR):
     def test_AC_INS_06a_mutating_routes_of_the_contract_are_still_not_offered(self):
         self.serve()
         before = sorted(str(p) for p in self.home.rglob("*"))
-        for method, path in [("POST", "/api/v1/projects"), ("POST", "/api/v1/projects/register"),
-                             ("PATCH", "/api/v1/projects/digital-hr"), ("DELETE", "/api/v1/projects/digital-hr"),
-                             ("POST", "/api/v1/projects/digital-hr/repositories"),
+        for method, path in [("PATCH", "/api/v1/projects/digital-hr"), ("DELETE", "/api/v1/projects/digital-hr"),
                              ("PUT", "/api/v1/projects/digital-hr/configuration"),
                              ("POST", "/api/v1/projects/digital-hr/configuration/restore/1"),
                              ("POST", "/api/v1/projects/digital-hr/configuration/import"),
-                             ("GET", "/api/v1/fs/dirs?path=/"), ("POST", "/api/v1/providers/claude/test"),
                              ("POST", "/api/v1/tasks/leave-balance/publish")]:
             r = self.http.req(method, path, body={"a": 1})
             self.assertEqual((r.status, r.code), (404, "E_NOT_FOUND"), (method, path))

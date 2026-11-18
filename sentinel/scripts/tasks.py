@@ -29,6 +29,16 @@ DEFAULT_TIMEOUT = 5400
 DEFAULT_RETRIES = 2
 READ_ONLY_ROLES = {"specifier", "test_designer", "reviewer", "qa", "retrospective"}
 CYCLE_ROLES = ("tdd_red", "qa_red", "tdd_green", "tdd_refactor")  # qa_red: Red by QA scenarios (TDD-09)
+ROLE_ORDER = ("specifier", "test_designer", "tdd_red", "qa_red", "tdd_green", "tdd_refactor", "reviewer", "qa", "hardener",
+              "docs", "retrospective")  # display order only; the roles themselves come from core/stages
+
+
+def agent_roles():
+    """Every role that has a stage prompt in core/stages, workflow order first. A new stage file adds a role."""
+    found = {f.stem for f in (ROOT / "core" / "stages").glob("*.md")}
+    return [r for r in ROLE_ORDER if r in found] + sorted(found - set(ROLE_ORDER))
+
+
 OPEN_STATES = ("CREATED", "QUEUED", "RUNNING", "WAITING_FOR_INPUT")
 RETRY_CODES = ("E_EXIT", "E_TIMEOUT", "E_RESULT_SCHEMA", "E_AGENT")
 STDERR_LINES, STDERR_LINE_CAP = 20, 500  # what a retry brief may carry of the last attempt

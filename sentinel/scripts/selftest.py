@@ -659,7 +659,7 @@ def phase_f_checks(tmp):
 
     def tty_proc(args):
         master, slave = pty.openpty()
-        proc = subprocess.Popen(CLI + args, stdin=slave, stdout=slave, stderr=slave, env=env, start_new_session=True)
+        proc = subprocess.Popen(CLI + args, stdin=slave, stdout=slave, stderr=slave, env={**env, "SENTINEL_ORCHESTRATOR": "none"}, start_new_session=True)
         os.close(slave)
         return proc, master
 

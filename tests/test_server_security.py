@@ -142,8 +142,6 @@ class Sec(SV):
     def test_AC_API_01h_unknown_operations_are_refused(self):
         rows = [("GET", "/api/v1/shell", 404, "E_NOT_FOUND", None), ("POST", "/api/v1/exec", 404, "E_NOT_FOUND", {"cmd": "ls"}),
                 ("GET", "/api/v2/projects", 404, "E_NOT_FOUND", None),
-                ("GET", "/api/v1/fs/dirs?path=/", 404, "E_NOT_FOUND", None),
-                ("POST", "/api/v1/projects", 404, "E_NOT_FOUND", {"name": "x"}),
                 ("PUT", "/api/v1/projects/digital-hr/configuration", 404, "E_NOT_FOUND", {}),
                 ("POST", f"/api/v1/tasks/{SLUG}/publish", 404, "E_NOT_FOUND", {}),
                 ("DELETE", f"/api/v1/tasks/{SLUG}", 405, "E_METHOD", None),

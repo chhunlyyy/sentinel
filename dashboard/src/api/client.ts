@@ -31,6 +31,8 @@ export function createSessionState(onChange?: () => void): SessionState {
 export interface Client {
   get<T>(path: string, opts?: { signal?: AbortSignal }): Promise<T>;
   post<T>(path: string, body: unknown): Promise<T>;
+  put<T>(path: string, body: unknown): Promise<T>;
+  del<T>(path: string): Promise<T>;
   sessionEnded(): boolean;
   /** forget the CSRF value so the next POST reads it again */
   renewCsrf(): Promise<void>;
@@ -101,13 +103,13 @@ export function createClient(options: ClientOptions = {}): Client {
     return csrf;
   }
 
-  async function post<T>(path: string, body: unknown): Promise<T> {
+  async function send<T>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> {
     if (session.isEnded()) throw new ApiError({ status: 401, code: 'E_AUTH', message: 'session ended', text: 'Session ended' });
     const token = await ensureCsrf();
     const res = await once(path, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Sentinel-CSRF': token },
-      body: JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (res.status === 403) {
       const err = parseApiError(res.status, res.headers.get('content-type'), await res.clone().text().catch(() => ''));
@@ -119,5 +121,9 @@ export function createClient(options: ClientOptions = {}): Client {
     return read<T>(res);
   }
 
-  return { get, post, sessionEnded: () => session.isEnded(), async renewCsrf() { csrf = null; await ensureCsrf(); } };
+  const post = <T,>(path: string, body: unknown) => send<T>('POST', path, body);
+  const put = <T,>(path: string, body: unknown) => send<T>('PUT', path, body);
+  const del = <T,>(path: string) => send<T>('DELETE', path);
+
+  return { get, post, put, del, sessionEnded: () => session.isEnded(), async renewCsrf() { csrf = null; await ensureCsrf(); } };
 }

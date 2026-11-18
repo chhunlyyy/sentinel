@@ -1,7 +1,7 @@
 // The route table shared with the fake API server. Every call the app makes goes through it.
 
 export interface Route {
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   pattern: string;
 }
 
@@ -41,6 +41,18 @@ export const ROUTES = {
   notifications: { method: 'GET', pattern: '/api/v1/notifications' },
   notificationRead: { method: 'POST', pattern: '/api/v1/notifications/{id}/read' },
   analytics: { method: 'GET', pattern: '/api/v1/reports/analytics' },
+  providers: { method: 'GET', pattern: '/api/v1/providers' },
+  providerTest: { method: 'POST', pattern: '/api/v1/providers/{id}/test' },
+  orchestrator: { method: 'GET', pattern: '/api/v1/orchestrator' },
+  setOrchestrator: { method: 'PUT', pattern: '/api/v1/orchestrator' },
+  agents: { method: 'GET', pattern: '/api/v1/agents' },
+  saveAgents: { method: 'PUT', pattern: '/api/v1/agents' },
+  fsDirs: { method: 'GET', pattern: '/api/v1/fs/dirs' },
+  profiles: { method: 'GET', pattern: '/api/v1/profiles' },
+  createProject: { method: 'POST', pattern: '/api/v1/projects' },
+  registerProject: { method: 'POST', pattern: '/api/v1/projects/register' },
+  addRepository: { method: 'POST', pattern: '/api/v1/projects/{pid}/repositories' },
+  removeRepository: { method: 'DELETE', pattern: '/api/v1/projects/{pid}/repositories/{rid}' },
 } as const satisfies Record<string, Route>;
 
 export type RouteName = keyof typeof ROUTES;

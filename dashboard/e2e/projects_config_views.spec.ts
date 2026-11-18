@@ -37,12 +37,13 @@ test.describe('projects', () => {
     await expect(page.getByText('Run sentinel dashboard inside a workspace to register it')).toBeVisible();
   });
 
-  test('AC-PRJ-04a the dashboard offers no project or repository change in 1.1.0', async ({ page, api }) => {
+  test('AC-PRJ-04a the project page offers no archive, delete or edit; repositories offer add and remove only', async ({ page, api }) => {
     await open(page, '/projects/digital-hr');
     await expect(page.getByRole('button', { name: /register|archive|remove|edit|delete|unregister|new project|create project/i })).toHaveCount(0);
     await page.getByRole('navigation', { name: 'Project' }).getByRole('link', { name: 'Repositories' }).click();
     await expect(heading(page, 'Repositories')).toBeVisible();
-    await expect(page.getByRole('main').getByRole('button')).toHaveCount(0);
+    const buttons = page.getByRole('main').getByRole('button');
+    await expect(buttons.filter({ hasNotText: /^(Add repository|Remove)$/ })).toHaveCount(0);
     await expect(page.getByRole('main')).toContainText('sentinel.config.yaml');
     expect((await api.requests()).filter((r) => r.method !== 'GET')).toEqual([]);
   });

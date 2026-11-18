@@ -391,6 +391,12 @@
           "supports_subagents": {
             "type": "boolean"
           },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "unsafe_skip_permissions": {
             "type": "boolean"
           },

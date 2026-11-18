@@ -60,7 +60,7 @@ def _version():
     return (ROOT / "VERSION").read_text().strip()
 
 
-def run_dashboard(workspace, port=None, no_open=False, bind=None, public_host=None, allow_peers=()):
+def run_dashboard(workspace, port=None, no_open=False, bind=None, public_host=None, allow_peers=(), orchestrator=None):
     """Returns the exit code: 0 after attaching or a clean stop, 1 for a start failure."""
     cfgdir = userdir.config_dir()
     for notice in userdir.ensure_dir(cfgdir):
@@ -75,12 +75,12 @@ def run_dashboard(workspace, port=None, no_open=False, bind=None, public_host=No
     while True:
         if lock.acquire():
             try:
-                return _serve(cfgdir, lock, workspace, port, no_open, bind, public_host, allow_peers)
+                return _serve(cfgdir, lock, workspace, port, no_open, bind, public_host, allow_peers, orchestrator)
             finally:
                 lock.release()
         info = userdir.read_server_json(cfgdir)
         if info:
-            return _attach(cfgdir, info, workspace, public_host)
+            return _attach(cfgdir, info, workspace, public_host, orchestrator)
         if time.time() > deadline:
             _say("another Sentinel server holds the lock but has not published server.json; try again", err=True)
             return 1
@@ -93,19 +93,22 @@ def _register(cfgdir, workspace):
         _say(f"project {entry['id']} {'registered' if created else 'already registered'} ({entry['path']})")
 
 
-def _attach(cfgdir, info, workspace, public_host=None):
+def _attach(cfgdir, info, workspace, public_host=None, orchestrator=None):
     _register(cfgdir, workspace)
+    if orchestrator:
+        _say("the orchestrator is changed in the running dashboard (Settings > Providers)")
     _say(f"Sentinel dashboard is running (pid {info['pid']}): {_url(info['port'], info['token'], public_host)}")
     return 0
 
 
-def _serve(cfgdir, lock, workspace, port, no_open, bind=None, public_host=None, allow_peers=()):
+def _serve(cfgdir, lock, workspace, port, no_open, bind=None, public_host=None, allow_peers=(), orchestrator=None):
     path = cfgdir / userdir.SERVER
     if path.exists():
         path.unlink()
         _say("a stale server.json was replaced")
     _register(cfgdir, workspace)
     server = ApiServer(cfgdir, port=port or 0, dispatch=True, bind=bind, public_host=public_host, allow_peers=allow_peers, log_sink=lambda line: _say(line, err=True))
+    server.orchestrator = orchestrator
     try:
         server.start()
     except OSError as e:
@@ -115,9 +118,12 @@ def _serve(cfgdir, lock, workspace, port, no_open, bind=None, public_host=None, 
             _say(f"cannot start the server: {e}", err=True)
         return 1
     userdir.write_server_json(cfgdir, {"pid": os.getpid(), "port": server.port, "token": server.token,
-                                       "started_at": server.started_at, "version": _version()})
+                                       "started_at": server.started_at, "version": _version(),
+                                       "orchestrator": orchestrator})
     url = _url(server.port, server.token, public_host)
     _say(f"Sentinel dashboard: {url}")
+    if orchestrator:
+        _say(f"orchestrator: {orchestrator}")
     if bind:
         _say(f"publish with -p 127.0.0.1:{server.port}:{server.port}; requests from other addresses are refused")
     _say("Running in the foreground. Press Ctrl-C to stop.")

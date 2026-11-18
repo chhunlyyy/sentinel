@@ -11,11 +11,11 @@ function walk(dir: string): string[] {
 }
 
 describe('AC-DSH-06j every route the app calls is listed in the shared route table', () => {
-  test('AC-DSH-06j route table has only /api/v1 GET and POST entries and no mutating route for projects, repos or configuration', () => {
+  test('AC-DSH-06j route table has only /api/v1 entries; changes go through POST, PUT or DELETE on known resources', () => {
     for (const r of Object.values(ROUTES)) {
-      expect(['GET', 'POST']).toContain(r.method);
+      expect(['GET', 'POST', 'PUT', 'DELETE']).toContain(r.method);
       expect(r.pattern.startsWith('/api/v1/')).toBe(true);
-      if (r.method === 'POST') expect(r.pattern).toMatch(/\/(approvals|acceptance|control|tasks|read)$/);
+      if (r.method !== 'GET') expect(r.pattern).toMatch(/\/(approvals|acceptance|control|tasks|read|test|orchestrator|agents|projects|register|repositories|repositories\/\{rid\})$/);
     }
   });
   test('AC-DSH-06j screens call the API only through the route table', () => {

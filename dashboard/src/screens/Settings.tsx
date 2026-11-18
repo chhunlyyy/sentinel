@@ -4,6 +4,8 @@ import { Loaded, StatusChip } from '../components/common.tsx';
 import { formatTime } from '../format.ts';
 import { Link } from '../router.tsx';
 import { useResource } from '../state/app.tsx';
+import { AgentsPanel } from './Agents.tsx';
+import { ProvidersPage } from './Providers.tsx';
 
 const LABEL: Record<CheckStatus, string> = { passed: 'Passed', failed: 'Failed', warning: 'Warning', not_configured: 'Not configured' };
 const KIND: Record<CheckStatus, 'ok' | 'fail' | 'warn' | 'none'> = { passed: 'ok', failed: 'fail', warning: 'warn', not_configured: 'warn' };
@@ -117,6 +119,8 @@ function HealthPage() {
 export function SettingsScreen({ page }: { page: string }) {
   const items: [string, string][] = [
     ['installation', 'Sentinel installation'],
+    ['providers', 'Providers'],
+    ['agents', 'Agents'],
     ['runtime', 'Runtime connection'],
     ['health', 'Health checks'],
   ];
@@ -135,6 +139,8 @@ export function SettingsScreen({ page }: { page: string }) {
         </ul>
       </nav>
       {page === 'installation' ? <InstallationPage /> : null}
+      {page === 'providers' ? <ProvidersPage /> : null}
+      {page === 'agents' ? <AgentsPanel pickProject /> : null}
       {page === 'runtime' ? <RuntimePage /> : null}
       {page === 'health' ? <HealthPage /> : null}
       {!items.some(([id]) => id === page) ? <p>Page not found</p> : null}
