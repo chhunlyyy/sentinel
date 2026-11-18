@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0
+
+The dashboard gets provider and agent setup, project creation and a new look.
+
+### Added
+
+- `sentinel dashboard [provider]`: name the AI tool that orchestrates dashboard runs (a runner id such as `claude`). Without one, the installed providers are listed and you pick. While the server runs, a dashboard-created run that reaches an orchestrator step starts that tool headless (`/sentinel resume <run>`), at most 3 times per state. `SENTINEL_ORCHESTRATOR` (`none` or a runner id) skips the question.
+- Settings > Providers (installed providers, a Test button, the orchestrator choice) and Settings > Agents (provider and model per role, fallback, disabled and default providers, `single_model`; for one project or as a global default that is copied into projects created later). Agent roles come from the stage prompts in `sentinel/core/stages`.
+- Model choice per provider, with built-in suggestions for `claude` and `gemini`, the new optional `runners.<id>.models` config key, and a custom id.
+- Create a project in the dashboard (folder picker, any number of repositories, local or shared git), register an existing folder, and add or remove repositories. `sentinel init` and the dashboard share one module.
+- New API routes: `providers`, `providers/{id}/test`, `agents` (GET and PUT), `fs/dirs`, `projects` (POST), `projects/register`, `projects/{id}/repositories` (POST and DELETE), `profiles`, `orchestrator`.
+
+### Changed
+
+- The dashboard has a new design: tokens, light and dark themes, 44px touch targets, icons in the navigation, a phone layout.
+- The API checks the CSRF header on PUT and DELETE as well as POST.
+- `docs/dashboard.md` no longer calls projects, repositories and configuration read only.
+
 ## 1.1.0
 
 The first release with version 2 runs, the local dashboard and the registry. Existing 0.1 runs and workspaces keep working; read the [migration guide](docs/migration-1.1.md) before upgrading.

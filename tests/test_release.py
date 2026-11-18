@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "sentinel" / "scripts"))
 import release_gate as gate  # noqa: E402
 from sv_helpers import CONFIG, Http, TtyProc  # noqa: E402
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 FIXTURE = ROOT / "tests" / "fixtures" / "ws-0.1.0b7.tar.gz"
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
 
