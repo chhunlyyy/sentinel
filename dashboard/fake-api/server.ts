@@ -1,6 +1,7 @@
 // Fake Sentinel API for the dashboard e2e tests. It follows plan/v1.1/phaseF (routes, envelopes, cookie, CSRF,
 // security headers, SSE) and answers from the hand-written fixtures. The /__control routes exist only here.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { CSRF, SESSION, TOKEN } from '../fixtures/constants.ts';
@@ -37,6 +38,66 @@ let streams = new Set<ServerResponse>();
 let refuseUntil = 0;
 let eventSeq = 100;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+// ---- providers, orchestrator, agents, folders and project creation (state of the fake only) ----
+
+interface AgentCfg {
+  agents: Record<string, { runner?: string; model?: string }>;
+  providers: { default: string | null; fallback: string[]; disabled: string[] };
+  single_model: boolean;
+  rev: number;
+}
+interface Ext {
+  installed: Record<string, string | null>;
+  orchestrator: string | null;
+  global: AgentCfg;
+  projects: Record<string, AgentCfg>;
+  /** directory tree of the fake machine: path to child names */
+  tree: Record<string, string[]>;
+  git: Set<string>;
+  workspaces: Set<string>;
+}
+
+const emptyCfg = (): AgentCfg => ({ agents: {}, providers: { default: null, fallback: [], disabled: [] }, single_model: false, rev: 1 });
+
+function freshExt(): Ext {
+  return {
+    installed: { claude: '/usr/local/bin/claude', codex: '/usr/bin/codex', gemini: null, agy: null },
+    orchestrator: null,
+    global: { ...emptyCfg(), agents: { qa: { runner: 'codex' } } },
+    projects: {},
+    tree: {
+      '/': ['home'],
+      '/home': ['dev'],
+      '/home/dev': ['projects', 'Documents', '.cache'],
+      '/home/dev/projects': ['payroll', 'hr-backend', 'hr-frontend', 'legacy'],
+      '/home/dev/projects/payroll': [],
+      '/home/dev/projects/hr-backend': [],
+      '/home/dev/projects/hr-frontend': [],
+      '/home/dev/projects/legacy': [],
+      '/home/dev/Documents': [],
+    },
+    git: new Set(['/home/dev/projects/hr-backend', '/home/dev/projects/hr-frontend']),
+    workspaces: new Set(['/home/dev/projects/legacy']),
+  };
+}
+
+const ROLES = ['specifier', 'test_designer', 'tdd_red', 'qa_red', 'tdd_green', 'tdd_refactor', 'reviewer', 'qa', 'retrospective'];
+const PROVIDERS = [
+  { id: 'claude', label: 'Claude Code', command: 'claude', capabilities: { model_select: true, resume: true, json_output: true }, models: [{ id: 'opus', label: 'Opus' }, { id: 'sonnet', label: 'Sonnet' }, { id: 'haiku', label: 'Haiku' }] },
+  { id: 'codex', label: 'Codex CLI', command: 'codex', capabilities: { model_select: true, resume: true, json_output: true }, models: [] },
+  { id: 'gemini', label: 'Gemini CLI', command: 'gemini', capabilities: { model_select: true, resume: false, json_output: true }, models: [{ id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' }, { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' }] },
+  { id: 'agy', label: 'Antigravity (agy)', command: 'agy', capabilities: { model_select: false, resume: false, json_output: false }, models: [] },
+];
+const PROFILES = [
+  { id: 'generic', label: 'Generic', detect: [] },
+  { id: 'node', label: 'Node', detect: ['package.json'] },
+  { id: 'python', label: 'Python', detect: ['pyproject.toml'] },
+];
+
+let ext = freshExt();
+
+const cfgSha = (pid: string, c: AgentCfg) => createHash('sha256').update(`${pid}:${c.rev}:${JSON.stringify([c.agents, c.providers, c.single_model])}`).digest('hex');
 
 class ApiErr extends Error {
   status: number;
@@ -117,6 +178,7 @@ async function control(req: IncomingMessage, res: ServerResponse, path: string) 
       return send(res, 200, { ok: true });
     case 'reset': {
       db = b.fixture === 'fresh-install' ? freshInstall() : twoProjects();
+      ext = freshExt();
       for (const p of (b.presets as string[] | undefined) ?? []) applyPreset(db, p);
       rules = [];
       log = [];
@@ -148,6 +210,11 @@ async function control(req: IncomingMessage, res: ServerResponse, path: string) 
         streams = new Set();
       }
       return send(res, 200, { ok: true });
+    case 'agents-touch': {
+      const c = (ext.projects[String(b.project)] ??= emptyCfg());
+      c.rev += 1;
+      return send(res, 200, { ok: true });
+    }
     case 'requests':
       return send(res, 200, log);
     case 'sent-events':
@@ -460,6 +527,184 @@ route('POST', `${V}/tasks/{slug}/control`, (c) => {
   return [200, wrun(run)];
 });
 
+// ---- providers, orchestrator, agents, folders, project creation ----
+
+const installedIds = () => PROVIDERS.filter((p) => ext.installed[p.id]).map((p) => p.id);
+const providerList = () => PROVIDERS.map((p) => ({ ...p, installed: !!ext.installed[p.id], path: ext.installed[p.id] ?? null }));
+const SLUG = /^[a-z][a-z0-9-]*$/;
+
+route('GET', `${V}/providers`, () => [200, { items: providerList(), orchestrator: ext.orchestrator }]);
+route('POST', `${V}/providers/{id}/test`, (c) => {
+  const id = c.params[0];
+  if (!PROVIDERS.some((p) => p.id === id)) throw new ApiErr(404, 'E_NOT_FOUND', 'unknown provider');
+  const ok = !!ext.installed[id];
+  return [200, { id, ok, message: ok ? `${id} 1.0.0` : `${id} is not installed` }];
+});
+route('GET', `${V}/orchestrator`, () => [200, { id: ext.orchestrator, installed_ids: installedIds() }]);
+route('PUT', `${V}/orchestrator`, (c) => {
+  const b = body(c);
+  const id = b.id ?? null;
+  if (id !== null && (typeof id !== 'string' || !installedIds().includes(id))) throw new ApiErr(400, 'E_VALIDATION', 'provider is not installed', { field: 'id' });
+  ext.orchestrator = id as string | null;
+  return [200, { id: ext.orchestrator, installed_ids: installedIds() }];
+});
+
+function agentsAnswer(pid: string | null) {
+  if (pid) proj(pid);
+  const p = pid ? (ext.projects[pid] ??= emptyCfg()) : null;
+  const g = ext.global;
+  const pick = (role: string) => {
+    if (p?.agents[role]) return { role, runner: p.agents[role].runner ?? null, model: p.agents[role].model ?? null, source: 'project' as const };
+    if (g.agents[role]) return { role, runner: g.agents[role].runner ?? null, model: g.agents[role].model ?? null, source: 'global' as const };
+    return { role, runner: 'claude', model: null, source: 'default' as const };
+  };
+  const eff = p ?? g;
+  return { project: pid, roles: ROLES, items: ROLES.map(pick), providers: eff.providers, single_model: eff.single_model, sha256: p && pid ? cfgSha(pid, p) : cfgSha('global', g) };
+}
+route('GET', `${V}/agents`, (c) => [200, agentsAnswer(c.query.get('project'))]);
+route('PUT', `${V}/agents`, (c) => {
+  const b = body(c);
+  const scope = b.scope;
+  if (scope !== 'project' && scope !== 'global') throw new ApiErr(400, 'E_VALIDATION', 'scope must be project or global', { field: 'scope' });
+  const agents = (b.agents ?? {}) as Record<string, { runner?: string; model?: string }>;
+  const known = PROVIDERS.map((p) => p.id);
+  for (const [role, v] of Object.entries(agents)) {
+    if (!ROLES.includes(role)) throw new ApiErr(400, 'E_VALIDATION', `unknown role ${role}`, { field: `agents.${role}` });
+    if (v.runner && !known.includes(v.runner)) throw new ApiErr(400, 'E_VALIDATION', `unknown provider ${v.runner}`, { field: `agents.${role}.runner` });
+  }
+  const pv = (b.providers ?? {}) as { default?: string; fallback?: string[]; disabled?: string[] };
+  const cfg = scope === 'global' ? ext.global : (ext.projects[String(b.project)] ??= emptyCfg());
+  let pid: string | null = null;
+  if (scope === 'project') {
+    pid = String(b.project ?? '');
+    proj(pid);
+    if (typeof b.sha256 === 'string' && b.sha256 !== cfgSha(pid, cfg)) throw new ApiErr(409, 'E_PRECONDITION', 'the configuration file changed since it was read', { fix: 'reload the configuration' });
+  }
+  cfg.agents = agents;
+  cfg.providers = { default: pv.default ?? null, fallback: pv.fallback ?? [], disabled: pv.disabled ?? [] };
+  cfg.single_model = b.single_model === true;
+  cfg.rev += 1;
+  if (pid) {
+    const h = db.projectData[pid].history;
+    const version = Math.max(0, ...h.items.map((x) => x.version)) + 1;
+    h.items.unshift({ version, sha256: cfgSha(pid, cfg), author: 'dev', channel: 'dashboard', at: '2026-11-14T10:30:00Z', comment: null });
+  }
+  return [200, agentsAnswer(pid)];
+});
+
+route('GET', `${V}/profiles`, () => [200, { items: PROFILES }]);
+
+route('GET', `${V}/fs/dirs`, (c) => {
+  const path = (c.query.get('path') || '/home/dev').replace(/\/+$/, '') || '/';
+  if (path.includes('\0') || !path.startsWith('/')) throw new ApiErr(400, 'E_VALIDATION', 'path must be absolute', { field: 'path' });
+  const kids = ext.tree[path];
+  if (!kids) throw new ApiErr(404, 'E_NOT_FOUND', 'not a directory');
+  const parent = path === '/' ? null : path.slice(0, path.lastIndexOf('/')) || '/';
+  const join2 = (n: string) => (path === '/' ? `/${n}` : `${path}/${n}`);
+  return [200, { path, parent, items: kids.filter((n) => !n.startsWith('.')).map((n) => ({ name: n, path: join2(n), is_git: ext.git.has(join2(n)) })) }];
+});
+
+function addProject(name: string, path: string, repos: { id: string; path: string; role: string; profile: string }[]) {
+  let id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project';
+  while (db.projects.some((p) => p.id === id)) id = `${id}-2`;
+  const project = { id, name, path, status: 'available' as const, active_runs: 0 };
+  db.projects.push(project);
+  const tpl = Object.values(db.projectData)[0];
+  const first = tpl ? JSON.parse(JSON.stringify(tpl)) : null;
+  const items = repos.map((r) => ({
+    id: r.id, path: r.path, remote: null, default_branch: 'main', branch: 'main', role: r.role, profile: r.profile,
+    commands: { build: null, test: null, lint: null, typecheck: null, mutate: null }, guidelines: null, validation: [],
+  }));
+  db.projectData[id] = {
+    ...(first ?? { readiness: { default: { workflow: 'default', state: 'ready', items: [], checked_at: '2026-11-14T09:00:00Z' } }, configuration: { sha256: 'e'.repeat(64), values: [] }, diffs: {}, audit: [] }),
+    repositories: { items, next: null },
+    history: { items: [], next: null },
+    runs: [],
+    audit: [],
+  };
+  db.runtime.projects.push(id);
+  return project;
+}
+
+function repoFrom(b: Record<string, unknown>, used: Set<string>, base: string) {
+  const path = String(b.path ?? '');
+  if (!path.startsWith('/')) throw new ApiErr(400, 'E_VALIDATION', 'repository path must be absolute', { field: 'path' });
+  if (!ext.tree[path.replace(/\/+$/, '') || '/']) throw new ApiErr(400, 'E_VALIDATION', 'repository path is not an existing directory', { field: 'path' });
+  const role = String(b.role ?? '');
+  if (!SLUG.test(role)) throw new ApiErr(400, 'E_VALIDATION', 'role is required', { field: 'role' });
+  let id = typeof b.id === 'string' && b.id ? b.id : (path.split('/').pop() ?? base).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '') || base;
+  if (!SLUG.test(id)) throw new ApiErr(400, 'E_VALIDATION', 'repository id must be lower-case letters, digits and hyphens', { field: 'id' });
+  if (used.has(id)) {
+    if (typeof b.id === 'string' && b.id) throw new ApiErr(409, 'E_PRECONDITION', `repository ${id} already exists`);
+    id = `${id}-2`;
+  }
+  used.add(id);
+  const profile = typeof b.profile === 'string' && b.profile ? b.profile : 'generic';
+  return { id, path, role, profile };
+}
+
+route('POST', `${V}/projects/register`, (c) => {
+  const path = String(body(c).path ?? '');
+  if (!path.startsWith('/')) throw new ApiErr(400, 'E_VALIDATION', 'path must be absolute', { field: 'path' });
+  const existing = db.projects.find((p) => p.path === path);
+  if (existing) return [200, E.projects([existing])[0]];
+  if (!ext.workspaces.has(path)) throw new ApiErr(404, 'E_NOT_FOUND', 'no sentinel.config.yaml in that folder');
+  const name = path.split('/').pop() ?? 'project';
+  return [201, E.projects([addProject(name, path, [{ id: 'app', path, role: 'app', profile: 'generic' }])])[0]];
+});
+
+route('POST', `${V}/projects`, (c) => {
+  const b = body(c);
+  const name = String(b.name ?? '').trim();
+  const path = String(b.path ?? '').replace(/\/+$/, '');
+  if (!name) throw new ApiErr(400, 'E_VALIDATION', 'name is required', { field: 'name' });
+  if (!path.startsWith('/')) throw new ApiErr(400, 'E_VALIDATION', 'path must be absolute', { field: 'path' });
+  const shared = (b.shared ?? { mode: 'local' }) as { mode?: string; url?: string };
+  if (shared.mode !== 'local' && shared.mode !== 'git') throw new ApiErr(400, 'E_VALIDATION', 'shared.mode must be local or git', { field: 'shared.mode' });
+  if (shared.mode === 'git' && !shared.url) throw new ApiErr(400, 'E_VALIDATION', 'shared.url is required for git', { field: 'shared.url' });
+  const reposIn = Array.isArray(b.repos) ? (b.repos as Record<string, unknown>[]) : [];
+  if (reposIn.length < 1) throw new ApiErr(400, 'E_VALIDATION', 'at least one repository is required: the configuration needs a non empty repos list', { field: 'repos' });
+  if (ext.workspaces.has(path) || db.projects.some((p) => p.path === path)) throw new ApiErr(409, 'E_PRECONDITION', 'sentinel.config.yaml already exists in that folder', { fix: 'use Register existing folder' });
+  const parent = path.slice(0, path.lastIndexOf('/')) || '/';
+  if (!ext.tree[path] && !ext.tree[parent]) throw new ApiErr(400, 'E_VALIDATION', 'the parent folder does not exist', { field: 'path' });
+  const used = new Set<string>();
+  const repos = reposIn.map((r) => repoFrom(r, used, 'repo'));
+  if (!ext.tree[path]) {
+    ext.tree[path] = [];
+    ext.tree[parent].push(path.split('/').pop() ?? '');
+  }
+  ext.workspaces.add(path);
+  const project = addProject(name, path, repos);
+  const g = ext.global;
+  ext.projects[project.id] = { agents: JSON.parse(JSON.stringify(g.agents)), providers: JSON.parse(JSON.stringify(g.providers)), single_model: g.single_model, rev: 1 };
+  return [201, E.projects([project])[0]];
+});
+
+route('POST', `${V}/projects/{pid}/repositories`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  const d = proj(pid);
+  const used = new Set(d.repositories.items.map((r) => r.id));
+  const r = repoFrom(body(c), used, 'repo');
+  d.repositories.items.push({
+    id: r.id, path: r.path, remote: null, default_branch: 'main', branch: 'main', role: r.role, profile: r.profile,
+    commands: { build: null, test: null, lint: null, typecheck: null, mutate: null }, guidelines: null, validation: [],
+  });
+  return [201, E.repository(d.repositories.items[d.repositories.items.length - 1])];
+});
+
+route('DELETE', `${V}/projects/{pid}/repositories/{rid}`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  const d = proj(pid);
+  const rid = c.params[1];
+  const idx = d.repositories.items.findIndex((r) => r.id === rid);
+  if (idx < 0) throw new ApiErr(404, 'E_NOT_FOUND', 'repository not found');
+  if (d.repositories.items.length <= 1) throw new ApiErr(409, 'E_PRECONDITION', 'a project needs at least one repository');
+  const live = Object.entries(db.runs).some(([k, r]) => k.startsWith(`${pid}/`) && !['COMPLETED', 'CANCELLED'].includes(r.detail.state));
+  if (live) throw new ApiErr(409, 'E_PRECONDITION', 'a run is not finished', { fix: 'finish or cancel the runs first' });
+  d.repositories.items.splice(idx, 1);
+  return [200, { removed: rid }];
+});
+
 // ---- request handling ----
 
 function matchRule(method: string, path: string, search: string): Rule | undefined {
@@ -507,7 +752,7 @@ const server = createServer(async (req, res) => {
   const method = req.method ?? 'GET';
   if (path.startsWith('/__control/')) return void (await control(req, res, path.slice('/__control/'.length)));
 
-  const raw = method === 'POST' ? await readBody(req) : null;
+  const raw = method === 'POST' || method === 'PUT' || method === 'DELETE' ? await readBody(req) : null;
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(req.headers)) headers[k] = Array.isArray(v) ? v.join(', ') : (v ?? '');
   log.push({ n: log.length, t: Date.now(), method, path, search: url.search, headers, body: raw });
@@ -553,7 +798,7 @@ const server = createServer(async (req, res) => {
   }
 
   try {
-    if (method === 'POST') {
+    if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
       if (headers['x-sentinel-csrf'] !== CSRF) throw new ApiErr(403, 'E_CSRF', 'bad csrf value');
       if (!/^application\/json/.test(headers['content-type'] ?? '')) throw new ApiErr(415, 'E_MEDIA_TYPE', 'JSON required');
     }

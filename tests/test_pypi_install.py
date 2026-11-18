@@ -169,7 +169,7 @@ class Install(unittest.TestCase):
         ws.mkdir(parents=True)
         (ws / "sentinel.config.yaml").write_text(yaml.safe_dump(CONFIG, sort_keys=False))
         port = free_port()
-        d = Quiet(self, [str(self.env.sentinel), "dashboard", "--no-open", "--port", str(port)], ws, self.penv)
+        d = Quiet(self, [str(self.env.sentinel), "dashboard", "--no-open", "--port", str(port)], ws, {**self.penv, "SENTINEL_ORCHESTRATOR": "none"})
         got, token = d.url()
         self.addCleanup(lambda: d.signal(15) if not d.exited() else None)
         self.assertEqual(got, port)

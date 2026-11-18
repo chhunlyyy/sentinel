@@ -36,6 +36,8 @@ If `sentinel` is not found afterwards, run `uv tool update-shell` and open a new
 
 ### The dashboard UI
 
+To let the dashboard drive runs it creates, name the AI tool that orchestrates them: `sentinel dashboard claude` (any runner id: `claude`, `codex`, `gemini`, `agy`, or one from `runners:` in the config). Without it, `sentinel dashboard` lists the installed tools and asks which one to use; press Enter for none (`SENTINEL_ORCHESTRATOR=none`, or a runner id, skips the question). The server then starts that tool headless in the project folder, with the Sentinel skill, when a run waits for the AI tool (at most 3 launches per run and state, then it waits for you). If a server already runs, the orchestrator is changed in the dashboard instead (Settings > Providers).
+
 The dashboard UI (`sentinel dashboard`) is built from `dashboard/` and is included in the PyPI wheel, `sentinel_pipeline-1.1.0-py3-none-any.whl`. The developer path, `uv tool install git+https://github.com/chhunlyyy/sentinel`, installs the CLI without the dashboard UI (it is not in the git source tree): everything on the command line works, and `sentinel dashboard` serves a "UI not installed" page. Choose one of:
 
 ```bash

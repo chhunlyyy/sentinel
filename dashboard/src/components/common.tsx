@@ -20,7 +20,7 @@ export function Loaded<T>({ res, children, unavailable }: { res: UseResult<T>; c
     }
     return <ErrorView error={res.error} />;
   }
-  if (!res.data) return <p className="hint" role="status">Loading</p>;
+  if (!res.data) return <p className="loading" role="status"><span className="spinner" aria-hidden="true" />Loading</p>;
   return <>{children(res.data)}</>;
 }
 

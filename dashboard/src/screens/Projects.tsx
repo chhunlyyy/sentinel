@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react';
 import { calls } from '../api/calls.ts';
 import type { ApiError } from '../api/errors.ts';
 import type { ConfigValue, ConfigVersion, Page, Repository, RunSummary } from '../api/types.ts';
+import { REPO_ROLES } from '../api/orchestration.ts';
 import { ErrorView } from '../components/ErrorView.tsx';
-import { Loaded, Tabs } from '../components/common.tsx';
+import { FolderPicker } from '../components/FolderPicker.tsx';
+import { ActionResult, ConfirmDialog, Loaded, Tabs, useAction } from '../components/common.tsx';
+import { AgentsPanel } from './Agents.tsx';
 import { ReadinessPanel, readinessAllowsTasks } from '../components/ReadinessPanel.tsx';
 import { RunTable } from '../components/RunTable.tsx';
 import { UnifiedText } from '../components/DiffView.tsx';
@@ -11,17 +14,70 @@ import { formatTime, prefix } from '../format.ts';
 import { Link, enc, navigate, type Route } from '../router.tsx';
 import { useApp, useResource } from '../state/app.tsx';
 
+function RegisterForm({ onDone }: { onDone: () => void }) {
+  const app = useApp();
+  const reg = useAction();
+  const [path, setPath] = useState('');
+  return (
+    <div className="card" data-testid="register-form">
+      <h2>Register existing folder</h2>
+      <p className="hint">Use this for a workspace that already has a sentinel.config.yaml.</p>
+      <FolderPicker label="Workspace folder" value={path} onChange={setPath} testId="register-folder" />
+      <div className="row">
+        <button
+          type="button"
+          disabled={!path.startsWith('/') || reg.pending}
+          onClick={() =>
+            void reg.run(
+              async () => {
+                const p = await calls.registerProject(app.client, path);
+                navigate(`/projects/${enc(p.id)}`);
+                return p;
+              },
+              (p) => `Registered ${p.name}`,
+            )
+          }
+        >
+          Register folder
+        </button>
+        <button type="button" className="secondary" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+      <ActionResult message={reg.message} />
+    </div>
+  );
+}
+
 export function ProjectsScreen() {
   const res = useResource('projects', (c) => calls.projects(c), {});
+  const [registering, setRegistering] = useState(false);
   return (
     <section>
-      <h1>Projects</h1>
+      <div className="page-head">
+        <h1>Projects</h1>
+        <div className="row">
+          <button type="button" className="secondary" onClick={() => setRegistering((r) => !r)} aria-expanded={registering}>
+            Register existing folder
+          </button>
+          <button type="button" onClick={() => navigate('/projects/new')}>
+            Create project
+          </button>
+        </div>
+      </div>
+      {registering ? <RegisterForm onDone={() => setRegistering(false)} /> : null}
       <Loaded res={res}>
         {(page) =>
           page.items.length === 0 ? (
-            <div className="panel">
+            <div className="panel empty">
               <p>No project registered</p>
               <p>Run sentinel dashboard inside a workspace to register it</p>
+              <p className="hint">Or create a new project here, or register a folder that already has a sentinel.config.yaml.</p>
+              <div className="row">
+                <button type="button" onClick={() => navigate('/projects/new')}>
+                  Create project
+                </button>
+              </div>
             </div>
           ) : (
             <div className="table-wrap">
@@ -61,6 +117,7 @@ const TABS: [string, string][] = [
   ['', 'Overview'],
   ['repositories', 'Repositories'],
   ['configuration', 'Configuration'],
+  ['agents', 'Agents'],
   ['runs', 'Runs'],
   ['audit', 'Audit'],
 ];
@@ -97,6 +154,7 @@ export function ProjectScreen({ pid, tab, rest, route }: { pid: string; tab: str
               {tab === '' ? <OverviewTab pid={pid} /> : null}
               {tab === 'repositories' ? <RepositoriesTab pid={pid} /> : null}
               {tab === 'configuration' ? <ConfigurationTab pid={pid} sub={rest[0]} route={route} /> : null}
+              {tab === 'agents' ? <AgentsPanel pid={pid} /> : null}
               {tab === 'runs' ? <RunsTab pid={pid} /> : null}
               {tab === 'audit' ? <AuditTab pid={pid} /> : null}
               {!TABS.some(([t]) => t === tab) ? <p>Page not found</p> : null}
@@ -139,14 +197,96 @@ function OverviewTab({ pid }: { pid: string }) {
 const repoStatus = (s: string) => (s === 'passed' ? 'Passed' : s === 'failed' ? 'Failed' : s === 'warning' ? 'Warning' : s === 'unreachable' ? 'Not reachable' : s === 'not_configured' ? 'Not configured' : 'Not checked');
 const title = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+function AddRepoForm({ pid, onAdded }: { pid: string; onAdded: () => void }) {
+  const app = useApp();
+  const add = useAction();
+  const profiles = useResource('profiles', (c) => calls.profiles(c), {});
+  const [path, setPath] = useState('');
+  const [id, setId] = useState('');
+  const [role, setRole] = useState('backend');
+  const [profile, setProfile] = useState('');
+  return (
+    <div className="card" data-testid="add-repo-form">
+      <h3>Add repository</h3>
+      <FolderPicker label="Repository folder" value={path} onChange={setPath} testId="add-repo-folder" />
+      <div className="row">
+        <div className="field inline">
+          <label htmlFor="ar-id">Id (optional)</label>
+          <input id="ar-id" type="text" value={id} autoComplete="off" onChange={(e) => setId(e.target.value)} />
+        </div>
+        <div className="field inline">
+          <label htmlFor="ar-role">Role</label>
+          <select id="ar-role" value={role} onChange={(e) => setRole(e.target.value)}>
+            {REPO_ROLES.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field inline">
+          <label htmlFor="ar-profile">Profile</label>
+          <select id="ar-profile" value={profile} onChange={(e) => setProfile(e.target.value)}>
+            <option value="">Auto detect</option>
+            {(profiles.data?.items ?? []).map((p) => (
+              <option key={p.id} value={p.id}>{p.label ?? p.id}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div className="row">
+        <button
+          type="button"
+          disabled={!path.startsWith('/') || add.pending}
+          onClick={() =>
+            void add.run(
+              () => calls.addRepository(app.client, pid, { path, role, ...(id.trim() ? { id: id.trim() } : {}), ...(profile ? { profile } : {}) }),
+              () => 'Repository added',
+              { onSettled: () => undefined },
+            ).then((r) => { if (r !== undefined) onAdded(); })
+          }
+        >
+          Add to project
+        </button>
+      </div>
+      <ActionResult message={add.message} />
+    </div>
+  );
+}
+
 function RepositoriesTab({ pid }: { pid: string }) {
   const res = useResource(`repos-${pid}`, (c) => calls.repositories(c, pid), { project: pid });
+  const app = useApp();
+  const act = useAction();
+  const [adding, setAdding] = useState(false);
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const done = () => void res.reload();
   return (
     <>
-      <h2>Repositories</h2>
-      <p>
-        Repositories are read only here. To add, change, remove or reorder them, edit <code>sentinel.config.yaml</code> in the workspace.
+      <div className="page-head">
+        <h2>Repositories</h2>
+        <button type="button" onClick={() => setAdding((a) => !a)} aria-expanded={adding}>
+          Add repository
+        </button>
+      </div>
+      <p className="hint">
+        Add or remove repositories here, or edit <code>sentinel.config.yaml</code> in the workspace and reload. Other settings of a repository are changed in that file.
       </p>
+      {adding ? <AddRepoForm pid={pid} onAdded={() => { setAdding(false); done(); }} /> : null}
+      <ActionResult message={act.message} />
+      {confirm ? (
+        <ConfirmDialog
+          text={`Remove repository ${confirm} from this project? Its folder is not deleted.`}
+          confirmLabel="Remove repository"
+          cancelLabel="Keep repository"
+          danger
+          pending={act.pending}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            const rid = confirm;
+            setConfirm(null);
+            void act.run(() => calls.removeRepository(app.client, pid, rid), () => `Removed ${rid}`, { onSettled: done });
+          }}
+        />
+      ) : null}
       <Loaded res={res}>
         {(page) => (
           <>
@@ -155,7 +295,7 @@ function RepositoriesTab({ pid }: { pid: string }) {
               <table>
                 <thead>
                   <tr>
-                    {['Id', 'Path', 'Remote', 'Default branch', 'Current branch', 'Role', 'Profile', 'Commands', 'Guidelines', 'Validation'].map((h) => (
+                    {['Id', 'Path', 'Remote', 'Default branch', 'Current branch', 'Role', 'Profile', 'Commands', 'Guidelines', 'Validation', 'Actions'].map((h) => (
                       <th scope="col" key={h}>
                         {h}
                       </th>
@@ -191,6 +331,11 @@ function RepositoriesTab({ pid }: { pid: string }) {
                             </li>
                           ))}
                         </ul>
+                      </td>
+                      <td>
+                        <button type="button" className="secondary" aria-label={`Remove repository ${r.id}`} onClick={() => setConfirm(r.id)}>
+                          Remove
+                        </button>
                       </td>
                     </tr>
                   ))}

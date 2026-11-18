@@ -4,12 +4,14 @@ import { AppProvider, useApp, useResource } from './state/app.tsx';
 import { Link, segments, useRoute, type Route } from './router.tsx';
 import { Overview } from './screens/Overview.tsx';
 import { ProjectsScreen, ProjectScreen } from './screens/Projects.tsx';
+import { NewProjectScreen } from './screens/NewProject.tsx';
 import { TasksScreen, RunsScreen, QualityScreen, CreateTaskScreen } from './screens/Tasks.tsx';
 import { ApprovalsScreen } from './screens/Approvals.tsx';
 import { RunScreen } from './screens/Run.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { ReportsScreen } from './screens/Reports.tsx';
 import { NotificationBell } from './components/Notifications.tsx';
+import { onOrchestratorChanged } from './state/orchestrator.ts';
 
 function NotFound({ message }: { message: string }) {
   return (
@@ -38,6 +40,7 @@ function screenFor(route: Route): ReactNode {
   switch (s[0]) {
     case 'projects':
       if (s.length === 1) return <ProjectsScreen />;
+      if (s[1] === 'new' && s.length === 2) return <NewProjectScreen />;
       if (s[2] === 'runs' && s[3]) return <RunScreen pid={s[1]} slug={s[3]} rest={s.slice(4)} route={route} />;
       return <ProjectScreen pid={s[1]} tab={s[2] ?? ''} rest={s.slice(3)} route={route} />;
     case 'tasks':
@@ -91,6 +94,7 @@ const TITLES: Record<string, string> = {
 export function titleFor(path: string): string {
   const s = segments(path);
   if (s.length === 0) return 'Overview';
+  if (s[0] === 'projects' && s[1] === 'new') return 'Create project';
   if (s[0] === 'projects' && s[2] === 'runs' && s[3]) return `${s[3]}${s[4] ? ` ${s[4]}` : ''}`;
   if (s[0] === 'projects' && s[1]) return `${s[1]}${s[2] ? ` ${s[2]}` : ''}`;
   if (s[0] === 'tasks' && s[1] === 'new') return 'New task';
@@ -102,15 +106,15 @@ function Nav({ path }: { path: string }) {
   const count = approvals.data?.items.length ?? 0;
   const projects = useResource('nav-projects', (c) => calls.projects(c), {});
   const unavailable = projects.data?.items.filter((p) => p.status === 'unavailable') ?? [];
-  const items: { to: string; label: string; match: (p: string) => boolean }[] = [
-    { to: '/', label: 'Overview', match: (p) => p === '/' },
-    { to: '/projects', label: 'Projects', match: (p) => p.startsWith('/projects') },
-    { to: '/tasks', label: 'Tasks', match: (p) => p.startsWith('/tasks') },
-    { to: '/approvals', label: 'My Approvals', match: (p) => p.startsWith('/approvals') },
-    { to: '/runs', label: 'Runs', match: (p) => p === '/runs' },
-    { to: '/quality', label: 'Quality', match: (p) => p === '/quality' },
-    { to: '/reports', label: 'Reports', match: (p) => p === '/reports' },
-    { to: '/settings', label: 'Settings', match: (p) => p.startsWith('/settings') },
+  const items: { to: string; label: string; icon: string; match: (p: string) => boolean }[] = [
+    { to: '/', label: 'Overview', icon: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', match: (p) => p === '/' },
+    { to: '/projects', label: 'Projects', icon: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z', match: (p) => p.startsWith('/projects') },
+    { to: '/tasks', label: 'Tasks', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2', match: (p) => p.startsWith('/tasks') },
+    { to: '/approvals', label: 'My Approvals', icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM8.5 12l2.5 2.5 4.5-5', match: (p) => p.startsWith('/approvals') },
+    { to: '/runs', label: 'Runs', icon: 'M6 4l14 8-14 8z', match: (p) => p === '/runs' },
+    { to: '/quality', label: 'Quality', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2', match: (p) => p === '/quality' },
+    { to: '/reports', label: 'Reports', icon: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7', match: (p) => p === '/reports' },
+    { to: '/settings', label: 'Settings', icon: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M18 16v4', match: (p) => p.startsWith('/settings') },
   ];
   return (
     <nav aria-label="Main">
@@ -118,7 +122,10 @@ function Nav({ path }: { path: string }) {
         {items.map((i) => (
           <li key={i.to}>
             <Link to={i.to === '/settings' ? '/settings/installation' : i.to} current={i.match(path)}>
-              {i.label}
+              <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d={i.icon} />
+              </svg>
+              <span className="nav-label">{i.label}</span>
               {i.to === '/approvals' && count > 0 ? <span className="badge">{count}</span> : null}
             </Link>
           </li>
@@ -130,6 +137,23 @@ function Nav({ path }: { path: string }) {
         </p>
       ) : null}
     </nav>
+  );
+}
+
+function OrchestratorBadge() {
+  const orch = useResource('header-orchestrator', (c) => calls.orchestrator(c), {});
+  const providers = useResource('header-providers', (c) => calls.providers(c), {});
+  useEffect(() => onOrchestratorChanged(() => { void orch.reload(); void providers.reload(); }), [orch.reload, providers.reload]);
+  // an older server without the route shows nothing instead of an error in the header
+  if (!orch.data) return null;
+  const id = orch.data.id;
+  const label = id ? (providers.data?.items.find((p) => p.id === id)?.label ?? id) : null;
+  return (
+    <Link to="/settings/providers" className={`orch-badge${id ? ' on' : ''}`} data-testid="orchestrator-badge" title="Change the orchestrator in Settings">
+      <span className="orch-dot" aria-hidden="true" />
+      <span className="orch-k">Orchestrator</span>
+      <strong>{label ?? 'none'}</strong>
+    </Link>
   );
 }
 
@@ -168,12 +192,18 @@ function Shell() {
           </span>
         </div>
       </aside>
+      <div className="content">
+      <header className="topbar" data-testid="topbar">
+        <span className="topbar-fill" />
+        <OrchestratorBadge />
+      </header>
       <main id="main" tabIndex={-1} ref={mainRef}>
         <ScreenBoundary resetKey={route.path}>{screenFor(route)}</ScreenBoundary>
         <div className="sr-only" aria-live="polite" data-testid="announcer">
           {app.announcement}
         </div>
       </main>
+      </div>
     </div>
   );
 }

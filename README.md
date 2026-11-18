@@ -41,7 +41,7 @@ The start of a run in a terminal. The output is real, and the last command shows
 
 ## Dashboard
 
-`sentinel dashboard` starts a local dashboard on 127.0.0.1 and prints a one-time session URL. It shows runs, approvals, tasks, the workflow graph, logs, diffs, verification, the trace from requirement to code, notifications and reports, and lets you approve, accept, cancel and create tasks. It works offline and is read only for projects, repos and configuration in 1.1.0. See [the dashboard guide](docs/dashboard.md) and [operations](docs/operations.md) for notifications, stats, audit export and backup.
+`sentinel dashboard [provider]` starts a local dashboard on 127.0.0.1 and prints a one-time session URL (the optional provider, for example `claude`, is the AI tool that orchestrates runs created in the dashboard). It shows runs, approvals, tasks, the workflow graph, logs, diffs, verification, the trace from requirement to code, notifications and reports, and lets you approve, accept, cancel and create tasks. It works offline and is read only for projects, repos and configuration in 1.1.0. See [the dashboard guide](docs/dashboard.md) and [operations](docs/operations.md) for notifications, stats, audit export and backup.
 
 The pictures use the dashboard's built-in sample data, not a real project.
 

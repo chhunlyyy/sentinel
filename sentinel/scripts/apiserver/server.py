@@ -124,6 +124,7 @@ class ApiServer:
         self.heartbeat = setting(heartbeat, "SENTINEL_TEST_HEARTBEAT_MS", 15.0)
         self.slow_timeout = setting(slow_timeout, "SENTINEL_TEST_SLOW_CLIENT_MS", 10.0)
         self.dispatch_enabled = dispatch
+        self.orchestrator = None   # runner id (str) or None; set by `sentinel dashboard [provider]` or the dashboard
         self.dispatch_interval = setting(dispatch_interval, "SENTINEL_TEST_DISPATCH_MS", 0.5)
         dist = Path(dist_dir) if dist_dir else ROOT / "dashboard_dist"
         self.dist = dist if (dist / "index.html").is_file() else None
@@ -151,7 +152,7 @@ class ApiServer:
         self.hub = Hub(self.projects, self.poll_interval, self.log)
         self.hub.start()
         if self.dispatch_enabled:
-            self.dispatcher = Dispatcher(self.projects, self.dispatch_interval, self.log)
+            self.dispatcher = Dispatcher(self.projects, self.dispatch_interval, self.log, api=self)
             self.dispatcher.start()
         self.thread = threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.1},
                                        name="sentinel-http", daemon=True)
@@ -180,7 +181,7 @@ class ApiServer:
         return self.hub.count() if self.hub else 0
 
     def dispatch_once(self):
-        return (self.dispatcher or Dispatcher(self.projects, self.dispatch_interval, self.log)).once()
+        return (self.dispatcher or Dispatcher(self.projects, self.dispatch_interval, self.log, api=self)).once()
 
     # ---- checks
     def peer_ok(self, peer):
@@ -300,10 +301,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._static(path)
         route, params = routes.match(method, path)
         body = None
-        if method == "POST":
+        if method in ("POST", "PUT", "DELETE"):
             if not api.sessions.check_csrf(csrf, self.headers.get(auth.CSRF_HEADER)):
                 raise HttpError("E_CSRF", "the X-Sentinel-CSRF header is missing or wrong")
-            body = self._body()
+            body = {} if method == "DELETE" else self._body()
         self.ctx = routes.Ctx(api, query, body, csrf, self.headers)
         status, result = route.handler(self.ctx, **params)
         if isinstance(result, routes.StreamRequest):

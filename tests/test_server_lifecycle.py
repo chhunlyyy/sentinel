@@ -224,7 +224,7 @@ class Lifecycle(unittest.TestCase):
         sj = self.cfg / "server.json"
         self.assertEqual(stat.S_IMODE(sj.stat().st_mode), 0o600)
         data = json.loads(sj.read_text())
-        self.assertEqual(set(data), {"pid", "port", "token", "started_at", "version"})
+        self.assertEqual(set(data), {"pid", "port", "token", "started_at", "version", "orchestrator"})
         self.assertRegex(data["token"], r"^[0-9a-f]{64}$")
 
     def test_AC_SEC_02f_a_folder_with_wider_permissions_is_tightened(self):

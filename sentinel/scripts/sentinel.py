@@ -20,6 +20,8 @@ CONFIG_NAME = "sentinel.config.yaml"
 
 from engine import TIER_STAGES  # noqa: E402
 from errors import SentinelError  # noqa: E402
+import initws  # noqa: E402
+from initws import detect_profile, load_profile_driver, update_gitignore  # noqa: E402,F401
 from registry import legacy_statuses  # noqa: E402
 
 
@@ -39,14 +41,6 @@ def find_config(start):
 def load_config(start):
     path = find_config(start)
     return path, yaml.safe_load(path.read_text())
-
-
-def detect_profile(repo_path):
-    for profile_file in sorted((ROOT / "profiles").glob("*.json")):
-        profile = json.loads(profile_file.read_text())
-        if any((repo_path / marker).exists() for marker in profile["detect"]):
-            return profile["id"]
-    return "generic"
 
 
 def ask(prompt, default=None, choices=None):
@@ -177,41 +171,12 @@ def cmd_init(args):
         sys.exit(f"--shared-repo does not look like a git URL: {shared_url}")
     overrides = dict(item.split("=", 1) for item in (args.set or []))
     repos = build_repos(shape, workspace, interactive, overrides)
-    config = yaml.safe_load((ROOT / "templates" / CONFIG_NAME).read_text())
-    config["shape"] = shape
-    config["repos"] = repos
-    if local_only:
-        config["state"].pop("shared_repo", None)
-        config["state"]["shared_mode"] = "local"
-        config["state"]["auto_sync_push"] = False
-    else:
-        config["state"]["shared_repo"] = shared_url
-    profiles = {r["profile"] for r in repos}
-    drivers = {load_profile_driver(p) for p in profiles}
-    config["qa"] = {"driver": "playwright" if "playwright" in drivers else sorted(drivers - {"none"})[0] if drivers - {"none"} else "none", "db_clone": "none", "fixtures": "sanitized"}
-    target.write_text(yaml.safe_dump(config, sort_keys=False))
-    state_dir = workspace / config["state"]["dir"]
-    for sub in ("runs", "cache"):
-        (state_dir / sub).mkdir(parents=True, exist_ok=True)
-    update_gitignore(workspace, config["state"]["dir"])
+    config = initws.build_config(shape, repos, shared_url, local_only)
+    initws.write_workspace(workspace, config)
     print(f"wrote {target}")
     connected = connect_shared(target, config)
     print("next: `sentinel doctor`" if connected else "next: fix access to the shared repo, `sentinel sync pull`, then `sentinel doctor`")
     print("then install the Sentinel skills into your AI tool: npx skills@latest add chhunlyyy/sentinel -a <agent>   (claude-code, antigravity-cli, codex, cursor, opencode, devin, windsurf, amp, pi, ...; leave -a off to choose)")
-
-
-def load_profile_driver(name):
-    path = ROOT / "profiles" / f"{name}.json"
-    return json.loads(path.read_text()).get("qa_driver", "none") if path.exists() else "none"
-
-
-def update_gitignore(workspace, state_dir):
-    path = workspace / ".gitignore"
-    existing = path.read_text().splitlines() if path.exists() else []
-    wanted = [f"{state_dir}/cache/", f"{state_dir}/runs/", f"{state_dir}/shared/", f"{state_dir}/generated/"]
-    missing = [line for line in wanted if line not in existing]
-    if missing:
-        path.write_text("\n".join(existing + missing) + "\n")
 
 
 def cmd_routing(args):
@@ -1079,6 +1044,23 @@ def public_host_arg(text):
     return f"{name}:{int(port)}"
 
 
+def pick_orchestrator(installed):
+    """Numbered list of installed providers; Enter (or anything invalid) means none."""
+    print("Which AI tool orchestrates dashboard runs?")
+    for i, pid in enumerate(installed, 1):
+        print(f"  {i}. {pid}")
+    print("  Enter: none")
+    try:
+        answer = input("> ").strip()
+    except EOFError:
+        return None
+    if answer in installed:
+        return answer
+    if answer.isdigit() and 1 <= int(answer) <= len(installed):
+        return installed[int(answer) - 1]
+    return None
+
+
 def cmd_dashboard(args):
     """Start the local dashboard server, or attach to the one that runs. A human at a terminal only: both
     ways print a URL that holds the token."""
@@ -1090,7 +1072,28 @@ def cmd_dashboard(args):
     workspace = next((f for f in [Path(args.dir).resolve(), *Path(args.dir).resolve().parents]
                       if (f / CONFIG_NAME).exists()), None)
     from apiserver.lifecycle import run_dashboard
-    sys.exit(run_dashboard(workspace, args.port, args.no_open, args.bind, args.public_host, args.allow_peer))
+    import providers
+    try:
+        pconfig = load_config(args.dir)[1] if workspace else None
+    except (SystemExit, SentinelError):
+        pconfig = None
+    valid = [p["id"] for p in providers.detect(pconfig)]
+    installed = providers.installed_ids(pconfig)
+    orchestrator = args.provider
+    if orchestrator is not None:
+        if orchestrator not in valid:
+            raise SentinelError("E_VALIDATION", f"unknown provider {orchestrator!r}; valid: {', '.join(valid)}")
+        if orchestrator not in installed:
+            raise SentinelError("E_PRECONDITION", f"provider {orchestrator!r} is not installed; installed: {', '.join(installed) or 'none'}")
+    elif os.environ.get("SENTINEL_ORCHESTRATOR"):
+        orchestrator = os.environ["SENTINEL_ORCHESTRATOR"]
+        if orchestrator.lower() == "none":
+            orchestrator = None
+        elif orchestrator not in installed:
+            raise SentinelError("E_VALIDATION", f"SENTINEL_ORCHESTRATOR={orchestrator!r} is not an installed provider; installed: {', '.join(installed) or 'none'}")
+    elif installed:
+        orchestrator = pick_orchestrator(installed)
+    sys.exit(run_dashboard(workspace, args.port, args.no_open, args.bind, args.public_host, args.allow_peer, orchestrator))
 
 
 def cmd_task(args):
@@ -1451,6 +1454,7 @@ def main():
         member.set_defaults(func=cmd_task)
 
     dashboard = sub.add_parser("dashboard", help="start the local dashboard server, or attach to the running one (human, interactive terminal only)")
+    dashboard.add_argument("provider", nargs="?", metavar="provider", help="runner id of the AI tool that orchestrates dashboard runs (claude, codex, gemini, agy, or one from config runners); asked in the terminal when omitted")
     dashboard.add_argument("--port", type=port_arg, help="port to listen on, 1024 to 65535 (default: a free port)")
     dashboard.add_argument("--no-open", action="store_true", help="do not open a browser")
     dashboard.add_argument("--bind", type=bind_arg, metavar="0.0.0.0",
