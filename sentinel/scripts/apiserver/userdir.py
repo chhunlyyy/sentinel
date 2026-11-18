@@ -118,6 +118,24 @@ def register_workspace(directory, workspace, name=None):
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
+def unregister_project(directory, pid):
+    """Drop the project from projects.json. Its folder and state stay on disk. True when it was listed."""
+    directory = Path(directory)
+    with open(directory / REGISTRY_LOCK, "a") as lock:
+        os.fchmod(lock.fileno(), 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            data = load_projects(directory)
+            kept = [p for p in data["projects"] if p.get("id") != pid]
+            if len(kept) == len(data["projects"]):
+                return False
+            data["projects"] = kept
+            save_projects(directory, data)
+            return True
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 # ---- server.json and the one-server lock
 class ServerLock:
     """flock on server.lock, held for the life of the server process."""

@@ -90,5 +90,6 @@ export const calls = {
   createProject: (c: Client, body: O.CreateProjectBody) => c.post<T.Project>(buildPath('createProject'), body),
   registerProject: (c: Client, path: string) => c.post<T.Project>(buildPath('registerProject'), { path }),
   addRepository: (c: Client, pid: string, body: O.NewRepo) => c.post<unknown>(buildPath('addRepository', { pid }), body),
+  deleteProject: (c: Client, pid: string) => c.del<unknown>(buildPath('deleteProject', { pid })),
   removeRepository: (c: Client, pid: string, rid: string) => c.del<unknown>(buildPath('removeRepository', { pid, rid })),
 };
