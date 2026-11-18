@@ -257,6 +257,16 @@ class Projects(M):
         self.assertEqual(r.status, 409, r.text)
 
 
+class LegacyRuns(M):
+    def test_imported_0_1_runs_do_not_block_removal_or_delete(self):
+        self.serve()
+        self.eng.create_run("old-one", "orchestrator", type="feature", baseline={})
+        self.eng.reg.update_run("old-one", state="LEGACY", workflow_version="0.1", execution_status="completed")
+        self.assertEqual(self.delete("/api/v1/projects/digital-hr/repositories/frontend").status, 200)
+        r = self.delete("/api/v1/projects/digital-hr")
+        self.assertEqual(r.status, 200, r.text)
+
+
 class DeleteProject(M):
     def test_delete_unregisters_and_keeps_files(self):
         self.serve()

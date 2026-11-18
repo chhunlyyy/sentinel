@@ -24,6 +24,11 @@ DEFAULT_RUNNER = "claude"
 ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 ROLE_KEY_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 FINAL = ("COMPLETED", "FAILED", "CANCELLED")
+
+
+def live_runs(eng):
+    """Slugs of version 2 runs that are not finished. Imported 0.1 runs (state LEGACY) never count: they are records only."""
+    return [r["slug"] for r in eng.reg.list_runs() if r.get("workflow_version") == "2" and r["state"] not in FINAL]
 MAX_DIRS = 500
 GLOBAL_NAME = "config.yaml"
 
@@ -459,7 +464,7 @@ def remove_repository(ctx, pid, rid):
             raise not_found(f"no repository {rid}", repo=rid)
         if len(repos) <= 1:
             raise conflict("a project needs at least one repository")
-        live = [r["slug"] for r in eng.reg.list_runs() if r["state"] not in FINAL]
+        live = live_runs(eng)
         if live:
             raise conflict("repositories cannot be removed while a run is active", runs=live[:10])
         config["repos"] = [r for r in repos if r.get("id") != rid]
@@ -474,7 +479,7 @@ def delete_project(ctx, pid):
     ctx.project = project
     if ctx.projects.probe(project)[0] == "available":
         with ctx.projects.engine(project, ctx.user, "dashboard") as eng:
-            live = [r["slug"] for r in eng.reg.list_runs() if r["state"] not in FINAL]
+            live = live_runs(eng)
             if live:
                 raise conflict("a project with an active run cannot be deleted", runs=live[:10])
             eng.reg.add_audit(ctx.user, "dashboard", "project_unregistered", project.id,

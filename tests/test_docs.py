@@ -252,7 +252,7 @@ class Versions(unittest.TestCase):
                 pins.append((path.name, m.group(1)))
         self.assertTrue(pins, "no install pin example found")
         for name, v in pins:
-            self.assertEqual(v, "1.2.2", name)
+            self.assertEqual(v, "1.2.3", name)
 
 
 class Migration(unittest.TestCase):
@@ -290,19 +290,19 @@ class InstallLimits(unittest.TestCase):
     def test_AC_OPS_04e_installation_states_that_a_git_install_has_no_dashboard_ui(self):
         text = re.sub(r"\s+", " ", read("docs/installation.md"))
         self.assertIn("uv tool install git+https://", text)
-        for phrase in ("without the dashboard UI", "UI not installed", "sentinel_pipeline-1.2.2-py3-none-any.whl",
-                       "uv tool install ./sentinel_pipeline-1.2.2-py3-none-any.whl", "cd dashboard && npm ci && npm run build", "uv tool install ."):
+        for phrase in ("without the dashboard UI", "UI not installed", "sentinel_pipeline-1.2.3-py3-none-any.whl",
+                       "uv tool install ./sentinel_pipeline-1.2.3-py3-none-any.whl", "cd dashboard && npm ci && npm run build", "uv tool install ."):
             self.assertIn(phrase, text)
         for rel in ("README.md", "docs/quickstart.md", "docs/migration-1.1.md", "docs/dashboard.md", "CHANGELOG.md"):
             with self.subTest(file=rel):
                 low = re.sub(r"\s+", " ", read(rel)).lower()
-                self.assertTrue("release wheel" in low or "sentinel_pipeline-1.2.2-py3-none-any.whl" in low or "uv tool install sentinel-pipeline" in low, rel)
+                self.assertTrue("release wheel" in low or "sentinel_pipeline-1.2.3-py3-none-any.whl" in low or "uv tool install sentinel-pipeline" in low, rel)
                 self.assertRegex(low, r"git install|git\+https|installation\.md#the-dashboard-ui")
 
     def test_AC_OPS_04e_the_operations_guide_has_a_release_checklist(self):
         body = re.sub(r"\s+", " ", body_of(read("docs/operations.md"), r"release checklist"))
         for phrase in ("npm ci && npm run build", "SENTINEL_RELEASE=1", "tools/release_gate.py", "clean checkout", "--allow-dirty",
-                       "pending owner", "sentinel_pipeline-1.2.2-py3-none-any.whl", "status: done", "screen reader"):
+                       "pending owner", "sentinel_pipeline-1.2.3-py3-none-any.whl", "status: done", "screen reader"):
             self.assertIn(phrase, body)
 
     def test_AC_OPS_04e_the_dashboard_guide_names_the_controls_the_dashboard_has(self):
