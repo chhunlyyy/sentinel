@@ -30,7 +30,7 @@ RUN SENTINEL_RELEASE=1 hatchling build -t wheel -d /dist
 FROM python:3.12-slim
 LABEL org.opencontainers.image.title="sentinel" \
       org.opencontainers.image.description="Sentinel local dashboard and API (dashboard only; the CLI is installed on the host)" \
-      org.opencontainers.image.version="1.2.1" \
+      org.opencontainers.image.version="1.2.2" \
       org.opencontainers.image.source="https://github.com/chhunlyyy/sentinel" \
       org.opencontainers.image.licenses="MIT"
 RUN apt-get update \

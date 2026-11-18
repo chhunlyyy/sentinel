@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.1
+## 1.2.2
 
 ### Added
 
@@ -10,9 +10,11 @@
 
 - The last repository of a project keeps its Remove button disabled, with a hint that a project needs at least one repository; the server messages for refused removals are shown.
 
+## 1.2.1
+
 ### Fixed
 
-- The release gate no longer fails on a machine without the `claude` command (`test_orchestrator_get_put` assumed it was installed).
+- The release gate no longer fails on a machine without the `claude` command (`test_orchestrator_get_put` assumed it was installed). This release was built without the delete-project change that was meant to ship with it; 1.2.2 has it.
 
 ## 1.2.0
 
