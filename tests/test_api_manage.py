@@ -71,7 +71,7 @@ class Providers(M):
 
     def test_orchestrator_get_put(self):
         self.serve()
-        with mock.patch("runtime.runner_installed", lambda r: r.get("command") == "claude"):
+        with mock.patch("providers._path", lambda r: "/usr/bin/claude" if r.get("command") == "claude" else None):
             self.assertEqual(self.http.get("/api/v1/orchestrator").json, {"id": None, "installed_ids": ["claude"]})
             r = self.put("/api/v1/orchestrator", {"id": "claude"})
             self.assertEqual((r.status, r.json["id"]), (200, "claude"), r.text)
