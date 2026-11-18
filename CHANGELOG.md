@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.1
+
+### Added
+
+- Delete a project in the dashboard ("Delete project" on the project page, `DELETE /api/v1/projects/{id}`). It only removes the project from the dashboard; the folder, `sentinel.config.yaml` and `.sentinel` stay on disk. It is refused while a run is active and recorded in the audit.
+
+### Changed
+
+- The last repository of a project keeps its Remove button disabled, with a hint that a project needs at least one repository; the server messages for refused removals are shown.
+
+### Fixed
+
+- The release gate no longer fails on a machine without the `claude` command (`test_orchestrator_get_put` assumed it was installed).
+
 ## 1.2.0
 
 The dashboard gets provider and agent setup, project creation and a new look.
