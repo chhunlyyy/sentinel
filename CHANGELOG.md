@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3
+
+### Fixed
+
+- Removing a repository and deleting a project in the dashboard were refused with "a run is active" for any project with imported 0.1 runs, because their state `LEGACY` counted as active. Only version 2 runs that are not finished block them now.
+
 ## 1.2.2
 
 ### Added
