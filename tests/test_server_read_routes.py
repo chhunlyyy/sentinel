@@ -181,8 +181,10 @@ class Readiness(RR):
         self.cfg(repos=notest)
         self.assertNotEqual(self.http.get(base + "?workflow=docs").json["state"], "needs_configuration")
         r = self.http.get(base + "?workflow=feature")
-        self.assertEqual(r.json["state"], "needs_configuration")
-        self.assertTrue(any(i["name"] == "test_command" and i["status"] == "failed" for i in r.json["items"]))
+        self.assertEqual(r.json["state"], "ready_with_warnings")
+        missing = [i for i in r.json["items"] if i["name"] == "test_command"]
+        self.assertTrue(missing and all(i["status"] == "warning" and not i["required"] for i in missing))
+        self.assertIn("docs runs do not", missing[0]["message"])
 
 
 class Repositories(RR):
