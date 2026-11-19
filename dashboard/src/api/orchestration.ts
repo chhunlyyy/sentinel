@@ -54,7 +54,7 @@ export interface SaveAgentsBody {
   sha256?: string;
   agents: Record<string, { runner?: string; model?: string }>;
   providers: { default?: string; fallback?: string[]; disabled?: string[] };
-  single_model: boolean;
+  single_model?: boolean;
 }
 
 export interface DirItem {

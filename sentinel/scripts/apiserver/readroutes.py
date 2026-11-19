@@ -228,8 +228,14 @@ def readiness(projects, project, query):
             name = f"{key}_command"
             exe = _exe(command)
             if exe is None:
-                add(name, repo["id"], required, "failed" if required else "not_configured",
-                    f"no {key} command is set", f"set commands.{key} for repo {repo['id']} in {CONFIG_NAME}")
+                if key == "test":
+                    # the engine asks for a test command only when a run changes the repo, so this never blocks the project
+                    add(name, repo["id"], False, "warning" if needs_test else "not_configured",
+                        "no test command is set; a run that changes this repo needs one (docs runs do not)",
+                        f"set commands.test for repo {repo['id']} in {CONFIG_NAME}")
+                else:
+                    add(name, repo["id"], False, "not_configured",
+                        f"no {key} command is set", f"set commands.{key} for repo {repo['id']} in {CONFIG_NAME}")
             elif command.startswith(("./", "/")) and (project.path / repo["path"] / exe).exists() or shutil.which(exe):
                 add(name, repo["id"], required, "not_checked", f"{exe} found; the command was not run")
             elif command.startswith("./") or command.startswith("npm") or command.startswith("npx"):

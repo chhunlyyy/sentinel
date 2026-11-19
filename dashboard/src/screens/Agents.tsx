@@ -113,7 +113,7 @@ function Editor({ data, scope, pid, providers, onSaved, onReload }: { data: Agen
       scope,
       agents,
       providers: { ...(def ? { default: def } : {}), fallback, disabled },
-      single_model: single,
+      ...(scope === 'project' ? { single_model: single } : {}),
       ...(scope === 'project' && pid ? { project: pid, ...(data.sha256 ? { sha256: data.sha256 } : {}) } : {}),
     };
     void save.run(
@@ -227,10 +227,16 @@ function Editor({ data, scope, pid, providers, onSaved, onReload }: { data: Agen
           ))}
         </fieldset>
       </div>
-      <label className="check">
-        <input type="checkbox" checked={single} onChange={(e) => setSingle(e.target.checked)} /> Single model
-      </label>
-      <p className="hint">One model does every role of a run. Per role models above are ignored while this is on.</p>
+      {scope === 'project' ? (
+        <>
+          <label className="check">
+            <input type="checkbox" checked={single} onChange={(e) => setSingle(e.target.checked)} /> Single model
+          </label>
+          <p className="hint">One model does every role of a run. Per role models above are ignored while this is on.</p>
+        </>
+      ) : (
+        <p className="hint">Single model is a setting of each project, so it is not part of the global default.</p>
+      )}
 
       <div className="row">
         <button type="submit" disabled={save.pending}>

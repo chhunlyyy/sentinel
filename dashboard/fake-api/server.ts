@@ -572,6 +572,7 @@ route('PUT', `${V}/agents`, (c) => {
     if (!ROLES.includes(role)) throw new ApiErr(400, 'E_VALIDATION', `unknown role ${role}`, { field: `agents.${role}` });
     if (v.runner && !known.includes(v.runner)) throw new ApiErr(400, 'E_VALIDATION', `unknown provider ${v.runner}`, { field: `agents.${role}.runner` });
   }
+  if (scope === 'global' && b.single_model !== undefined) throw new ApiErr(400, 'E_VALIDATION', 'single_model is a project setting', { field: 'single_model' });
   const pv = (b.providers ?? {}) as { default?: string; fallback?: string[]; disabled?: string[] };
   const cfg = scope === 'global' ? ext.global : (ext.projects[String(b.project)] ??= emptyCfg());
   let pid: string | null = null;

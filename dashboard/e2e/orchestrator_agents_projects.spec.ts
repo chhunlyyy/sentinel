@@ -99,6 +99,8 @@ test.describe('agent routing', () => {
     expect(sent.scope).toBe('global');
     expect(sent).not.toHaveProperty('project');
     expect(sent).not.toHaveProperty('sha256');
+    expect(sent).not.toHaveProperty('single_model');
+    await expect(page.getByLabel('Single model')).toHaveCount(0);
     expect(sent.agents).toEqual({ specifier: { runner: 'gemini' }, qa: { runner: 'codex' } });
   });
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.4
+
+### Changed
+
+- A repository with no test command no longer fails the project's readiness (and so no longer disables Create task). It is a warning now: the engine asks for a test command only when a run changes that repo, and docs runs never need one.
+
+### Fixed
+
+- Saving a global default on Settings > Agents failed with "single_model is a project setting", because the page sent `single_model` in the global scope. It is now sent only for a project, and the checkbox is hidden in the global scope.
+
 ## 1.2.3
 
 ### Fixed
