@@ -38,13 +38,13 @@ If `sentinel` is not found afterwards, run `uv tool update-shell` and open a new
 
 To let the dashboard drive runs it creates, name the AI tool that orchestrates them: `sentinel dashboard claude` (any runner id: `claude`, `codex`, `gemini`, `agy`, or one from `runners:` in the config). Without it, `sentinel dashboard` lists the installed tools and asks which one to use; press Enter for none (`SENTINEL_ORCHESTRATOR=none`, or a runner id, skips the question). The server then starts that tool headless in the project folder, with the Sentinel skill, when a run waits for the AI tool (at most 3 launches per run and state, then it waits for you). If a server already runs, the orchestrator is changed in the dashboard instead (Settings > Providers).
 
-The dashboard UI (`sentinel dashboard`) is built from `dashboard/` and is included in the PyPI wheel, `sentinel_pipeline-1.2.4-py3-none-any.whl`. The developer path, `uv tool install git+https://github.com/chhunlyyy/sentinel`, installs the CLI without the dashboard UI (it is not in the git source tree): everything on the command line works, and `sentinel dashboard` serves a "UI not installed" page. Choose one of:
+The dashboard UI (`sentinel dashboard`) is built from `dashboard/` and is included in the PyPI wheel, `sentinel_pipeline-1.3.0-py3-none-any.whl`. The developer path, `uv tool install git+https://github.com/chhunlyyy/sentinel`, installs the CLI without the dashboard UI (it is not in the git source tree): everything on the command line works, and `sentinel dashboard` serves a "UI not installed" page. Choose one of:
 
 ```bash
 # 1. the PyPI release (no Node needed)
 uv tool install sentinel-pipeline
 # or the release wheel file
-uv tool install ./sentinel_pipeline-1.2.4-py3-none-any.whl
+uv tool install ./sentinel_pipeline-1.3.0-py3-none-any.whl
 
 # 2. a local checkout with the UI built first (needs Node and npm)
 git clone https://github.com/chhunlyyy/sentinel && cd sentinel
@@ -97,7 +97,7 @@ Useful options:
 | `-l` | list the skills without installing |
 | `-y` | do not ask for confirmation |
 
-**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v1.2.4 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
+**Read before you install.** Skills run with your agent's full permissions. Sentinel's are plain markdown in [skills/](../skills/): they tell the agent to run `sentinel` commands, git commands in the shared repo, and your project's build and test commands. To pin a version so an update cannot change them unnoticed, add a tag and keep `--skill '*'`: `npx skills@latest add chhunlyyy/sentinel@v1.3.0 --skill '*' -a <agent>`. Without `--skill` the installer reads the tag as a skill name and installs nothing.
 
 What you get:
 
