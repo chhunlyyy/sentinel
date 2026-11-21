@@ -39,6 +39,10 @@ Replace the left sidebar with the mockup's top header on every screen:
 
 ## Floor (workstream C)
 
+Owner decision: **one floor per project**, with a project switcher on the floor (`/floor` opens the first available
+project; `/projects/<id>/floor` is that project's floor).
+
+
 Match `mockup/Floor.dc.html` exactly where the data allows:
 
 - Always the dark immersive canvas (radial `#121B22` to `#0B0F13`), even in light theme.
