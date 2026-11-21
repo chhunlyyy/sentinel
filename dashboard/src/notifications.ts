@@ -62,6 +62,7 @@ export function claimDesktop(storage: Store | null, id: string): boolean {
 /** The event types the notification rules read (docs/contracts/event-contracts.md section 4): only these refetch the list. */
 export const NOTIFICATION_EVENTS: readonly string[] = [
   'approval.requested', 'approval.decided', 'run.created', 'run.state_changed', 'task.finished', 'evidence.recorded', 'run.status_changed',
+  'knowledge.failed',
 ];
 
 /** The events after which the notifications.desktop switch of a project may have changed. */
