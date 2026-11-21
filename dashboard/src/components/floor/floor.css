@@ -234,9 +234,7 @@
 
 /* ---- Legend ---- */
 .floor-legend {
-  position: absolute;
-  left: 14px;
-  bottom: 12px;
+  padding: 0 14px 12px;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
