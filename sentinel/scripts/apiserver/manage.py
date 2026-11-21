@@ -939,11 +939,11 @@ def knowledge_backfill(ctx, pid, body):
     if not info or info.get("pid") != pid:
         raise bad("invalid or expired estimate token", "token")
     _BACKFILL_TOKENS.pop(token, None)
-    import knowledge
-    shared_dir = str(shared.Shared(project.path, config).dir)
-    scrubber = ctx.projects.scrubber(project)
+    # The backfill is an ingest job for the background worker: it can take many agent calls, so it never runs in
+    # the request or under the engine lock.
     with ctx.projects.engine(project, ctx.user, "dashboard") as eng:
-        results = knowledge.ingest(shared_dir, str(project.path), config, scrubber=scrubber)
-        total = sum(c for r in results.values() for c in r.values())
-        eng.reg.add_audit(ctx.user, "dashboard", "knowledge_backfill", project.id, reason=f"token={token}; total={total}")
-        return {"ok": True, "total": total, "results": results}
+        job_id = kb_worker.enqueue_ingest(eng.reg)
+        kb_worker.spawn_worker(project.path)
+        eng.reg.add_audit(ctx.user, "dashboard", "knowledge_backfill", project.id,
+                          reason=f"job={job_id}; estimated={info.get('total')}")
+        return {"ok": True, "job": job_id, "state": "queued", "estimated": info.get("total")}

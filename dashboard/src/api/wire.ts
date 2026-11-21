@@ -590,7 +590,8 @@ export interface WKnowledgeBackfillEstimate {
 
 export interface WKnowledgeBackfill {
   ok: boolean;
-  total: number;
-  results: Record<string, Record<string, number>>;
+  job: string;
+  state: 'queued';
+  estimated: number | null;
 }
 

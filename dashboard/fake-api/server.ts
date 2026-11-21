@@ -890,7 +890,7 @@ route('POST', `${V}/projects/{pid}/knowledge/backfill/estimate`, (c) => {
 route('POST', `${V}/projects/{pid}/knowledge/backfill`, (c) => {
   const b = body(c) as { token?: string };
   if (!b?.token) throw new ApiErr(400, 'E_VALIDATION', 'token is required');
-  return [200, { ok: true, total: 140, results: { backend: { develop: 80, main: 40 }, frontend: { develop: 20 } } }];
+  return [200, { ok: true, job: 'kj-backfill1', state: 'queued', estimated: 140 }];
 });
 
 // ---- request handling ----

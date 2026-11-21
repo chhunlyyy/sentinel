@@ -464,11 +464,15 @@ class TestKnowledge(SetupBase):
         self.assertEqual(r_fail2.status, 400)
 
         # POST backfill with valid token
-        with mock.patch("knowledge.ingest", return_value={"backend": {"main": 3}}):
+        # the backfill is queued for the background worker, never run inside the request
+        with mock.patch("knowledge.ingest") as ingest, mock.patch("kb_worker.spawn_worker") as spawn:
             r_run = self.http.post("/api/v1/projects/digital-hr/knowledge/backfill", {"token": token})
             self.assertEqual(r_run.status, 200, r_run.text)
             self.assertTrue(r_run.json["ok"])
-            self.assertEqual(r_run.json["total"], 3)
+            self.assertEqual(r_run.json["state"], "queued")
+            self.assertTrue(r_run.json["job"])
+            ingest.assert_not_called()
+            spawn.assert_called_once()
 
         # Audit row for backfill
         r_audit = self.http.get("/api/v1/audit?project=digital-hr")

@@ -535,7 +535,7 @@ ROUTES = [
     Route("POST", "knowledge_ingest", "projects/{pid}/knowledge/ingest", h_knowledge_ingest, ("kb_worker.enqueue_ingest",)),
     Route("POST", "knowledge_snapshot", "projects/{pid}/knowledge/snapshot", h_knowledge_snapshot, ("kb_worker.enqueue_snapshot",)),
     Route("POST", "knowledge_backfill_estimate", "projects/{pid}/knowledge/backfill/estimate", h_knowledge_backfill_estimate),
-    Route("POST", "knowledge_backfill", "projects/{pid}/knowledge/backfill", h_knowledge_backfill, ("knowledge.ingest",)),
+    Route("POST", "knowledge_backfill", "projects/{pid}/knowledge/backfill", h_knowledge_backfill, ("kb_worker.enqueue_ingest",)),
 ]
 
 for _r in ROUTES:

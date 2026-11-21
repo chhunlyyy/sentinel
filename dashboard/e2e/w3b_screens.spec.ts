@@ -133,6 +133,6 @@ test.describe('W3b GUI screens: wizard, shared access, config preview & save, kn
 
     // Confirm and verify backfill completes
     await dialog.getByRole('button', { name: 'Confirm and start backfill' }).click();
-    await expect(page.getByTestId('action-result')).toContainText('Backfilled 140 changes into knowledge');
+    await expect(page.getByTestId('action-result')).toContainText('Backfill queued: about 140 changes');
   });
 });

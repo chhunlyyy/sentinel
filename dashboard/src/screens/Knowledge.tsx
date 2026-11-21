@@ -70,10 +70,10 @@ function BackfillDialog({ pid, onClose, onDone }: BackfillDialogProps) {
     void backfillAction.run(
       async () => {
         const res = await calls.knowledgeBackfill(app.client, pid, token);
-        onDone(res.total);
+        onDone(res.estimated ?? 0);
         return res;
       },
-      (r) => `Backfilled ${r.total} changes into knowledge`,
+      (r) => `Backfill queued: about ${r.estimated ?? 0} changes, recorded in the background`,
     );
   };
 
@@ -718,7 +718,7 @@ export function KnowledgeScreen({ pid }: { pid: string }) {
           onClose={() => setShowBackfillDialog(false)}
           onDone={(total) => {
             setShowBackfillDialog(false);
-            setBackfillMessage(`Backfilled ${total} changes into knowledge`);
+            setBackfillMessage(`Backfill queued: about ${total} changes, recorded in the background`);
             void statusRes.reload();
             void recordsRes.reload();
           }}
