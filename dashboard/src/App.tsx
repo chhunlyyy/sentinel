@@ -192,10 +192,12 @@ function FactoryControls() {
           className={`factory-dot${isPaused ? ' paused' : ' running pulse'}`}
           aria-hidden="true"
         />
-        <span>
-          {isPaused
-            ? 'Factory paused · nothing new starts'
-            : `Factory running · ${runningTotal} of ${maxAgents} agents busy`}
+        <span title={isPaused ? 'Factory paused · nothing new starts' : `Factory running · ${runningTotal} of ${maxAgents} agents busy`}>
+          {isPaused ? 'Factory paused' : 'Factory running'}
+          {/* the detail drops on narrower windows so the header stays on one row */}
+          <span className="pill-extra">
+            {isPaused ? ' · nothing new starts' : ` · ${runningTotal} of ${maxAgents} agents busy`}
+          </span>
         </span>
       </span>
       <button
@@ -345,8 +347,9 @@ function TopHeader({ path, label }: { path: string; label: string }) {
           <FactoryControls />
           <NotificationBell />
           <OrchestratorBadge />
-          <span role="status" data-testid="connection-status" className="session-status">
-            {label}
+          <span role="status" data-testid="connection-status" className="session-status" title={label}>
+            <span className={`session-dot${label === 'Connected' ? ' ok' : ''}`} aria-hidden="true" />
+            <span className="sr-only">{label}</span>
           </span>
         </div>
       </header>
@@ -388,7 +391,7 @@ function Shell() {
         Skip to content
       </a>
       <TopHeader path={route.path} label={label} />
-      <main id="main" tabIndex={-1} ref={mainRef}>
+      <main id="main" tabIndex={-1} ref={mainRef} className={route.path === '/' || route.path.endsWith('/floor') || route.path === '/floor' ? 'wide' : undefined}>
         <ScreenBoundary resetKey={route.path}>{screenFor(route)}</ScreenBoundary>
         <div className="sr-only" aria-live="polite" data-testid="announcer">
           {app.announcement}

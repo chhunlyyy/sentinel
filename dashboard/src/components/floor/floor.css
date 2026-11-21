@@ -4,7 +4,8 @@
   --floor-bg: #0B0F13;
   --floor-canvas-bg: #0E1419;
   --floor-canvas-border: #1F2730;
-  --floor-chip-bg: #0E1419;
+  /* translucent so the links still read through the label chips */
+  --floor-chip-bg: rgba(14, 20, 25, .6);
   --floor-surface: #141A21;
   --floor-border: #26303A;
   --floor-text: #E6EAEE;

@@ -474,8 +474,28 @@ pre { background: var(--code-bg); color: var(--text); padding: .75rem; border-ra
 }
 
 .session-status {
-  font-size: 12px;
-  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  padding: 0 4px;
+}
+.session-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); }
+.session-dot.ok { background: var(--accent, #4FD1C1); }
+.bell-icon { display: block; }
+/* the factory floor uses the whole width, as in the mockup, so the side panel sits beside the canvas */
+main.wide { max-width: 1760px; }
+@media (min-width: 1200px) {
+  .topbar-header { flex-wrap: nowrap; }
+  .header-right { flex-wrap: nowrap; }
+  .main-nav { flex-wrap: nowrap; }
+  .main-nav a, .more-btn { padding: 8px 10px; white-space: nowrap; }
+  .factory-controls { flex-wrap: nowrap; }
+  .factory-pill, .factory-controls button { white-space: nowrap; }
+}
+@media (max-width: 1599px) {
+  .pill-extra { display: none; }
+  /* still read by screen readers */
+  .orch-k { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 
 .unavailable-banner {
