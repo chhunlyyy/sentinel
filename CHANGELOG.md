@@ -1,15 +1,40 @@
 # Changelog
 
-## 1.3.0
+## 2.0.0
 
 ### Added
 
+- Factory driver: the Sentinel service runs the factory loop directly (`driver: engine`), advancing runs from triage through verification without an external AI tool orchestrating the state machine.
+- Triage and planner agent roles: `triage` returns the seven factors as JSON; `planner` writes `decisions.md` in its write scope for tier 3 and tier 4 runs.
+- Routing preflight: engine-driven runs verify every required role routes to a CLI runner before starting; unrouted roles enter a BLOCKED state with instructions to resolve.
+- Concurrency limits: `factory.max_tasks_per_project` (default 2) and `factory.max_agents` (default 4) bound running tasks, queuing surplus runs on the factory floor.
+- Background service: `sentinel service start`, `stop`, `status`, `run`, `autostart`, and `sentinel stop`. Detached background service survives terminal and browser close; recovers interrupted tasks on start-up. Optional systemd user autostart on Linux.
+- Per-run pause and notes: `sentinel pause <slug>` and `sentinel unpause <slug>` pause and resume task dispatch; `sentinel note <slug> <text>` sends a note into the next agent task prompt.
+- Factory floor dashboard screen: visual neural-network-style station path (Intake, Triage, Spec, Gate Spec, Gherkin, Gate Gherkin, Build, Verify, Report, Gate Accept, Knowledge), live agent assignments, behavior build lanes (Red, Green, Refactor), task chips, pause and note controls, and queued runs.
+- Project creation wizard: 5-step guided setup (Repositories, Detected setup, Shared knowledge, AI team, Check and create) with stack detection, command discovery, and connection testing.
+- Configuration settings form: schema-driven editor for `sentinel.config.yaml` with inline validation, unified YAML diff preview, version history, and safeguards protecting repository paths and shared repo settings.
+- Knowledge base dashboard page: status overview, backfill with change and agent cost estimate confirmation, manual ingest and snapshot triggers, paginated change record browser, and copy-ready CI workflow template.
+- Setup and configuration API routes: `/projects/{pid}/factory`, `/detect`, `/shared/test`, `/routing/suggest`, `/projects/{pid}/config/form`, `/preview`, `/save`, `/projects/{pid}/knowledge/status`, `/records`, `/records/{key}`, `/ingest`, `/snapshot`, `/backfill/estimate`, `/backfill`, `/ci-template`.
+- CLI `--driver` and `--request` options on `sentinel run new` (`engine` or `cli`).
 - Knowledge base: captures changes on tracked branches of project repositories into the shared repository as structured change records and module summaries, whether made through Sentinel or direct git commits.
 - Background harvest worker (`sentinel kb worker`): runs detached after accepted version 2 runs to record verified changes, run scrub checks, and auto-push only `knowledge/` and `proposals/knowledge-*` paths to the shared repository.
 - Knowledge base CLI: `sentinel kb ingest` to ingest git history, `sentinel kb backfill` to index historical commits with estimate confirmation, `sentinel kb snapshot` for module summaries, and `sentinel kb status` to inspect cursors, record counts, and job queue status.
 - Catch-up ingest on `sentinel sync pull`, CI workflow template for project repos (`sentinel/templates/ci/knowledge-ingest.yml`), and task prompt injection (`## Project knowledge`) for version 2 agents.
 - New configuration options under `knowledge` (top-level) and `repos[].knowledge.branches`, plus `knowledge` routing role.
 - New `knowledge.failed` event and local notification when background harvesting fails.
+
+### Changed
+
+- Dashboard-created runs now default to the factory engine driver (`factory.driver: engine`); setting `factory.driver: ai-tool` keeps 1.x orchestration behavior.
+- `sentinel dashboard` starts or attaches to the background service instead of running in the foreground; new `--foreground` flag keeps the server in the foreground.
+- Dashboard landing screen defaults to the Factory Floor when projects exist, with Overview at `/overview`.
+- In-process verification: the service runs `sentinel verify` directly during the `VERIFYING` state.
+
+### Fixed
+
+- Container foreground mode: `sentinel dashboard` with `--bind` or in container environment stays in the foreground as the container main process.
+- Shared repo URL validation: `/shared/test` validates that input is strictly a git URL or local path, preventing arbitrary command option injection such as `--upload-pack`.
+- Notification refresh on knowledge failures: dashboard automatically refetches notifications when a `knowledge.failed` event is received.
 
 ## 1.2.4
 

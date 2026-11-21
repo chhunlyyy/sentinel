@@ -89,7 +89,7 @@ The dashboard has no clone-URL or directory-picker route in 1.1.0, so those two 
 
 ### Dashboard token and residual risk R1
 
-`sentinel dashboard` starts a local server on 127.0.0.1 and prints a one-time URL that holds a start token. The same
+`sentinel dashboard` starts the Sentinel background service on 127.0.0.1 and prints a one-time URL that holds a start token. The same
 token is written to `server.json` in your Sentinel config folder (mode 0600, folder mode 0700). A coding agent that
 runs as your own user can read that file, take the token and open its own dashboard session, so it could call the
 dashboard approval routes. This is residual risk R1. Sentinel does not remove it. The deny rules that
@@ -97,6 +97,13 @@ dashboard approval routes. This is residual risk R1. Sentinel does not remove it
 commands) are advisory: other spellings of a command can pass a pattern. The `dashboard` command itself runs only on
 a terminal (TTY). Run agents under a separate OS user if you need a hard boundary. The browser is opened on a private redirect file
 (mode 0600) so the token never appears in the browser's command line.
+
+Sentinel 2.0 maintains this security model across its background service and new routes:
+- **Loopback and session token**: The background service binds to 127.0.0.1 only. Every read and write route requires the session cookie or token, validates Host and Origin headers on every request to prevent DNS rebinding and cross-site requests, and enforces CSRF checks on all mutating methods (`POST`, `PUT`, `DELETE`).
+- **Approvals still need the typed hash**: Approving a specification or Gherkin set in the dashboard (`POST /api/v1/projects/{pid}/runs/{slug}/approvals`) or in `sentinel approve` requires matching the first 8 characters of the document's SHA-256 hash. Creating a task or reading a notification never approves anything.
+- **Shared repo URL validation**: The setup probe route `POST /api/v1/shared/test` tests remote read and write access. It strictly accepts only git URLs (`https://`, `ssh://`, `git://`, `file://`, `git@host:...`) or valid local paths, explicitly rejects strings starting with `-`, and passes `--` before arguments to git subprocess calls. This prevents command option injection such as `--upload-pack=<command>` or `--config` from executing arbitrary code during the probe.
+- **Config form protections**: The configuration save route `POST /api/v1/projects/{pid}/config/save` validates changes against `config.schema.json`, writes audit entries, and explicitly refuses modifications to `state.shared_repo` or repository `path` fields, preventing repo redirection or shared repo hijacking through the form.
+- **New 2.0 routes**: Setup (`/detect`, `/shared/test`, `/routing/suggest`), config (`/config/form`, `/config/preview`, `/config/save`), knowledge (`/knowledge/status`, `/records`, `/records/{key}`, `/ingest`, `/snapshot`, `/backfill/estimate`, `/backfill`, `/ci-template`), factory snapshot (`/projects/{pid}/factory`), and task controls (`/tasks/{slug}/pause`, `/unpause`, `/note`) all follow these boundaries. Output from runs and knowledge records is scrubbed.
 
 The Docker image changes only where the server listens. Inside the container `sentinel dashboard --bind 0.0.0.0` is accepted only when the image sets `SENTINEL_CONTAINER=1` and the process runs in a container (`/.dockerenv` or `/run/.containerenv`); on a host it is refused with exit code 2, and the environment variable alone changes nothing. A server bound to `0.0.0.0` closes every connection from a peer that is not loopback or the container's default gateway with 403 before it reads the request (`--allow-peer IP` adds an address, for rootless Docker or Docker Desktop). Host and Origin accept only `localhost:PORT` and `127.0.0.1:PORT` (`--public-host`; outside a container its port must be the server's own port). Publish the port as `127.0.0.1:8765:8765` only; the image has no `EXPOSE`, so `-P` publishes nothing. The token, session cookie and CSRF rules are unchanged, and R1 applies to a process that can read the container's config volume. See [the dashboard guide](dashboard.md#docker).
 
