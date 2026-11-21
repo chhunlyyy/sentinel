@@ -279,6 +279,14 @@ def _commit_knowledge(shared, message):
     return True
 
 
+def _unpushed_non_knowledge(shared):
+    """Files changed by unpushed commits on the shared ref that are outside the knowledge paths."""
+    upstream = _git(shared.dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    base = upstream.stdout.strip() if upstream.returncode == 0 else f"origin/{shared.ref}"
+    names = _git(shared.dir, "diff", "--name-only", f"{base}...HEAD").stdout.split()
+    return [n for n in names if not (n.startswith("knowledge/") or n.startswith("proposals/knowledge-"))]
+
+
 def publish(shared, config, scrubber, message):
     """Scrub check, then commit and push the knowledge paths as the config says. Never force-pushes."""
     problems = scrub.check_paths([knowledge.kb_root(shared.dir)], scrubber)
@@ -292,20 +300,23 @@ def publish(shared, config, scrubber, message):
     shared.require_ref_branch()
     if shared.merging():
         raise RuntimeError("a merge is in progress in the shared repo; resolve it first")
-    before = _git(shared.dir, "rev-parse", "HEAD").stdout.strip()
     _git(shared.dir, "checkout", shared.ref)
     committed = _commit_knowledge(shared, message)
     if not knowledge.kb_config(config)["auto_push"]:
         return "committed locally" if committed else "unchanged"
     if not shared.ahead():
         return "unchanged"
+    others = _unpushed_non_knowledge(shared)
+    if others:
+        # Never publish a teammate's or a run's unpushed shared-repo commits; those keep their human gate.
+        return "committed locally (other unpushed changes wait for sentinel sync push: " + ", ".join(others[:5]) + ")"
     try:
         shared.integrate()
     except SystemExit as stop:
         if shared.merging():
             _git(shared.dir, "merge", "--abort")
             if committed:
-                _git(shared.dir, "reset", "-q", "--mixed", before)
+                _git(shared.dir, "reset", "-q", "--mixed", "HEAD~1")
                 _discard_local_knowledge(shared.dir)
         raise RuntimeError(f"could not integrate with the shared remote: {stop}") from None
     return "pushed"

@@ -195,6 +195,17 @@ class Worker(PE):
         self.assertTrue(changed and all(c.startswith("knowledge/") for c in changed), changed)
         self.assertNotIn("other.md", self.remote_files())
 
+    def test_unpushed_non_knowledge_commits_are_never_published(self):
+        self.boot_remote()
+        before = sh(self.bare, "rev-parse", "main").stdout
+        (self.shared / "invariants.md").write_text("unapproved rule\n")
+        sh(self.shared, "add", "invariants.md")
+        sh(self.shared, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "local only")
+        self.run_w()
+        self.assertEqual(self.job()["state"], "done")
+        self.assertEqual(sh(self.bare, "rev-parse", "main").stdout, before)
+        self.assertIn("knowledge/", sh(self.shared, "show", "--name-only", "--format=", "HEAD").stdout)
+
     def test_no_auto_push_commits_locally_only(self):
         self.boot_remote()
         self.set_kb(auto_push=False)
