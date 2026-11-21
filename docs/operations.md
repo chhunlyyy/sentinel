@@ -14,6 +14,7 @@ Everyday commands for running Sentinel 1.1.0: notifications, statistics, the aud
 | Run needs a human, or is blocked | action or warning, with the reason |
 | A task failed, or a provider is unavailable | warning |
 | A verification check failed | warning |
+| Knowledge harvest failed | warning |
 | Run completed and waiting for acceptance | action: `sentinel accept` |
 | Run accepted, rejected or failed | info or warning |
 
@@ -82,6 +83,31 @@ sentinel backup restore .sentinel/backups/sentinel-20261115T100000Z.db
 A backup uses the SQLite backup API, so it is consistent while the server runs, and it is checked (integrity, row counts, audit chain) before it is kept. `--verify` checks a copy later. It holds the workspace registry only: run folders, config files and `user.db` are not in it (copy run folders yourself, or use `sentinel run export`). Old backups are never deleted for you.
 
 `restore` is for a human at a terminal: it replaces the registry, so it asks you to type the first 8 characters of the backup's hash, refuses while a task or a Sentinel server is running, and first saves the current registry as `backups/pre-restore-<time>.db`. A backup is as sensitive as the registry, which holds unscrubbed request text; see [security](security.md#audit-log-and-backups).
+
+## Knowledge base
+
+Commands for inspecting the team [knowledge base](knowledge.md) and background harvesting jobs:
+
+```bash
+sentinel kb status
+sentinel kb status --json
+```
+
+`sentinel kb status` reports tracked branch cursors, record counts (total, active, and dropped), counts by repository, and the state of background harvesting jobs (`queued`, `last_success`, `last_failure`).
+
+### Worker logs and lock
+
+The background harvest worker logs to:
+
+```
+.sentinel/kb-worker.log
+```
+
+The worker acquires a PID lock file at `.sentinel/kb-worker.lock` to ensure only one worker processes harvest jobs per workspace. Dead worker locks are detected and replaced automatically.
+
+### Retrying failed jobs
+
+The worker automatically retries transient errors up to 3 times with backoff (5s, 30s). When a job fails permanently (for example, if `scrub --check` detects a secret) or retries are exhausted, the job state becomes `failed` and triggers a `knowledge.failed` notification. The registry does not provide a separate retry command; after fixing the problem (e.g. updating scrub patterns or credentials), re-run `sentinel kb ingest` with `--publish` to ingest and publish current changes.
 
 ## Release checklist
 

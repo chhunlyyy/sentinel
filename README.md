@@ -24,6 +24,7 @@ No Python tools? One Docker command serves just the dashboard. See [Install](#in
 - One run of "implement this properly" usually means five or six hand-written agent prompts, a QA setup, and a lot of logs. Sentinel packages that as config.
 - Effort scales with the task. A typo fix is one coder call. A change to authorization rules runs the full pipeline.
 - The knowledge a team builds up (specs, project invariants, the regression suite) lives in one shared repo, so it stays current for everyone. Logs and caches stay local and disposable.
+- Work done with and without Sentinel is captured continuously into the team knowledge base, giving agents indexed change records and module summaries without blocking runs.
 
 ## The version 2 flow
 
@@ -159,6 +160,7 @@ First time in a project, start with `/sentinel-setup` (or run `sentinel init` yo
 - [Installation](docs/installation.md)
 - [Quickstart](docs/quickstart.md)
 - [Workflow, step by step](docs/workflow.md)
+- [Knowledge base](docs/knowledge.md)
 - [Dashboard](docs/dashboard.md)
 - [Operations: notifications, stats, audit, backup](docs/operations.md)
 - [Configuration reference](docs/config.md)
