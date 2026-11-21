@@ -1,6 +1,6 @@
 # Migrating from 0.1.0b7 to 1.1.0
 
-1.1.0 adds a second kind of run (version 2: two human approvals, TDD cycles, independent verification), a local dashboard and a registry. Everything 0.1.0b7 did still works for the runs it started. This page lists what you do to upgrade, what changes, what stays untouched, and how to go back.
+1.1.0 adds a second kind of run (version 2: two human approvals, TDD cycles, independent verification), a local dashboard and a registry. Everything 0.1.0b7 did still works for the runs it started. This page lists what you do to upgrade, what changes, what stays untouched, and how to go back. (For upgrading from 1.x to Sentinel 2.0, see [Migrating to 2.0](migration-2.0.md).)
 
 ## Upgrade
 

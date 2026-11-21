@@ -124,6 +124,8 @@ sentinel service run                  # run the server in the foreground
 
 The service logs to `~/.config/sentinel/service.log`.
 
+On startup, the service automatically inspects registered projects for tasks left in `RUNNING` state by a previous server process and recovers them. Tasks that were interrupted are safely marked for retry.
+
 ### Autostart
 
 On Linux, Sentinel can start automatically at login via a systemd user unit:
