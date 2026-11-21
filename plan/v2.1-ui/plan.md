@@ -125,12 +125,10 @@ Starts after workstreams A (API) and B (shell) are merged into `v2.1-ui`, so eac
 - Optional `factory.budget: {tokens_per_day, usd_per_day}` per project; when reached, the project stops starting new
   tasks (like the factory pause, project scope) with a notification `budget.reached`; resets next day; floor banner.
 
-## F. Desktop notifications and knowledge in the flow (items 4 and 5)
+## F. Knowledge in the flow (item 5)
 
-4. **Desktop notifications.** Opt-in in Settings ("Desktop notifications for: gates waiting, failed tasks, usage limits,
-   finished runs"), browser Notification API, fired from the events stream while any dashboard tab is open; clicking
-   opens the page. Plus optional service-side `notify-send` (Linux) / `osascript` (macOS) when no tab is open
-   (`notifications.desktop: true` in user config). Never approves anything.
+Item 4 (desktop notifications) dropped by the owner.
+
 5. **Knowledge in the flow.** New task screen: "Knowledge found" panel (related change records, invariants) from a
    new `GET /api/v1/projects/{pid}/knowledge/related?q=` (reuse the knowledge search the agents use) and "Slots: N of M
    busy, position K in the queue". Approve screen: "Knowledge used" tab listing the records/summaries the agents read
