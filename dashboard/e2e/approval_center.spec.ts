@@ -21,7 +21,7 @@ test.describe('My Approvals', () => {
     await expect(rows.nth(1)).toContainText('tax-form');
     await expect(rows.nth(1)).toContainText('gherkin');
     expect((await api.gets(/\/api\/v1\/approvals\?state=IN_REVIEW/)).length).toBeGreaterThan(0);
-    await expect(nav(page).getByRole('link', { name: /My Approvals/ })).toContainText('2');
+    await expect(nav(page).getByRole('link', { name: /Approvals/ })).toContainText('2');
   });
 
   test('AC-SEC-03y nothing to approve', async ({ page, api }) => {

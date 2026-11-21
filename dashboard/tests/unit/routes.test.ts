@@ -15,7 +15,7 @@ describe('AC-DSH-06j every route the app calls is listed in the shared route tab
     for (const r of Object.values(ROUTES)) {
       expect(['GET', 'POST', 'PUT', 'DELETE']).toContain(r.method);
       expect(r.pattern.startsWith('/api/v1/')).toBe(true);
-      if (r.method !== 'GET') expect(r.pattern).toMatch(/\/(approvals|acceptance|control|tasks|read|test|orchestrator|agents|projects|\{pid\}|register|repositories|repositories\/\{rid\}|pause|unpause|note|detect|preview|save|ingest|snapshot|estimate|backfill)$/);
+      if (r.method !== 'GET') expect(r.pattern).toMatch(/\/(approvals|acceptance|control|tasks|read|test|orchestrator|agents|projects|\{pid\}|register|repositories|repositories\/\{rid\}|pause|unpause|resume|note|detect|preview|save|ingest|snapshot|estimate|backfill)$/);
     }
   });
   test('AC-DSH-06j screens call the API only through the route table', () => {

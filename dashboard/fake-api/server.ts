@@ -48,6 +48,36 @@ let refuseUntil = 0;
 let eventSeq = 100;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
 
+interface FactoryState {
+  paused: boolean;
+  paused_at: string | null;
+  running_total: number;
+  max_agents: number;
+}
+let factoryState: FactoryState = {
+  paused: false,
+  paused_at: null,
+  running_total: 1,
+  max_agents: 4,
+};
+
+function getFactoryStatus() {
+  let maxAgents = 4;
+  let running = 0;
+  if (db.factory) {
+    for (const f of Object.values(db.factory)) {
+      if (f.limits?.max_agents && f.limits.max_agents > maxAgents) maxAgents = f.limits.max_agents;
+      if (typeof f.limits?.running_total === 'number') running = Math.max(running, f.limits.running_total);
+    }
+  }
+  return {
+    paused: factoryState.paused,
+    paused_at: factoryState.paused_at,
+    running_total: running || factoryState.running_total || 1,
+    max_agents: maxAgents || factoryState.max_agents || 4,
+  };
+}
+
 // ---- providers, orchestrator, agents, folders and project creation (state of the fake only) ----
 
 interface AgentCfg {
@@ -188,6 +218,7 @@ async function control(req: IncomingMessage, res: ServerResponse, path: string) 
     case 'reset': {
       db = b.fixture === 'fresh-install' ? freshInstall() : twoProjects();
       ext = freshExt();
+      factoryState = { paused: false, paused_at: null, running_total: 1, max_agents: 4 };
       for (const p of (b.presets as string[] | undefined) ?? []) applyPreset(db, p);
       rules = [];
       log = [];
@@ -316,6 +347,20 @@ route('GET', `${V}/projects/{pid}/configuration/diff`, (c) => {
   const text = d.diffs[`${a}:${b}`] ?? `--- version ${a}\n+++ version ${b}\n@@ limits @@\n-limits.task_timeout: 900\n+limits.task_timeout: 1200\n limits.max_retries: 3\n`;
   return [200, E.configDiff(a, b, text)];
 });
+route('GET', `${V}/factory`, () => [200, getFactoryStatus()]);
+route('POST', `${V}/factory/pause`, () => {
+  factoryState.paused = true;
+  factoryState.paused_at = new Date().toISOString();
+  pushEvent('factory.paused', {}, false, `factory:${++eventSeq}`);
+  return [200, getFactoryStatus()];
+});
+route('POST', `${V}/factory/resume`, () => {
+  factoryState.paused = false;
+  factoryState.paused_at = null;
+  pushEvent('factory.resumed', {}, false, `factory:${++eventSeq}`);
+  return [200, getFactoryStatus()];
+});
+
 route('GET', `${V}/projects/{pid}/factory`, (c) => {
   const pid = decodeURIComponent(c.params[0]);
   const snap = db.factory?.[pid] ?? {

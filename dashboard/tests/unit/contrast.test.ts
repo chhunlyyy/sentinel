@@ -20,9 +20,10 @@ function blockAfter(src: string, marker: string): string {
   }
   throw new Error('unbalanced');
 }
-const lightTokens = tokens(blockAfter(css, ':root {'));
-const darkTokens = { ...lightTokens, ...tokens(blockAfter(blockAfter(css, '@media (prefers-color-scheme: dark)'), ':root:not([data-theme="light"])')) };
-const explicitDark = { ...lightTokens, ...tokens(blockAfter(css, ':root[data-theme="dark"]')) };
+const defaultDarkTokens = tokens(blockAfter(css, ':root {'));
+const explicitDark = { ...defaultDarkTokens, ...tokens(blockAfter(css, ':root[data-theme="dark"]')) };
+const lightTokens = { ...defaultDarkTokens, ...tokens(blockAfter(css, ':root[data-theme="light"]')) };
+const mediaLight = { ...defaultDarkTokens, ...tokens(blockAfter(blockAfter(css, '@media (prefers-color-scheme: light)'), ':root:not([data-theme="dark"])')) };
 
 function lum(hex: string): number {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -42,7 +43,12 @@ const textPairs: [string, string][] = [
 const nonText: [string, string][] = [['focus', 'bg'], ['focus', 'surface'], ['border-strong', 'bg']];
 
 describe('AC-DSH-01f colour tokens meet contrast', () => {
-  const themes: [string, Record<string, string>][] = [['light', lightTokens], ['dark', darkTokens], ['dark (explicit toggle)', explicitDark]];
+  const themes: [string, Record<string, string>][] = [
+    ['dark (default)', defaultDarkTokens],
+    ['dark (explicit toggle)', explicitDark],
+    ['light (explicit toggle)', lightTokens],
+    ['light (media query)', mediaLight],
+  ];
   test.each(themes)('AC-DSH-01f %s theme', (_name, t) => {
     for (const [fg, bg] of textPairs) {
       expect(t[fg], `token ${fg}`).toBeDefined();

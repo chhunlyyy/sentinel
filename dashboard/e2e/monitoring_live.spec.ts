@@ -142,7 +142,7 @@ test.describe('controls are cancel, resume and retry', () => {
       await open(page, RUN_URL);
       await expect(page.getByTestId('run-header')).toBeVisible();
       expect(await buttons(page)).toEqual([...expected].sort());
-      await expect(page.getByRole('button', { name: /pause|request intervention/i })).toHaveCount(0);
+      await expect(page.getByRole('main').getByRole('button', { name: /pause|request intervention/i })).toHaveCount(0);
     });
   }
 
