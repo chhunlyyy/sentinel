@@ -142,3 +142,7 @@ Item 4 (desktop notifications) dropped by the owner.
   review of the new header, floor and dialogs. Docs say plainly that a manual screen-reader pass is still not done.
 - Adapters: run the Gemini adapter against the real `gemini` CLI (installed here) on a tiny throwaway repo; fix what
   breaks. Codex and Cursor CLIs are not installed: docs keep saying they are untried.
+- Test isolation: `test_backup::test_AC_PER_05c_a_failed_restore_leaves_the_current_registry_in_place` and
+  `test_phase_h_b_review::test_restore_works_when_the_live_chain_is_broken` fail on main whenever the owner's real
+  Sentinel service is running (`E_LOCKED: ... a Sentinel server is running (pid ..., port 34441)`): the tests read the
+  real user config dir. Point them at a temp config dir.
