@@ -23,6 +23,7 @@ from registry import Registry, _now
 from shared import Shared
 
 KIND = "kb_harvest"
+KIND_REFRESH = "refresh"
 LOCK_NAME = "knowledge"
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = (5, 30)  # waits after attempt 1 and attempt 2
@@ -56,6 +57,16 @@ def enqueue_harvest(registry, run_slug):
             return job["id"]
     now = _now()
     return registry.insert_row("kb_jobs", {"kind": KIND, "run_slug": run_slug, "state": "queued", "attempts": 0,
+                                           "created_at": now, "updated_at": now})
+
+
+def enqueue_refresh(registry):
+    """Queue a refresh job; only one queued refresh job at a time (dedupe). Returns the job id."""
+    for job in registry.rows("kb_jobs", kind=KIND_REFRESH):
+        if job["state"] == "queued":
+            return job["id"]
+    now = _now()
+    return registry.insert_row("kb_jobs", {"kind": KIND_REFRESH, "run_slug": None, "state": "queued", "attempts": 0,
                                            "created_at": now, "updated_at": now})
 
 
@@ -135,6 +146,32 @@ def on_run_completed(registry, workspace, config, run_slug):
     except Exception as e:  # noqa: BLE001
         print(f"knowledge harvest not queued for {run_slug}: {e}", file=sys.stderr)
         return None
+
+
+def on_pull(workspace, config=None):
+    """Queue a refresh job and spawn the worker after a successful pull. Never raises."""
+    try:
+        if config is None:
+            config = _load_config(workspace)
+        if not knowledge_enabled(config):
+            return None
+        shared = Shared(workspace, config)
+        if not shared.local and not shared.url:
+            return None
+        state = _state_dir(workspace, config)
+        registry = Registry.open(state)
+        try:
+            job = enqueue_refresh(registry)
+        finally:
+            registry.close()
+        spawn_worker(workspace)
+        return job
+    except Exception as e:  # noqa: BLE001 - pull must never fail because of knowledge
+        print(f"knowledge refresh not queued: {e}", file=sys.stderr)
+        return None
+
+
+on_pull_completed = on_pull
 
 
 # ---- single instance
@@ -322,16 +359,38 @@ def publish(shared, config, scrubber, message):
     return "pushed"
 
 
+def publish_under_lock(workspace, config, scrubber, message):
+    """Publish knowledge under the knowledge lock. Used by CI and CLI."""
+    shared = Shared(workspace, config)
+    if not shared.local and not shared.is_clone():
+        try:
+            shared.pull(refresh=False)
+        except SystemExit as stop:
+            raise RuntimeError(f"cannot pull the shared repo: {stop}") from None
+    try:
+        shared.acquire(LOCK_NAME, f"kb-publish-{os.getpid()}")
+    except SystemExit as stop:
+        raise RuntimeError(str(stop)) from None
+    try:
+        return publish(shared, config, scrubber, message)
+    finally:
+        try:
+            shared.release(LOCK_NAME)
+        except SystemExit:
+            pass
+
+
 # ---- one job
 def process_job(registry, workspace, config, job):
-    """One attempt of a harvest job; raises on failure."""
-    slug = job["run_slug"]
+    """One attempt of a harvest or refresh job; raises on failure."""
+    kind = job.get("kind") or KIND
+    slug = job.get("run_slug")
     shared = Shared(workspace, config)
     shared_dir = shared.dir
     scrubber = scrub.Scrubber(workspace, scrub.env_values(workspace))
     if not shared.local and not shared.is_clone():
         try:
-            shared.pull()  # a lock needs the clone's remote
+            shared.pull(refresh=False)  # a lock needs the clone's remote
         except SystemExit as stop:
             raise RuntimeError(f"cannot pull the shared repo: {stop}") from None
     try:
@@ -340,16 +399,23 @@ def process_job(registry, workspace, config, job):
         raise RuntimeError(str(stop)) from None
     try:
         try:
-            shared.pull()
+            shared.pull(refresh=False)
         except SystemExit as stop:
             raise RuntimeError(f"cannot pull the shared repo: {stop}") from None
         knowledge.ensure_layout(shared_dir)
-        write_run_record(registry, workspace, config, shared_dir, slug, scrubber)
-        knowledge.ingest(str(shared_dir), str(workspace), config, scrubber=scrubber)
-        refresh = getattr(knowledge, "refresh_summaries", None)
-        if refresh:
-            refresh(str(shared_dir), str(workspace), config, scrubber=scrubber)
-        return publish(shared, config, scrubber, f"sentinel: knowledge for {slug}")
+        if kind == KIND_REFRESH:
+            knowledge.ingest(str(shared_dir), str(workspace), config, scrubber=scrubber)
+            refresh = getattr(knowledge, "refresh_summaries", None)
+            if refresh:
+                refresh(str(shared_dir), str(workspace), config, scrubber=scrubber)
+            return publish(shared, config, scrubber, "sentinel: knowledge refresh")
+        else:
+            write_run_record(registry, workspace, config, shared_dir, slug, scrubber)
+            knowledge.ingest(str(shared_dir), str(workspace), config, scrubber=scrubber)
+            refresh = getattr(knowledge, "refresh_summaries", None)
+            if refresh:
+                refresh(str(shared_dir), str(workspace), config, scrubber=scrubber)
+            return publish(shared, config, scrubber, f"sentinel: knowledge for {slug}")
     finally:
         try:
             shared.release(LOCK_NAME)
