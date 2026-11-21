@@ -70,10 +70,10 @@ def recover_lost_tasks(cfgdir):
                     try:
                         eng._recover(slug)
                     except SentinelError as err:
-                        if err.code != "E_TRANSITION":
-                            pass
-        except Exception:
-            pass
+                        if err.code != "E_TRANSITION":  # E_TRANSITION: another process finished it first
+                            _say(f"recovery of {project.id}/{slug} failed: {err}", err=True)
+        except Exception as e:  # noqa: BLE001 - start-up must not fail because one project cannot be recovered
+            _say(f"recovery of project {getattr(project, 'id', '?')} failed: {type(e).__name__}: {e}", err=True)
 
 
 def service_run(workspace=None, port=None, bind=None, public_host=None, allow_peers=(), orchestrator=None):
