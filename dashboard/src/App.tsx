@@ -1,10 +1,11 @@
 import { Component, useEffect, useRef, type ReactNode } from 'react';
 import { calls } from './api/calls.ts';
 import { AppProvider, useApp, useResource } from './state/app.tsx';
-import { Link, segments, useRoute, type Route } from './router.tsx';
+import { Link, enc, segments, useRoute, type Route } from './router.tsx';
 import { Overview } from './screens/Overview.tsx';
 import { ProjectsScreen, ProjectScreen } from './screens/Projects.tsx';
 import { NewProjectScreen } from './screens/NewProject.tsx';
+import { KnowledgeScreen } from './screens/Knowledge.tsx';
 import { TasksScreen, RunsScreen, QualityScreen, CreateTaskScreen } from './screens/Tasks.tsx';
 import { ApprovalsScreen } from './screens/Approvals.tsx';
 import { RunScreen } from './screens/Run.tsx';
@@ -44,6 +45,18 @@ function DefaultLanding() {
   return hasProjects ? <FloorScreen /> : <Overview />;
 }
 
+function DefaultKnowledge() {
+  const projects = useResource('knowledge-nav-projects', (c) => calls.projects(c), {});
+  const firstPid = projects.data?.items.find((p) => p.status === 'available')?.id;
+  if (firstPid) return <KnowledgeScreen pid={firstPid} />;
+  return (
+    <section>
+      <h1>Knowledge</h1>
+      <p>No projects available. <Link to="/projects/new">Create a project</Link> first.</p>
+    </section>
+  );
+}
+
 function screenFor(route: Route): ReactNode {
   const s = segments(route.path);
   if (s.length === 0) return <DefaultLanding />;
@@ -52,10 +65,13 @@ function screenFor(route: Route): ReactNode {
       return <Overview />;
     case 'floor':
       return <FloorScreen />;
+    case 'knowledge':
+      return <DefaultKnowledge />;
     case 'projects':
       if (s.length === 1) return <ProjectsScreen />;
       if (s[1] === 'new' && s.length === 2) return <NewProjectScreen />;
       if (s[2] === 'floor') return <FloorScreen pid={s[1]} />;
+      if (s[2] === 'knowledge') return <KnowledgeScreen pid={s[1]} />;
       if (s[2] === 'runs' && s[3]) return <RunScreen pid={s[1]} slug={s[3]} rest={s.slice(4)} route={route} />;
       return <ProjectScreen pid={s[1]} tab={s[2] ?? ''} rest={s.slice(3)} route={route} />;
     case 'tasks':
@@ -103,7 +119,7 @@ export class ScreenBoundary extends Component<{ children: ReactNode; resetKey: s
 }
 
 const TITLES: Record<string, string> = {
-  floor: 'Factory floor', overview: 'Overview', projects: 'Projects', tasks: 'Tasks', approvals: 'My Approvals', runs: 'Runs', quality: 'Quality', reports: 'Reports', settings: 'Settings',
+  floor: 'Factory floor', overview: 'Overview', projects: 'Projects', knowledge: 'Knowledge', tasks: 'Tasks', approvals: 'My Approvals', runs: 'Runs', quality: 'Quality', reports: 'Reports', settings: 'Settings',
 };
 
 export function titleFor(path: string): string {
@@ -111,6 +127,7 @@ export function titleFor(path: string): string {
   if (s.length === 0) return 'Factory floor';
   if (s[0] === 'projects' && s[1] === 'new') return 'Create project';
   if (s[0] === 'projects' && s[2] === 'floor') return `${s[1]} floor`;
+  if (s[0] === 'projects' && s[2] === 'knowledge') return `${s[1]} knowledge`;
   if (s[0] === 'projects' && s[2] === 'runs' && s[3]) return `${s[3]}${s[4] ? ` ${s[4]}` : ''}`;
   if (s[0] === 'projects' && s[1]) return `${s[1]}${s[2] ? ` ${s[2]}` : ''}`;
   if (s[0] === 'tasks' && s[1] === 'new') return 'New task';
@@ -123,10 +140,12 @@ function Nav({ path }: { path: string }) {
   const projects = useResource('nav-projects', (c) => calls.projects(c), {});
   const unavailable = projects.data?.items.filter((p) => p.status === 'unavailable') ?? [];
   const hasProjects = (projects.data?.items.filter((p) => p.status === 'available').length ?? 0) > 0;
+  const firstPid = projects.data?.items.find((p) => p.status === 'available')?.id ?? '';
   const items: { to: string; label: string; icon: string; match: (p: string) => boolean }[] = [
     { to: '/floor', label: 'Factory floor', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5', match: (p) => p === '/floor' || p.endsWith('/floor') || (p === '/' && hasProjects) },
     { to: '/overview', label: 'Overview', icon: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', match: (p) => p === '/overview' || (p === '/' && !hasProjects) },
-    { to: '/projects', label: 'Projects', icon: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z', match: (p) => p.startsWith('/projects') && !p.endsWith('/floor') },
+    { to: '/projects', label: 'Projects', icon: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z', match: (p) => p.startsWith('/projects') && !p.endsWith('/floor') && !p.includes('/knowledge') },
+    { to: firstPid ? `/projects/${enc(firstPid)}/knowledge` : '/knowledge', label: 'Knowledge', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', match: (p) => p.includes('/knowledge') },
     { to: '/tasks', label: 'Tasks', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2', match: (p) => p.startsWith('/tasks') },
     { to: '/approvals', label: 'My Approvals', icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM8.5 12l2.5 2.5 4.5-5', match: (p) => p.startsWith('/approvals') },
     { to: '/runs', label: 'Runs', icon: 'M6 4l14 8-14 8z', match: (p) => p === '/runs' },

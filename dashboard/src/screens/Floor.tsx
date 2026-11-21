@@ -1,6 +1,6 @@
 // Factory Floor screen (W4)
 // Route: /floor  and  /projects/{pid}/floor
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { calls } from '../api/calls.ts';
 import { useResource } from '../state/app.tsx';
 import { floorSnapshot } from '../components/floor/adapt.ts';
@@ -10,7 +10,7 @@ import { EdgeLayer } from '../components/floor/EdgeLayer.tsx';
 import { SidePanel } from '../components/floor/SidePanel.tsx';
 import { Loaded } from '../components/common.tsx';
 import type { FloorSnapshot, RunView, StationState } from '../components/floor/types.ts';
-import { Link, enc } from '../router.tsx';
+import { Link, enc, useRoute } from '../router.tsx';
 
 // Factory-level event types that trigger a snapshot refetch
 const FACTORY_EVENT_TYPES = [
@@ -200,15 +200,32 @@ function FloorNetwork({ snap, selectedSlug, selectedNodeId, onSelectRun, onSelec
 interface FloorContentProps {
   snap: FloorSnapshot;
   pid: string;
+  initialTaskSlug?: string;
   reload: () => void;
 }
 
-function FloorContent({ snap, pid, reload }: FloorContentProps) {
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(() => defaultTaskSlug(snap));
+function FloorContent({ snap, pid, initialTaskSlug, reload }: FloorContentProps) {
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(() => {
+    if (initialTaskSlug && snap.runs.some((r) => r.slug === initialTaskSlug)) {
+      return initialTaskSlug;
+    }
+    return defaultTaskSlug(snap);
+  });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(() => {
-    const run = snap.runs.find((r) => r.slug === (defaultTaskSlug(snap) ?? ''));
+    const slug = initialTaskSlug && snap.runs.some((r) => r.slug === initialTaskSlug)
+      ? initialTaskSlug
+      : defaultTaskSlug(snap);
+    const run = snap.runs.find((r) => r.slug === (slug ?? ''));
     return run?.station ?? null;
   });
+
+  useEffect(() => {
+    if (initialTaskSlug && snap.runs.some((r) => r.slug === initialTaskSlug)) {
+      setSelectedSlug(initialTaskSlug);
+      const run = snap.runs.find((r) => r.slug === initialTaskSlug);
+      if (run) setSelectedNodeId(run.station);
+    }
+  }, [initialTaskSlug, snap.runs]);
 
   const selectedRun = snap.runs.find((r) => r.slug === selectedSlug) ?? null;
   const selectedStates = selectedRun ? stationsOf(selectedRun) : {};
@@ -333,9 +350,12 @@ interface FloorScreenProps {
 }
 
 export function FloorScreen({ pid }: FloorScreenProps) {
+  const route = useRoute();
+  const taskSlug = route.query.get('task') ?? undefined;
   // If no pid, pick the first available project
   const projects = useResource('floor-projects', (c) => calls.projects(c), {});
   const resolvedPid = pid ?? projects.data?.items.find((p) => p.status === 'available')?.id ?? '';
+  const projectName = projects.data?.items.find((p) => p.id === resolvedPid)?.name ?? resolvedPid;
 
   const factory = useResource(
     `factory-${resolvedPid}`,
@@ -358,7 +378,21 @@ export function FloorScreen({ pid }: FloorScreenProps) {
 
   return (
     <section>
-      <h1>Factory floor</h1>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+        <h1 style={{ margin: 0 }}>Factory floor</h1>
+        {resolvedPid ? (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-muted)' }}>
+              {projectName}
+            </h2>
+            <nav aria-label="Project" style={{ display: 'inline-flex', gap: '0.75rem', fontSize: '0.9rem' }}>
+              <Link to={`/projects/${enc(resolvedPid)}/repositories`}>Repositories</Link>
+              <Link to={`/projects/${enc(resolvedPid)}/knowledge`}>Knowledge</Link>
+              <Link to={`/projects/${enc(resolvedPid)}`}>Project home</Link>
+            </nav>
+          </div>
+        ) : null}
+      </div>
       <Loaded res={factory} unavailable>
         {(data) => {
           const snap = floorSnapshot(data);
@@ -366,6 +400,7 @@ export function FloorScreen({ pid }: FloorScreenProps) {
             <FloorContent
               snap={snap}
               pid={resolvedPid}
+              initialTaskSlug={taskSlug}
               reload={() => void factory.reload()}
             />
           );

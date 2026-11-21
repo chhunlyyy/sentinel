@@ -406,3 +406,23 @@ export interface StreamEnvelope {
   actor: { kind: string; name: string | null; channel: string };
   payload: Record<string, unknown>;
 }
+
+export type {
+  WDetectItem as DetectItem,
+  WDetect as DetectResult,
+  WSharedTest as SharedTestResult,
+  WRoutingSuggest as RoutingSuggestResult,
+  WConfigFormField as ConfigFormField,
+  WConfigFormSection as ConfigFormSection,
+  WConfigForm as ConfigFormResult,
+  WConfigPreview as ConfigPreviewResult,
+  WConfigSave as ConfigSaveResult,
+  WKnowledgeStatus as KnowledgeStatus,
+  WKnowledgeRecord as KnowledgeRecord,
+  WKnowledgeRecords as KnowledgeRecordsResult,
+  WKnowledgeCiTemplate as KnowledgeCiTemplateResult,
+  WKnowledgeJob as KnowledgeJobResult,
+  WKnowledgeBackfillEstimate as KnowledgeBackfillEstimateResult,
+  WKnowledgeBackfill as KnowledgeBackfillResult,
+} from './wire.ts';
+

@@ -129,7 +129,12 @@ export function CreateTaskScreen({ route }: { route: Route }) {
     );
     if (run) {
       setFlash(`${run.slug} created: ${run.state}`);
-      navigate(`/projects/${enc(pid)}/runs/${enc(run.slug)}`);
+      const target = route.query.get('target') || route.query.get('return');
+      if (target === 'floor') {
+        navigate(`/projects/${enc(pid)}/floor?task=${enc(run.slug)}`);
+      } else {
+        navigate(`/projects/${enc(pid)}/runs/${enc(run.slug)}`);
+      }
     }
   };
 
@@ -139,37 +144,74 @@ export function CreateTaskScreen({ route }: { route: Route }) {
       <h1>Create task</h1>
       <Loaded res={projects}>
         {() => (
-          <>
-            <div className="field">
-              <label htmlFor="project-select">Project</label>
-              <select
-                id="project-select"
-                value={pid}
-                onChange={(e) => {
-                  setChosen(e.target.value);
-                  setType('');
-                }}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'flex-start' }}>
+            <div style={{ flex: '999 1 540px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="field">
+                <label htmlFor="project-select">Project</label>
+                <select
+                  id="project-select"
+                  value={pid}
+                  onChange={(e) => {
+                    setChosen(e.target.value);
+                    setType('');
+                  }}
+                >
+                  {available.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <CreateTaskForm
+                key={pid}
+                repos={repos.data?.items.map((r) => r.id) ?? []}
+                onSubmit={submit}
+                onTypeChange={setType}
+                fieldErrors={fieldErrors}
+                pending={action.pending}
+                blocked={!ready}
               >
-                {available.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.id}
-                  </option>
-                ))}
-              </select>
+                {readiness.data && !ready ? <ReadinessPanel readiness={readiness.data} /> : null}
+              </CreateTaskForm>
+              {action.message?.kind === 'error' && Object.keys(fieldErrors).length === 0 ? <ActionResult message={action.message} /> : null}
             </div>
-            <CreateTaskForm
-              key={pid}
-              repos={repos.data?.items.map((r) => r.id) ?? []}
-              onSubmit={submit}
-              onTypeChange={setType}
-              fieldErrors={fieldErrors}
-              pending={action.pending}
-              blocked={!ready}
-            >
-              {readiness.data && !ready ? <ReadinessPanel readiness={readiness.data} /> : null}
-            </CreateTaskForm>
-            {action.message?.kind === 'error' && Object.keys(fieldErrors).length === 0 ? <ActionResult message={action.message} /> : null}
-          </>
+
+            <aside aria-label="What happens next" style={{ flex: '1 1 280px', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <h2 style={{ margin: 0, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+                  After you send it
+                </h2>
+                <ol style={{ margin: '0.25rem 0', paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  <li>Triage sizes it (about a minute)</li>
+                  <li>An agent writes the spec</li>
+                  <li><strong>You approve the spec</strong></li>
+                  <li>Scenarios, then <strong>you approve them</strong></li>
+                  <li>Build, verify, report</li>
+                  <li><strong>You accept</strong></li>
+                </ol>
+                <p className="hint" style={{ margin: 0, fontSize: '0.8rem' }}>
+                  You get a notification at every gate. Close the tab any time: the factory keeps going.
+                </p>
+              </section>
+
+              <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <h2 style={{ margin: 0, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Knowledge found
+                </h2>
+                <p className="hint" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  Related past changes the agents will read:
+                </p>
+                <ul style={{ margin: '0.25rem 0', paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.8rem' }}>
+                  <li>Recent verified change records in {pid}</li>
+                  <li>Active invariants & team rules</li>
+                </ul>
+                <Link to={`/projects/${enc(pid)}/knowledge`} style={{ fontSize: '0.85rem' }}>
+                  Open knowledge base
+                </Link>
+              </section>
+            </aside>
+          </div>
         )}
       </Loaded>
     </section>

@@ -126,9 +126,8 @@ test.describe('project creation', () => {
     await page.getByLabel('New folder name').fill('billing');
     await page.getByRole('button', { name: 'Create folder here' }).click();
     await expect(page.getByRole('textbox', { name: 'Project folder' })).toHaveValue('/home/dev/projects/billing');
-    await page.getByRole('button', { name: 'Next' }).click();
 
-    // at least one repository
+    // at least one repository required before moving past step 1
     await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
     await pick(page, 'Repository folder', 'projects', 'hr-backend');
     await expect(page.getByText('git', { exact: true }).first()).toBeVisible();
@@ -144,14 +143,23 @@ test.describe('project creation', () => {
     await page.getByRole('button', { name: 'Remove /home/dev/projects/hr-frontend' }).click();
     await page.getByRole('textbox', { name: 'Repository folder' }).fill('/home/dev/projects/hr-frontend');
     await page.getByRole('button', { name: 'Add repository' }).click();
-    await page.getByRole('button', { name: 'Next' }).click();
 
-    // shared git url
+    // Step 1 -> Step 2: Detected setup
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByText('We looked at your repos')).toBeVisible();
+
+    // Step 2 -> Step 3: Shared knowledge
+    await page.getByRole('button', { name: 'Next' }).click();
     await page.getByRole('radio', { name: /Shared through a git repository/ }).check();
     await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
     await page.getByLabel('Git URL').fill('git@example.test:team/state.git');
-    await page.getByRole('button', { name: 'Next' }).click();
 
+    // Step 3 -> Step 4: AI team
+    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByText('Your AI team')).toBeVisible();
+
+    // Step 4 -> Step 5: Checks and create
+    await page.getByRole('button', { name: 'Next' }).click();
     await expect(page.getByTestId('wizard-review')).toContainText('Billing');
     await expect(page.getByTestId('wizard-review')).toContainText('Shared: git@example.test:team/state.git');
     await page.getByRole('button', { name: 'Create project' }).click();
@@ -172,11 +180,12 @@ test.describe('project creation', () => {
     await open(page, '/projects/new');
     await page.getByLabel('Project name').fill('Solo');
     await page.getByRole('textbox', { name: 'Project folder' }).fill('/home/dev/projects/solo');
-    await page.getByRole('button', { name: 'Next' }).click();
     await page.getByRole('textbox', { name: 'Repository folder' }).fill('/home/dev/projects/hr-backend');
     await page.getByRole('button', { name: 'Add repository' }).click();
-    await page.getByRole('button', { name: 'Next' }).click();
-    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('button', { name: 'Next' }).click(); // Step 2: Detected setup
+    await page.getByRole('button', { name: 'Next' }).click(); // Step 3: Shared knowledge
+    await page.getByRole('button', { name: 'Next' }).click(); // Step 4: AI team
+    await page.getByRole('button', { name: 'Next' }).click(); // Step 5: Checks & create
     await page.getByRole('button', { name: 'Create project' }).click();
     await expect(heading(page, 'Solo')).toBeVisible();
     await open(page, '/projects/solo/repositories');

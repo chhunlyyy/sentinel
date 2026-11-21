@@ -58,6 +58,20 @@ export const ROUTES = {
   addRepository: { method: 'POST', pattern: '/api/v1/projects/{pid}/repositories' },
   deleteProject: { method: 'DELETE', pattern: '/api/v1/projects/{pid}' },
   removeRepository: { method: 'DELETE', pattern: '/api/v1/projects/{pid}/repositories/{rid}' },
+  detect: { method: 'POST', pattern: '/api/v1/detect' },
+  sharedTest: { method: 'POST', pattern: '/api/v1/shared/test' },
+  routingSuggest: { method: 'GET', pattern: '/api/v1/routing/suggest' },
+  configForm: { method: 'GET', pattern: '/api/v1/projects/{pid}/config/form' },
+  configPreview: { method: 'POST', pattern: '/api/v1/projects/{pid}/config/preview' },
+  configSave: { method: 'POST', pattern: '/api/v1/projects/{pid}/config/save' },
+  knowledgeStatus: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/status' },
+  knowledgeRecords: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/records' },
+  knowledgeRecord: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/records/{key}' },
+  knowledgeCiTemplate: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/ci-template' },
+  knowledgeIngest: { method: 'POST', pattern: '/api/v1/projects/{pid}/knowledge/ingest' },
+  knowledgeSnapshot: { method: 'POST', pattern: '/api/v1/projects/{pid}/knowledge/snapshot' },
+  knowledgeBackfillEstimate: { method: 'POST', pattern: '/api/v1/projects/{pid}/knowledge/backfill/estimate' },
+  knowledgeBackfill: { method: 'POST', pattern: '/api/v1/projects/{pid}/knowledge/backfill' },
 } as const satisfies Record<string, Route>;
 
 export type RouteName = keyof typeof ROUTES;

@@ -470,3 +470,127 @@ export interface WFactory {
   runs: WFactoryRun[];
   queue: WFactoryQueueItem[];
 }
+
+export interface WDetectItem {
+  path: string;
+  is_git: boolean;
+  current_branch: string | null;
+  default_branch: string | null;
+  local_branches: string[];
+  profile: string;
+  commands: Record<string, string>;
+  tracked_branches: string[];
+}
+
+export interface WDetect {
+  items: WDetectItem[];
+}
+
+export interface WSharedTest {
+  ok: boolean;
+  read: boolean;
+  write: boolean | 'unknown';
+  refs: number;
+  error?: string;
+}
+
+export interface WRoutingSuggest {
+  roles: Record<string, { runner: string; model: string | null }>;
+  items: { role: string; runner: string; model: string | null }[];
+}
+
+export interface WConfigFormField {
+  path: string;
+  type: string;
+  enum?: string[] | null;
+  default?: unknown;
+  value?: unknown;
+  help?: string;
+  editable?: boolean;
+}
+
+export interface WConfigFormSection {
+  id: string;
+  title: string;
+  fields: WConfigFormField[];
+}
+
+export interface WConfigForm {
+  project: string;
+  sha256: string;
+  sections: WConfigFormSection[];
+  fields: WConfigFormField[];
+}
+
+export interface WConfigPreview {
+  project: string;
+  valid: boolean;
+  diff: string;
+  changes: { path: string; value: unknown }[];
+}
+
+export interface WConfigSave {
+  ok: boolean;
+  project: string;
+  sha256: string;
+  diff: string;
+}
+
+export interface WKnowledgeStatus {
+  enabled: boolean;
+  records: { total: number; active: number; dropped: number };
+  cursors: Record<string, string>;
+  by_repo: Record<string, number>;
+  jobs?: { running: number; queued: number; failed: number; last_job?: string } | null;
+  module_summaries?: { total?: number; stale?: number } | number;
+  tracked_branches?: number | string[];
+}
+
+export interface WKnowledgeRecord {
+  key: string;
+  repo?: string;
+  provenance?: string;
+  path?: string;
+  title?: string;
+  summary?: string;
+  reached?: string;
+  files?: string[];
+  date?: string;
+  meta?: Record<string, unknown>;
+  body?: string;
+}
+
+export interface WKnowledgeRecords {
+  items: WKnowledgeRecord[];
+  next: string | null;
+  total: number;
+}
+
+export interface WKnowledgeCiTemplate {
+  repo: string;
+  profile: string;
+  branches: string[];
+  template: string;
+  filename: string;
+}
+
+export interface WKnowledgeJob {
+  ok: boolean;
+  job: string;
+  state: string;
+}
+
+export interface WKnowledgeBackfillEstimate {
+  token: string;
+  estimate: Record<string, Record<string, number>>;
+  total: number;
+  since?: string;
+  repo?: string;
+}
+
+export interface WKnowledgeBackfill {
+  ok: boolean;
+  total: number;
+  results: Record<string, Record<string, number>>;
+}
+

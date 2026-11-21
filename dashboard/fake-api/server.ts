@@ -10,6 +10,15 @@ import { freshInstall } from '../fixtures/fresh-install.ts';
 import * as E from '../fixtures/encode.ts';
 import { applyPreset } from '../fixtures/presets.ts';
 import { summary, twoProjects } from '../fixtures/two-projects.ts';
+import {
+  SAMPLE_KNOWLEDGE_RECORDS,
+  sampleKnowledgeStatus,
+  sampleKnowledgeCiTemplate,
+  sampleRoutingSuggest,
+  sampleDetect,
+  sampleConfigForm,
+} from '../fixtures/knowledge-fixtures.ts';
+
 
 
 const PORT = Number(process.env.FAKE_API_PORT ?? 47831);
@@ -776,6 +785,112 @@ route('DELETE', `${V}/projects/{pid}/repositories/{rid}`, (c) => {
   if (live) throw new ApiErr(409, 'E_PRECONDITION', 'a run is not finished', { fix: 'finish or cancel the runs first' });
   d.repositories.items.splice(idx, 1);
   return [200, { removed: rid }];
+});
+
+// ---- W3 Part B routes ----
+
+route('POST', `${V}/detect`, (c) => {
+  const b = body(c) as { paths?: string[] };
+  const paths = Array.isArray(b?.paths) ? b.paths : [];
+  return [200, { items: sampleDetect(paths) }];
+});
+
+route('POST', `${V}/shared/test`, (c) => {
+  const b = body(c) as { url?: string };
+  const url = String(b?.url ?? '').trim();
+  if (!url || url.includes('fail') || url.startsWith('bad')) {
+    return [200, { ok: false, read: false, write: false, refs: 0, error: 'Could not resolve host: repository not found' }];
+  }
+  return [200, { ok: true, read: true, write: true, refs: 4 }];
+});
+
+route('GET', `${V}/routing/suggest`, () => [200, sampleRoutingSuggest()]);
+
+const projectConfigs: Record<string, ReturnType<typeof sampleConfigForm>> = {};
+route('GET', `${V}/projects/{pid}/config/form`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  projectConfigs[pid] ??= sampleConfigForm(pid);
+  return [200, projectConfigs[pid]];
+});
+
+route('POST', `${V}/projects/{pid}/config/preview`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  const b = body(c) as { changes?: { path: string; value: unknown }[] };
+  const changes = Array.isArray(b?.changes) ? b.changes : [];
+  for (const ch of changes) {
+    if (ch.path === 'state.shared_repo') throw new ApiErr(400, 'E_VALIDATION', 'state.shared_repo cannot be modified via config form');
+    if (ch.path.endsWith('.path') && ch.path.startsWith('repos')) throw new ApiErr(400, 'E_VALIDATION', 'repository path cannot be modified via config form');
+  }
+  const diff = changes.map((ch) => `--- sentinel.config.yaml\n+++ sentinel.config.yaml (preview)\n@@ ${ch.path} @@\n+ ${ch.path}: ${JSON.stringify(ch.value)}\n`).join('\n') || '# No changes detected';
+  return [200, { project: pid, valid: true, diff, changes }];
+});
+
+route('POST', `${V}/projects/{pid}/config/save`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  const b = body(c) as { changes?: { path: string; value: unknown }[]; comment?: string };
+  const changes = Array.isArray(b?.changes) ? b.changes : [];
+  const cfg = (projectConfigs[pid] ??= sampleConfigForm(pid));
+  for (const ch of changes) {
+    for (const sec of cfg.sections) {
+      for (const f of sec.fields) {
+        if (f.path === ch.path) f.value = ch.value;
+      }
+    }
+  }
+  const newSha = createHash('sha256').update(JSON.stringify(cfg)).digest('hex');
+  cfg.sha256 = newSha;
+  const diff = changes.map((ch) => `+ ${ch.path}: ${JSON.stringify(ch.value)}`).join('\n');
+  return [200, { ok: true, project: pid, sha256: newSha, diff }];
+});
+
+route('GET', `${V}/projects/{pid}/knowledge/status`, () => {
+  return [200, sampleKnowledgeStatus()];
+});
+
+route('GET', `${V}/projects/{pid}/knowledge/records`, (c) => {
+  const filt = c.query.get('filter') || 'all';
+  const q = (c.query.get('q') || '').trim().toLowerCase();
+  let list = [...SAMPLE_KNOWLEDGE_RECORDS];
+  if (filt !== 'all') {
+    list = list.filter((r) => r.provenance === filt);
+  }
+  if (q) {
+    list = list.filter((r) =>
+      `${r.key} ${r.title ?? ''} ${r.summary ?? ''} ${r.repo ?? ''} ${(r.files ?? []).join(' ')}`.toLowerCase().includes(q)
+    );
+  }
+  const limit = Math.min(50, Math.max(1, Number(c.query.get('limit') || 20)));
+  const cursor = Number(c.query.get('cursor') || 0);
+  const items = list.slice(cursor, cursor + limit);
+  const next = cursor + limit < list.length ? String(cursor + limit) : null;
+  return [200, { items, next, total: list.length }];
+});
+
+route('GET', `${V}/projects/{pid}/knowledge/records/{key}`, (c) => {
+  const key = decodeURIComponent(c.params[1]);
+  const rec = SAMPLE_KNOWLEDGE_RECORDS.find((r) => r.key === key);
+  if (!rec) throw new ApiErr(404, 'E_NOT_FOUND', `knowledge record ${key} not found`);
+  return [200, { key: rec.key, meta: { provenance: rec.provenance, repo: rec.repo, title: rec.title, summary: rec.summary, reached: rec.reached, date: rec.date }, body: rec.body, path: rec.path }];
+});
+
+route('GET', `${V}/projects/{pid}/knowledge/ci-template`, (c) => {
+  const repo = c.query.get('repo') || 'backend';
+  return [200, sampleKnowledgeCiTemplate(repo)];
+});
+
+route('POST', `${V}/projects/{pid}/knowledge/ingest`, () => [202, { ok: true, job: 'job-ingest-1', state: 'queued' }]);
+
+route('POST', `${V}/projects/{pid}/knowledge/snapshot`, () => [202, { ok: true, job: 'job-snapshot-1', state: 'queued' }]);
+
+route('POST', `${V}/projects/{pid}/knowledge/backfill/estimate`, (c) => {
+  const b = body(c) as { since?: string; repo?: string };
+  return [200, { token: 'tok_backfill_estimate_123', estimate: { backend: { develop: 80, main: 40 }, frontend: { develop: 20 } }, total: 140, since: b?.since ?? '3 months', repo: b?.repo ?? null }];
+});
+
+route('POST', `${V}/projects/{pid}/knowledge/backfill`, (c) => {
+  const b = body(c) as { token?: string };
+  if (!b?.token) throw new ApiErr(400, 'E_VALIDATION', 'token is required');
+  return [200, { ok: true, total: 140, results: { backend: { develop: 80, main: 40 }, frontend: { develop: 20 } } }];
 });
 
 // ---- request handling ----
