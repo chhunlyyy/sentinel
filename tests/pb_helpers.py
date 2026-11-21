@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "sentinel" / "scripts"))
 os.environ.setdefault("SENTINEL_KB_NO_SPAWN", "1")  # complete_run must not start a real knowledge worker
+os.environ.setdefault("SENTINEL_KB_NO_AGENT", "1")  # tests must not invoke real agent CLIs
 
 from engine import Engine  # noqa: E402
 from test_artifacts import DOCS, FULL, LITE, feat, make_spec  # noqa: E402

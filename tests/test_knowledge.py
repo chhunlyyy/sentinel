@@ -12,6 +12,8 @@ import time
 import unittest
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "sentinel" / "scripts"))
 
 import knowledge  # noqa: E402
@@ -635,6 +637,275 @@ class TestStatus(unittest.TestCase):
         info = knowledge.status(str(self.shared), config)
         self.assertGreaterEqual(info["records"]["total"], 2)
         self.assertEqual(info["records"]["dropped"], 0)
+
+
+# ---------------------------------------------------------------------------
+# Phase B: Snapshot summaries, staleness, summarizer runner & routing
+# ---------------------------------------------------------------------------
+
+from unittest import mock
+
+
+class TestPhaseB(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.ws = Path(self._tmp.name)
+        self.repo = make_repo(self.ws, "backend")
+        self.shared = self.ws / "shared"
+        self.shared.mkdir()
+        knowledge.ensure_layout(str(self.shared))
+
+    def _cfg(self, **kb):
+        return {
+            "version": 1,
+            "state": {"dir": ".sentinel", "shared_mode": "local"},
+            "knowledge": {"enabled": True, **kb},
+            "repos": [{"id": "backend", "path": "backend"}],
+        }
+
+    def test_snapshot_from_branch_tip_ignores_uncommitted_working_tree_files(self):
+        commit_file(self.repo, "mod_a/foo.py", "print('hello')", "init mod_a")
+        # Write uncommitted files directly to the working tree
+        (self.repo / "mod_a" / "uncommitted.py").write_text("uncommitted file")
+        uncommitted_mod = self.repo / "uncommitted_mod"
+        uncommitted_mod.mkdir()
+        (uncommitted_mod / "bar.py").write_text("bar")
+
+        res = knowledge.snapshot_repo(
+            str(self.shared), str(self.ws),
+            {"id": "backend", "path": "backend"},
+            self._cfg(),
+        )
+        self.assertIn("mod_a", res["modules"])
+        self.assertNotIn("uncommitted_mod", res["modules"])
+
+        mod_a_file = self.shared / "knowledge" / "repos" / "backend" / "modules" / "mod_a.md"
+        self.assertTrue(mod_a_file.exists())
+        meta, body = knowledge.read_record(mod_a_file)
+        self.assertEqual(meta["module"], "mod_a")
+        self.assertIn("- **Files**: 1", body)
+        self.assertNotIn("uncommitted.py", body)
+
+        summary_file = self.shared / "knowledge" / "repos" / "backend" / "summary.md"
+        self.assertTrue(summary_file.exists())
+        _, s_body = knowledge.read_record(summary_file)
+        self.assertIn("- **Files**: 1", s_body)
+        self.assertNotIn("uncommitted.py", s_body)
+        self.assertFalse((self.shared / "knowledge" / "repos" / "backend" / "modules" / "uncommitted_mod.md").exists())
+
+    def test_unchanged_module_skipped_changed_regenerated_removed_deleted(self):
+        commit_file(self.repo, "mod_a/a.py", "x = 1\n", "init a")
+        commit_file(self.repo, "mod_b/b.py", "y = 2\n", "init b")
+
+        repo_cfg = {"id": "backend", "path": "backend"}
+        knowledge.snapshot_repo(str(self.shared), str(self.ws), repo_cfg, self._cfg())
+
+        mod_a_file = self.shared / "knowledge" / "repos" / "backend" / "modules" / "mod_a.md"
+        mod_b_file = self.shared / "knowledge" / "repos" / "backend" / "modules" / "mod_b.md"
+        self.assertTrue(mod_a_file.exists())
+        self.assertTrue(mod_b_file.exists())
+
+        # Modify on disk with marker comment to detect if skipped
+        a_text = mod_a_file.read_text()
+        mod_a_file.write_text(a_text + "\n<!-- custom-marker -->\n")
+
+        # Snapshot again without changes (force=False)
+        res = knowledge.snapshot_repo(str(self.shared), str(self.ws), repo_cfg, self._cfg(), force=False)
+        self.assertEqual(res["generated"], [])  # both skipped
+        self.assertIn("<!-- custom-marker -->", mod_a_file.read_text())
+
+        # Snapshot with force=True regenerates even if unchanged
+        res_forced = knowledge.snapshot_repo(str(self.shared), str(self.ws), repo_cfg, self._cfg(), force=True)
+        self.assertIn("mod_a", res_forced["generated"])
+        self.assertNotIn("<!-- custom-marker -->", mod_a_file.read_text())
+
+        # Add marker back to mod_a
+        mod_a_file.write_text(mod_a_file.read_text() + "\n<!-- custom-marker-2 -->\n")
+
+        # Now commit change to mod_a and delete directory mod_b from git
+        commit_file(self.repo, "mod_a/a.py", "x = 42\n", "update a")
+        _git(self.repo, "rm", "-r", "mod_b")
+        _git(self.repo, "commit", "-m", "remove mod_b")
+
+        res_update = knowledge.snapshot_repo(str(self.shared), str(self.ws), repo_cfg, self._cfg(), force=False)
+        self.assertIn("mod_a", res_update["generated"])
+        self.assertNotIn("mod_b", res_update["modules"])
+        # mod_a was regenerated (marker gone)
+        self.assertNotIn("<!-- custom-marker-2 -->", mod_a_file.read_text())
+        # mod_b was removed from git -> module file deleted
+        self.assertFalse(mod_b_file.exists())
+
+    def test_nested_source_roots_first_level_with_multiple_children(self):
+        # Test the module discovery rule for source roots like src/main/java and packages/*
+        commit_file(self.repo, "src/main/java/com/example/billing/Billing.java", "class Billing {}", "billing")
+        commit_file(self.repo, "src/main/java/com/example/shipping/Shipping.java", "class Shipping {}", "shipping")
+        commit_file(self.repo, "packages/core/index.js", "export const x = 1;", "core")
+        commit_file(self.repo, "packages/ui/index.js", "export const y = 2;", "ui")
+        commit_file(self.repo, "docs/readme.md", "# docs", "docs")
+
+        tip = _git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        modules = knowledge.find_modules_at_tip(self.repo, tip)
+        self.assertIn("src/main/java/com/example/billing", modules)
+        self.assertIn("src/main/java/com/example/shipping", modules)
+        self.assertIn("packages/core", modules)
+        self.assertIn("packages/ui", modules)
+        self.assertIn("docs", modules)
+
+    def test_summarizer_failure_timeout_yields_deterministic_only_output(self):
+        commit_file(self.repo, "mod_a/a.py", "x = 1\n", "init a")
+        cfg = self._cfg(summarize=True)
+
+        with mock.patch("adapters.get_adapter", side_effect=RuntimeError("runner error")):
+            with mock.patch.dict(os.environ, {"SENTINEL_KB_NO_AGENT": ""}):
+                res = knowledge.snapshot_repo(
+                    str(self.shared), str(self.ws),
+                    {"id": "backend", "path": "backend"},
+                    cfg,
+                )
+                self.assertIsNotNone(res)
+                mod_file = self.shared / "knowledge" / "repos" / "backend" / "modules" / "mod_a.md"
+                self.assertTrue(mod_file.exists())
+                meta, body = knowledge.read_record(mod_file)
+                self.assertIn("## Overview", body)
+                self.assertIn("- **Files**: 1", body)
+                self.assertNotIn("## Summary", body)
+
+        # Also test timeout path
+        mock_adapter = mock.MagicMock()
+        mock_handle = mock.MagicMock()
+        mock_adapter.submit.return_value = mock_handle
+        mock_adapter.wait.return_value = False  # timed out
+        mock_adapter.result.return_value = (124, "", "timeout")
+
+        with mock.patch("adapters.get_adapter", return_value=mock_adapter):
+            with mock.patch.dict(os.environ, {"SENTINEL_KB_NO_AGENT": ""}):
+                summary = knowledge.summarize_change(
+                    self.repo, "HEAD", ["mod_a/a.py"], "test", "1 file changed",
+                    config=cfg, workspace=str(self.ws),
+                )
+                self.assertIsNone(summary)
+                mock_adapter.cancel.assert_called_once_with(mock_handle)
+
+    def test_summarizer_disabled_by_config_and_by_env_var(self):
+        sha = commit_file(self.repo, "mod_a/a.py", "x = 1\n", "init a")
+
+        with mock.patch("adapters.get_adapter") as mock_adapter:
+            # 1. Disabled by config
+            cfg = self._cfg(summarize=False)
+            res = knowledge.summarize_change(
+                self.repo, sha, ["mod_a/a.py"], "init a", "1 file changed",
+                config=cfg, workspace=str(self.ws),
+            )
+            self.assertIsNone(res)
+            mock_adapter.assert_not_called()
+
+            # 2. Disabled by env var SENTINEL_KB_NO_AGENT=1
+            cfg_enabled = self._cfg(summarize=True)
+            with mock.patch.dict(os.environ, {"SENTINEL_KB_NO_AGENT": "1"}):
+                res2 = knowledge.summarize_change(
+                    self.repo, sha, ["mod_a/a.py"], "init a", "1 file changed",
+                    config=cfg_enabled, workspace=str(self.ws),
+                )
+                self.assertIsNone(res2)
+                mock_adapter.assert_not_called()
+
+    def test_routing_fallback_knowledge_coder_default(self):
+        mock_adapter = mock.MagicMock()
+        mock_adapter.submit.return_value = mock.MagicMock()
+        mock_adapter.wait.return_value = True
+        mock_adapter.result.return_value = (0, "Agent summary text", "")
+        mock_adapter.runner = {"command": "fake"}
+
+        with mock.patch.dict(os.environ, {"SENTINEL_KB_NO_AGENT": ""}):
+            with tempfile.TemporaryDirectory() as tmp_cwd:
+                # 1. Role knowledge specified
+                with mock.patch("adapters.get_adapter", return_value=mock_adapter) as mock_get_adapter:
+                    cfg = {"routing": {"knowledge": {"runner": "gemini"}}, "runners": {"gemini": {"command": "gemini"}}}
+                    out = knowledge._run_summarizer(cfg, str(self.ws), "test prompt", tmp_cwd)
+                    self.assertEqual(out, "Agent summary text")
+                    mock_get_adapter.assert_called_once()
+                    self.assertEqual(mock_get_adapter.call_args[1].get("runner_id") or mock_get_adapter.call_args[0][2], "gemini")
+
+                # 2. Falls back to coder when knowledge not specified
+                with mock.patch("adapters.get_adapter", return_value=mock_adapter) as mock_get_adapter:
+                    cfg = {"routing": {"coder": {"runner": "codex"}}, "runners": {"codex": {"command": "codex"}}}
+                    out = knowledge._run_summarizer(cfg, str(self.ws), "test prompt", tmp_cwd)
+                    self.assertEqual(out, "Agent summary text")
+                    mock_get_adapter.assert_called_once()
+                    self.assertEqual(mock_get_adapter.call_args[1].get("runner_id") or mock_get_adapter.call_args[0][2], "codex")
+
+                # 3. Falls back to default ("claude") when neither routed
+                with mock.patch("adapters.get_adapter", return_value=mock_adapter) as mock_get_adapter:
+                    cfg = {}
+                    out = knowledge._run_summarizer(cfg, str(self.ws), "test prompt", tmp_cwd)
+                    self.assertEqual(out, "Agent summary text")
+                    mock_get_adapter.assert_called_once()
+                    self.assertEqual(mock_get_adapter.call_args[1].get("runner_id") or mock_get_adapter.call_args[0][2], "claude")
+
+    def test_kb_worker_refresh_summaries_signature(self):
+        commit_file(self.repo, "mod_a/a.py", "x = 1\n", "init a")
+        config = self._cfg()
+        res = knowledge.refresh_summaries(str(self.shared), str(self.ws), config, scrubber=None)
+        self.assertIn("backend", res)
+        self.assertTrue((self.shared / "knowledge" / "repos" / "backend" / "summary.md").exists())
+        self.assertTrue((self.shared / "knowledge" / "repos" / "backend" / "modules" / "mod_a.md").exists())
+
+    def test_ingest_respects_no_summarize_and_writes_summary_when_present(self):
+        commit_file(self.repo, "readme.md", "# init\n", "init")
+        commit_file(self.repo, "src/app.py", "print(1)\n", "add app (#1)")
+        config = self._cfg(summarize=True)
+
+        mock_adapter = mock.MagicMock()
+        mock_adapter.submit.return_value = mock.MagicMock()
+        mock_adapter.wait.return_value = True
+        mock_adapter.result.return_value = (0, "Landed new app entry point", "")
+        mock_adapter.runner = {"command": "fake"}
+
+        # 1. Ingest with summarizer active
+        with mock.patch.dict(os.environ, {"SENTINEL_KB_NO_AGENT": ""}):
+            with mock.patch("adapters.get_adapter", return_value=mock_adapter):
+                knowledge.ingest(str(self.shared), str(self.ws), config, only_repo="backend")
+
+        idx = knowledge.read_index(str(self.shared))
+        self.assertIn("pr-1", idx)
+        rec_path = self.shared / idx["pr-1"]["path"]
+        meta, body = knowledge.read_record(rec_path)
+        self.assertIn("## Summary", body)
+        self.assertIn("Landed new app entry point", body)
+
+        # 2. Ingest with no_summarize=True
+        commit_file(self.repo, "src/app.py", "print(2)\n", "update app (#2)")
+        with mock.patch.dict(os.environ, {"SENTINEL_KB_NO_AGENT": ""}):
+            with mock.patch("adapters.get_adapter", return_value=mock_adapter) as mock_get:
+                knowledge.ingest(str(self.shared), str(self.ws), config, only_repo="backend", no_summarize=True)
+                mock_get.assert_not_called()
+
+        idx2 = knowledge.read_index(str(self.shared))
+        self.assertIn("pr-2", idx2)
+        rec_path2 = self.shared / idx2["pr-2"]["path"]
+        meta2, body2 = knowledge.read_record(rec_path2)
+        self.assertNotIn("## Summary", body2)
+
+    def test_cli_kb_snapshot(self):
+        commit_file(self.repo, "mod_a/a.py", "x = 1\n", "init a")
+        cfg_file = self.ws / "sentinel.config.yaml"
+        cfg_file.write_text(yaml.safe_dump(self._cfg()))
+
+        script = Path(__file__).resolve().parents[1] / "sentinel" / "scripts" / "sentinel.py"
+        r = subprocess.run([sys.executable, str(script), "--dir", str(self.ws), "kb", "snapshot"],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, f"stdout: {r.stdout}\nstderr: {r.stderr}")
+        self.assertIn("snapshot completed for backend", r.stdout)
+
+        cli_shared = self.ws / ".sentinel" / "shared"
+        mod_file = cli_shared / "knowledge" / "repos" / "backend" / "modules" / "mod_a.md"
+        self.assertTrue(mod_file.exists())
+
+        # Test --force flag
+        r_force = subprocess.run([sys.executable, str(script), "--dir", str(self.ws), "kb", "snapshot", "--force"],
+                                 capture_output=True, text=True)
+        self.assertEqual(r_force.returncode, 0)
 
 
 if __name__ == "__main__":

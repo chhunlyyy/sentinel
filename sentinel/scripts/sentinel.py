@@ -1324,17 +1324,47 @@ def cmd_kb_ingest(args):
     require_shared(config_path, config)
     shared_dir = _kb_shared_dir(config_path, config)
     scrubber = _kb_scrubber(config_path)
+    if getattr(args, "no_summarize", False):
+        config = dict(config)
+        kb_override = dict(config.get("knowledge") or {})
+        kb_override["summarize"] = False
+        config["knowledge"] = kb_override
     results = knowledge.ingest(
         shared_dir, str(config_path.parent), config,
         scrubber=scrubber,
         only_repo=args.repo,
         only_branch=args.branch,
+        no_summarize=getattr(args, "no_summarize", False),
     )
     total = sum(c for repo in results.values() for c in repo.values())
     for repo_id, branches in results.items():
         for branch, count in branches.items():
             print(f"{repo_id}@{branch}: {count} change(s)")
     print(f"total: {total} change(s) ingested")
+
+
+def cmd_kb_snapshot(args):
+    import knowledge
+    config_path, config = load_config(args.dir)
+    kc = knowledge.kb_config(config)
+    if not kc["enabled"]:
+        print("knowledge base is disabled (knowledge.enabled = false)")
+        return
+    require_shared(config_path, config)
+    shared_dir = _kb_shared_dir(config_path, config)
+    scrubber = _kb_scrubber(config_path)
+    workspace = str(config_path.parent)
+    repos = config.get("repos", [])
+    if args.repo:
+        repos = [r for r in repos if r.get("id") == args.repo]
+        if not repos:
+            sys.exit(f"repo not found in config: {args.repo}")
+    for repo_cfg in repos:
+        repo_path = (Path(workspace) / repo_cfg["path"]).resolve()
+        if not repo_path.exists():
+            continue
+        knowledge.snapshot_repo(shared_dir, workspace, repo_cfg, config, scrubber=scrubber, force=args.force)
+        print(f"snapshot completed for {repo_cfg['id']}")
 
 
 def cmd_kb_backfill(args):
@@ -1697,6 +1727,11 @@ def main():
     kb_ingest.add_argument("--branch", help="only this branch")
     kb_ingest.add_argument("--no-summarize", action="store_true", help="skip agent summarization (deterministic only)")
     kb_ingest.set_defaults(func=cmd_kb_ingest)
+
+    kb_snapshot = kb_sub.add_parser("snapshot", help="build snapshot summaries from branch tip")
+    kb_snapshot.add_argument("--repo", help="only this repo id")
+    kb_snapshot.add_argument("--force", action="store_true", help="force regeneration even if tree hash unchanged")
+    kb_snapshot.set_defaults(func=cmd_kb_snapshot)
 
     kb_backfill = kb_sub.add_parser("backfill", help="backfill change records from history")
     kb_backfill.add_argument("--since", metavar="YYYY-MM-DD", help="backfill since this date instead of the default window")

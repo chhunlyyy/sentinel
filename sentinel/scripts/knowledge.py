@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -305,12 +306,149 @@ def commit_info(repo_path, sha):
 
 
 # ---------------------------------------------------------------------------
-# Summarize hook (Phase B fills this)
+# Summarizer helper and hooks (Phase B)
 # ---------------------------------------------------------------------------
 
-def summarize_change(repo_path, sha, files, message, diffstat_text):
-    """Return an agent-written summary, or None when summarization is disabled / Phase A."""
-    return None
+def _run_summarizer(config, workspace, prompt, cwd):
+    """Run an agent summarizer using the routed runner.
+
+    Uses routing role knowledge -> coder -> default (claude).
+    Timeout 300s.
+    Returns generated summary text or None on failure/timeout/disabled.
+    Never raises.
+    """
+    kc = kb_config(config or {})
+    if not kc.get("summarize", True):
+        return None
+    if os.environ.get("SENTINEL_KB_NO_AGENT") == "1":
+        return None
+
+    if cwd is None:
+        with tempfile.TemporaryDirectory() as tmp:
+            return _run_summarizer(config, workspace, prompt, tmp)
+
+    try:
+        try:
+            import run_stage
+            import adapters
+        except ImportError:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import run_stage
+            import adapters
+
+        find_route = run_stage.find_route
+        parse_output = run_stage.parse_output
+
+        # Route fallback: knowledge -> coder -> default ("claude")
+        route = find_route(config or {}, "knowledge") or find_route(config or {}, "coder")
+        if not route:
+            routing = (config or {}).get("routing") or {}
+            route = routing.get("knowledge") or routing.get("coder")
+        runner_id = (route or {}).get("runner") or "claude"
+        model = (route or {}).get("model")
+
+        adapter = adapters.get_adapter("cli", config or {}, runner_id=runner_id)
+        tdir = Path(cwd) / "task"
+        tdir.mkdir(parents=True, exist_ok=True)
+        job = adapters.Job(
+            task_id=f"kb-summarize-{int(time.time() * 1000)}",
+            task_dir=str(tdir),
+            workdir=str(cwd),
+            prompt=prompt,
+            model=model,
+        )
+
+        handle = adapter.submit(job)
+        if not adapter.wait(handle, timeout=300):
+            adapter.cancel(handle)
+            adapter.result(handle, timed_out=True)
+            return None
+
+        code, stdout, stderr = adapter.result(handle)
+        if code != 0:
+            return None
+        text, _, _ = parse_output(adapter.runner, stdout)
+        res = text.strip() if text else None
+        return res if res else None
+    except Exception:
+        return None
+
+
+def summarize_change(repo_path, sha, files, message, diffstat_text, config=None, workspace=None, scrubber=None):
+    """Return an agent-written summary of *sha*, or None when summarization is disabled or fails."""
+    kc = kb_config(config or {})
+    if not kc.get("summarize", True) or os.environ.get("SENTINEL_KB_NO_AGENT") == "1":
+        return None
+
+    if is_merge_commit(repo_path, sha):
+        diff_res = _git(repo_path, "diff", f"{sha}^1", sha, check=False)
+    else:
+        diff_res = _git(repo_path, "diff-tree", "-p", sha, check=False)
+    diff = diff_res.stdout if diff_res.returncode == 0 else ""
+
+    # Scrub before truncating, so a secret cut at the limit cannot slip past the patterns
+    if scrubber is not None:
+        diff = scrubber.scrub_text(diff)
+
+    # Truncate diffs sent to the agent to 20k chars
+    if len(diff) > 20000:
+        diff = diff[:20000] + "\n... [diff truncated to 20k characters]"
+
+    safe_files = []
+    for f in files:
+        if scrubber is not None and scrubber.findings(f):
+            continue
+        safe_files.append(f)
+
+    prompt = (
+        "You are a technical documentation assistant summarizing a landed change.\n"
+        "READ-ONLY INTENT: Do not edit, create, or delete any files. Inspect the code only.\n\n"
+        f"Repository path (read-only): {repo_path}\n"
+        f"Commit: {sha}\n"
+        f"Files changed: {', '.join(safe_files[:50])}\n"
+        f"Message:\n{message}\n\n"
+        f"Diffstat:\n{diffstat_text}\n\n"
+        f"Diff:\n{diff}\n\n"
+        "Provide a concise summary explaining: what behavior changed, why, and any potential risks."
+    )
+    if scrubber is not None:
+        prompt = scrubber.scrub_text(prompt)
+
+    with tempfile.TemporaryDirectory() as tmp_cwd:
+        return _run_summarizer(config, workspace, prompt, tmp_cwd)
+
+
+def summarize_module(repo_path, module_path, files, config=None, workspace=None, scrubber=None, tip=None):
+    """Return an agent-written summary of a module or repo, or None when summarization is disabled or fails."""
+    kc = kb_config(config or {})
+    if not kc.get("summarize", True) or os.environ.get("SENTINEL_KB_NO_AGENT") == "1":
+        return None
+
+    safe_files = []
+    for f in files:
+        path = f["path"] if isinstance(f, dict) else str(f)
+        if scrubber is not None and scrubber.findings(path):
+            continue
+        safe_files.append(path)
+
+    label = f"module `{module_path}`" if module_path else "repository"
+    prompt = (
+        f"You are a technical documentation assistant summarizing the {label}.\n"
+        "READ-ONLY INTENT: Do not edit, create, or delete any files. Inspect the code only.\n\n"
+        f"Repository path (read-only): {repo_path}\n"
+        f"Target: {module_path or '(root)'}\n"
+        f"Files ({len(safe_files)} total):\n" +
+        "\n".join(f"- {p}" for p in safe_files[:60]) +
+        ("\n... [additional files omitted]" if len(safe_files) > 60 else "") +
+        "\n\nProvide a concise summary (2-4 paragraphs) explaining the responsibility of this component, "
+        "key files or entry points, and architectural patterns."
+    )
+    if scrubber is not None:
+        prompt = scrubber.scrub_text(prompt)
+
+    with tempfile.TemporaryDirectory() as tmp_cwd:
+        return _run_summarizer(config, workspace, prompt, tmp_cwd)
 
 
 # ---------------------------------------------------------------------------
@@ -404,7 +542,8 @@ def mark_dropped(shared_dir, repo_id, branch, tracked_branches, repo_path):
 # Upsert a record
 # ---------------------------------------------------------------------------
 
-def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubber=None, index=None):
+def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubber=None, index=None,
+                  config=None, workspace=None):
     """Create or update a change record.
 
     *info* is a dict from ``commit_info``.  When the record already exists and the branch
@@ -486,7 +625,8 @@ def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubb
     if ds:
         body_parts.append(f"\n```\n{ds}\n```\n")
     # Summarize hook
-    summary = summarize_change(repo_path, sha, files, info["message"], ds)
+    summary = summarize_change(repo_path, sha, files, info["message"], ds,
+                               config=config, workspace=workspace, scrubber=scrubber)
     if summary:
         body_parts.append(f"\n## Summary\n{summary}\n")
     body = "\n".join(body_parts)
@@ -586,7 +726,7 @@ def repo_branches(repo_cfg, repo_path):
 # ---------------------------------------------------------------------------
 
 def ingest_branch(shared_dir, repo_id, repo_path, branch, config, scrubber=None,
-                  tracked_branches=None):
+                  tracked_branches=None, workspace=None):
     """Walk the first-parent chain of *branch* and upsert change records.
 
     Returns the number of changes processed.
@@ -667,7 +807,8 @@ def ingest_branch(shared_dir, repo_id, repo_path, branch, config, scrubber=None,
 
         if not is_promotion:
             key = change_key(repo_path, sha, message)
-            upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubber=scrubber, index=index)
+            upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path,
+                          scrubber=scrubber, index=index, config=config, workspace=workspace)
             if key in index:
                 for s in index[key].get("shas", []):
                     if key not in sha_to_keys.setdefault(s, []):
@@ -686,12 +827,18 @@ def ingest_branch(shared_dir, repo_id, repo_path, branch, config, scrubber=None,
 # Ingest all repos
 # ---------------------------------------------------------------------------
 
-def ingest(shared_dir, workspace, config, scrubber=None, only_repo=None, only_branch=None):
+def ingest(shared_dir, workspace, config, scrubber=None, only_repo=None, only_branch=None,
+           no_summarize=False):
     """Run ingest for all configured repos (or a subset).
 
     Returns ``{repo_id: {branch: count}}``.
     """
     ensure_layout(shared_dir)
+    if no_summarize:
+        config = dict(config)
+        kc = dict(config.get("knowledge") or {})
+        kc["summarize"] = False
+        config["knowledge"] = kc
     results = {}
     for repo_cfg in config.get("repos", []):
         repo_id = repo_cfg["id"]
@@ -708,6 +855,7 @@ def ingest(shared_dir, workspace, config, scrubber=None, only_repo=None, only_br
             count = ingest_branch(
                 shared_dir, repo_id, repo_path, branch, config,
                 scrubber=scrubber, tracked_branches=branches,
+                workspace=workspace,
             )
             repo_results[branch] = count
         results[repo_id] = repo_results
@@ -776,3 +924,252 @@ def status(shared_dir, config):
         "records": {"total": total, "active": active, "dropped": dropped},
         "by_repo": repos,
     }
+
+
+# ---------------------------------------------------------------------------
+# Module discovery and snapshot summaries (Phase B)
+# ---------------------------------------------------------------------------
+
+COMMON_SOURCE_ROOTS = {"src", "app", "lib", "packages"}
+
+ENTRY_POINT_NAMES = {
+    "main.py", "app.py", "cli.py", "server.py", "run.py", "index.js", "index.ts",
+    "main.go", "main.rs", "Main.java", "Application.java", "manage.py",
+    "Dockerfile", "setup.py", "pyproject.toml", "package.json", "Makefile",
+    "CMakeLists.txt", "pom.xml", "build.gradle",
+}
+
+
+def _git_tree_entries(repo_path, tip, subpath=None):
+    """Return list of (mode, type, sha, name) for a tree ref."""
+    ref = f"{tip}:{subpath}" if subpath else tip
+    res = _git(repo_path, "ls-tree", ref, check=False)
+    if res.returncode != 0 or not res.stdout.strip():
+        return []
+    entries = []
+    for line in res.stdout.strip().split("\n"):
+        if not line.strip() or "\t" not in line:
+            continue
+        meta_part, name = line.split("\t", 1)
+        tokens = meta_part.split()
+        if len(tokens) >= 3:
+            entries.append((tokens[0], tokens[1], tokens[2], name))
+    return entries
+
+
+def _git_subdirs(repo_path, tip, subpath=None):
+    """Return list of subdirectory names under *subpath* at *tip*."""
+    entries = _git_tree_entries(repo_path, tip, subpath)
+    return [e[3] for e in entries if e[1] == "tree"]
+
+
+def find_modules_at_tip(repo_path, tip):
+    """Discover module paths at *tip* of *repo_path*.
+
+    Modules are top-level directories in the repository. For common source roots
+    ('src', 'app', 'lib', 'packages', and common nested roots like 'src/main/java'),
+    the module boundary walks down the single-child directory chain until reaching
+    the first directory level below the root that has more than one child (or reaches
+    a leaf directory), and uses those children as modules.
+    """
+    top_dirs = [d for d in _git_subdirs(repo_path, tip) if not d.startswith(".")]
+    modules = []
+    for d in sorted(top_dirs):
+        if d in COMMON_SOURCE_ROOTS:
+            curr = d
+            while True:
+                children = _git_subdirs(repo_path, tip, curr)
+                if len(children) > 1:
+                    for child in sorted(children):
+                        modules.append(f"{curr}/{child}")
+                    break
+                elif len(children) == 1:
+                    curr = f"{curr}/{children[0]}"
+                else:
+                    modules.append(curr)
+                    break
+        else:
+            modules.append(d)
+    return sorted(modules)
+
+
+def _git_tree_files(repo_path, tip, subpath=None):
+    """Return list of dicts for blob files: [{'path': str, 'size': int, 'sha': str}]."""
+    cmd = ["ls-tree", "-r", "-l", tip]
+    if subpath:
+        cmd += ["--", subpath]
+    res = _git(repo_path, *cmd, check=False)
+    if res.returncode != 0 or not res.stdout.strip():
+        return []
+    files = []
+    for line in res.stdout.strip().split("\n"):
+        if not line.strip() or "\t" not in line:
+            continue
+        meta_part, path = line.split("\t", 1)
+        tokens = meta_part.split()
+        if len(tokens) >= 4 and tokens[1] == "blob":
+            size = int(tokens[3]) if tokens[3].isdigit() else 0
+            files.append({"path": path, "size": size, "sha": tokens[2]})
+    return files
+
+
+def _render_deterministic_body(files, label, modules=None):
+    """Build markdown overview of files: count, languages, entry points, test dirs, largest files."""
+    file_count = len(files)
+    ext_counts = {}
+    entry_points = []
+    test_dirs = set()
+
+    for f in files:
+        p = Path(f["path"])
+        ext = p.suffix.lower() if p.suffix else "(no extension)"
+        ext_counts[ext] = ext_counts.get(ext, 0) + 1
+
+        name = p.name
+        stem = p.stem.lower()
+        if (name in ENTRY_POINT_NAMES or
+            (len(p.parts) > 1 and p.parts[0] in ("bin", "cmd")) or
+            stem in ("main", "app", "cli", "server", "index", "run")):
+            entry_points.append(f["path"])
+
+        parts = p.parts
+        for i, part in enumerate(parts[:-1]):
+            if any(term in part.lower() for term in ("test", "spec")):
+                test_dirs.add("/".join(parts[:i + 1]))
+
+    sorted_exts = sorted(ext_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    ext_str = ", ".join(f"{ext}: {cnt}" for ext, cnt in sorted_exts[:10]) if sorted_exts else "none"
+    entry_str = ", ".join(f"`{ep}`" for ep in sorted(set(entry_points))[:10]) if entry_points else "none"
+    test_str = ", ".join(f"`{td}`" for td in sorted(test_dirs)) if test_dirs else "none"
+
+    largest = sorted(files, key=lambda f: f["size"], reverse=True)[:5]
+    largest_lines = "\n".join(f"- `{f['path']}` ({f['size']} bytes)" for f in largest) if largest else "- none"
+
+    lines = [
+        "\n## Overview\n",
+        f"- **Files**: {file_count}",
+        f"- **Languages**: {ext_str}",
+        f"- **Entry points**: {entry_str}",
+        f"- **Test directories**: {test_str}",
+    ]
+    if modules:
+        mod_str = ", ".join(f"`{m}`" for m in sorted(modules))
+        lines.append(f"- **Modules**: {mod_str}")
+
+    lines.append(f"\n### Largest files\n{largest_lines}\n")
+    return "\n".join(lines)
+
+
+def snapshot_repo(shared_dir, workspace, repo_cfg, config, scrubber=None, force=False):
+    """Build knowledge/repos/<repo>/summary.md and modules/<module-path>.md from summary branch tip."""
+    repo_id = repo_cfg["id"]
+    repo_path = (Path(workspace) / repo_cfg["path"]).resolve()
+    if not repo_path.exists():
+        return {}
+
+    branches = repo_branches(repo_cfg, repo_path)
+    summary_branch = branches[0] if branches else resolve_default_branch(repo_path)
+    tip = resolve_branch_tip(repo_path, summary_branch)
+    if not tip:
+        return {}
+
+    root_tree_res = _git(repo_path, "rev-parse", f"{tip}^{{tree}}", check=False)
+    if root_tree_res.returncode != 0:
+        return {}
+    root_tree = root_tree_res.stdout.strip()
+
+    repo_kb_dir = Path(shared_dir) / KB_DIR / "repos" / repo_id
+    modules_dir = repo_kb_dir / "modules"
+    repo_kb_dir.mkdir(parents=True, exist_ok=True)
+    modules_dir.mkdir(parents=True, exist_ok=True)
+
+    current_modules = find_modules_at_tip(repo_path, tip)
+    current_module_set = set(current_modules)
+
+    # Delete module files whose directory no longer exists
+    if modules_dir.exists():
+        for existing in list(modules_dir.rglob("*.md")):
+            rel = existing.relative_to(modules_dir)
+            mod_path = str(rel.with_suffix("")).replace("\\", "/")
+            if mod_path not in current_module_set:
+                existing.unlink()
+        for p in sorted(modules_dir.rglob("*"), reverse=True):
+            if p.is_dir() and not any(p.iterdir()):
+                try:
+                    p.rmdir()
+                except OSError:
+                    pass
+
+    # Snapshot each module
+    generated_modules = []
+    for mod_path in current_modules:
+        mod_file = modules_dir / f"{mod_path}.md"
+        tree_res = _git(repo_path, "rev-parse", f"{tip}:{mod_path}", check=False)
+        if tree_res.returncode != 0:
+            continue
+        mod_tree = tree_res.stdout.strip()
+
+        if mod_file.exists() and not force:
+            meta, _ = parse_record(mod_file.read_text())
+            if meta.get("source_tree") == mod_tree:
+                # Unchanged module skipped
+                continue
+
+        files = _git_tree_files(repo_path, tip, subpath=mod_path)
+        body = _render_deterministic_body(files, mod_path)
+        meta = {
+            "module": mod_path,
+            "repo": repo_id,
+            "branch": summary_branch,
+            "tip": tip,
+            "source_tree": mod_tree,
+        }
+        summary = summarize_module(repo_path, mod_path, files, config=config,
+                                   workspace=workspace, scrubber=scrubber, tip=tip)
+        if summary:
+            body += f"\n\n## Summary\n{summary}\n"
+
+        write_record(mod_file, meta, body, scrubber=scrubber)
+        generated_modules.append(mod_path)
+
+    # Snapshot summary.md
+    summary_file = repo_kb_dir / "summary.md"
+    regenerate_summary = True
+    if summary_file.exists() and not force:
+        meta, _ = parse_record(summary_file.read_text())
+        if meta.get("source_tree") == root_tree:
+            regenerate_summary = False
+
+    if regenerate_summary:
+        all_files = _git_tree_files(repo_path, tip)
+        body = _render_deterministic_body(all_files, repo_id, modules=current_modules)
+        meta = {
+            "repo": repo_id,
+            "branch": summary_branch,
+            "tip": tip,
+            "source_tree": root_tree,
+        }
+        summary = summarize_module(repo_path, "", all_files, config=config,
+                                   workspace=workspace, scrubber=scrubber, tip=tip)
+        if summary:
+            body += f"\n\n## Summary\n{summary}\n"
+
+        write_record(summary_file, meta, body, scrubber=scrubber)
+
+    return {
+        "repo": repo_id,
+        "branch": summary_branch,
+        "tip": tip,
+        "modules": current_modules,
+        "generated": generated_modules,
+    }
+
+
+def refresh_summaries(shared_dir, workspace, config, scrubber=None):
+    """Snapshot every configured repo (non-forced)."""
+    results = {}
+    for repo_cfg in (config.get("repos") or []):
+        res = snapshot_repo(shared_dir, workspace, repo_cfg, config, scrubber=scrubber, force=False)
+        if res:
+            results[repo_cfg["id"]] = res
+    return results
