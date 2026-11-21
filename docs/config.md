@@ -301,7 +301,7 @@ knowledge:
   backfill_months: 3            # default 3; history window in months for initial backfill
   max_changes_per_ingest: 200   # default 200; cap on changes processed per ingest run
   summarize: true               # default true; false produces deterministic records without agent calls
-  budget_usd: null              # default null; optional dollar cap for backfill summarization
+  max_summaries: 300            # default 300; agent calls per command or worker job
 ```
 
 - `enabled`: when `false`, background harvest after runs and catch-up ingest are skipped.
@@ -309,7 +309,7 @@ knowledge:
 - `backfill_months`: default history window used by `sentinel kb backfill` and initial branch ingest.
 - `max_changes_per_ingest`: safety cap per invocation. The cursor advances commit-by-commit, keeping ingest resumable.
 - `summarize`: when `false`, change records and snapshots use deterministic git metadata only (no agent calls).
-- `budget_usd`: optional cost limit for backfill summarization. When reached, summarization halts gracefully.
+- `max_summaries`: the most agent calls one command or one worker job makes for summaries (default 300). After that, records and summaries keep only their deterministic part; `0` turns agent calls off.
 
 Summarization routes through role `knowledge` under `agents` (fallback: `coder`, then default runner; see [agents](#agents)).
 

@@ -383,6 +383,7 @@ def publish_under_lock(workspace, config, scrubber, message):
 # ---- one job
 def process_job(registry, workspace, config, job):
     """One attempt of a harvest or refresh job; raises on failure."""
+    knowledge.reset_summary_budget()
     kind = job.get("kind") or KIND
     slug = job.get("run_slug")
     shared = Shared(workspace, config)

@@ -125,7 +125,7 @@ Options:
 - `--since YYYY-MM-DD`: Backfill commits starting from a specific date instead of the default months window.
 - `--yes`: Proceed with backfill without interactive confirmation.
 
-To protect against unexpected LLM API costs during a large backfill, configure `knowledge.budget_usd`. When the estimated or reported cost reaches the cap, summarization stops and reports the limit reached, leaving remaining records deterministic.
+To bound agent cost during a large backfill, set `knowledge.max_summaries` (default 300 agent calls per command or worker job). Records ingested after the cap keep only their deterministic part. To fill module summaries the cap skipped, run `sentinel kb snapshot --force` later.
 
 ## Module and repository summaries
 

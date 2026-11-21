@@ -787,6 +787,25 @@ class TestPhaseB(unittest.TestCase):
                 self.assertIsNone(summary)
                 mock_adapter.cancel.assert_called_once_with(mock_handle)
 
+    def test_max_summaries_caps_agent_calls(self):
+        mock_adapter = mock.MagicMock()
+        mock_adapter.wait.return_value = True
+        mock_adapter.result.return_value = (1, "", "")
+        cfg = {"knowledge": {"max_summaries": 2}}
+        knowledge.reset_summary_budget()
+        self.addCleanup(knowledge.reset_summary_budget)
+        with mock.patch("adapters.get_adapter", return_value=mock_adapter), \
+                mock.patch.dict(os.environ, {"SENTINEL_KB_NO_AGENT": ""}):
+            for _ in range(4):
+                knowledge._run_summarizer(cfg, str(self.ws), "prompt", None)
+            self.assertEqual(mock_adapter.submit.call_count, 2)
+            knowledge.reset_summary_budget()
+            knowledge._run_summarizer(cfg, str(self.ws), "prompt", None)
+            self.assertEqual(mock_adapter.submit.call_count, 3)
+            knowledge.reset_summary_budget()
+            knowledge._run_summarizer({"knowledge": {"max_summaries": 0}}, str(self.ws), "prompt", None)
+            self.assertEqual(mock_adapter.submit.call_count, 3)
+
     def test_summarizer_disabled_by_config_and_by_env_var(self):
         sha = commit_file(self.repo, "mod_a/a.py", "x = 1\n", "init a")
 

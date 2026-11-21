@@ -203,8 +203,8 @@
         "summarize": {
           "type": "boolean"
         },
-        "budget_usd": {
-          "type": "number",
+        "max_summaries": {
+          "type": "integer",
           "minimum": 0
         }
       }

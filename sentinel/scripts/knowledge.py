@@ -24,8 +24,17 @@ DEFAULTS = {
     "backfill_months": 3,
     "max_changes_per_ingest": 200,
     "summarize": True,
-    "budget_usd": None,
+    "max_summaries": 300,
 }
+
+# Agent calls made by this process; capped by knowledge.max_summaries (reset per worker job).
+_summary_calls = 0
+
+
+def reset_summary_budget():
+    global _summary_calls
+    _summary_calls = 0
+
 
 # ---------------------------------------------------------------------------
 # PR-key detection patterns
@@ -322,6 +331,9 @@ def _run_summarizer(config, workspace, prompt, cwd):
         return None
     if os.environ.get("SENTINEL_KB_NO_AGENT") == "1":
         return None
+    global _summary_calls
+    if _summary_calls >= kc["max_summaries"]:
+        return None
 
     if cwd is None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -359,6 +371,7 @@ def _run_summarizer(config, workspace, prompt, cwd):
             model=model,
         )
 
+        _summary_calls += 1
         handle = adapter.submit(job)
         if not adapter.wait(handle, timeout=300):
             adapter.cancel(handle)
