@@ -330,6 +330,19 @@ class RuntimeOps:
         brief = tdir / "brief.md"
         if brief.is_file():
             parts.append("## Brief\n\n" + brief.read_text(encoding="utf-8"))
+        try:
+            import kb_context
+            kb_text = kb_context.render_project_knowledge(
+                workspace=self.workspace,
+                config=cfg,
+                repos=sealed.get("repos") or [],
+                write_scope=sealed.get("permissions", {}).get("write") or [],
+                shared_dir=self.state_dir / "shared",
+            )
+            if kb_text:
+                parts.append(kb_text)
+        except Exception:
+            pass
         text = "\n\n".join(p.strip() for p in parts) + "\n"
         (tdir / "prompt.md").write_text(text, encoding="utf-8")
         return text

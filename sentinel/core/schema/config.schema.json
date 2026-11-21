@@ -164,7 +164,48 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "knowledge": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "branches": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              }
+            }
           }
+        }
+      }
+    },
+    "knowledge": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "auto_push": {
+          "type": "boolean"
+        },
+        "backfill_months": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_changes_per_ingest": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "summarize": {
+          "type": "boolean"
+        },
+        "max_summaries": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },

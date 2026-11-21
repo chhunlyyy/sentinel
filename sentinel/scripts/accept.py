@@ -6,6 +6,7 @@ reproducible. Source: plan/v1.1/phaseE/README.md points 14 to 16.
 """
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import machines
@@ -251,7 +252,16 @@ class AcceptOps:
         self.write_view(slug)
         self.write_report(slug)
         self._release(slug, self._get_v2(slug))
+        self._queue_knowledge(slug)
         return self._get_v2(slug)
+
+    def _queue_knowledge(self, slug):
+        """Queue the knowledge harvest of a completed run and start the worker; whatever goes wrong here is logged, never raised."""
+        try:
+            import kb_worker
+            kb_worker.on_run_completed(self.reg, self.workspace, self._run_config(self._get_v2(slug)), slug)
+        except Exception as e:  # noqa: BLE001 - completing a run must never fail because of knowledge
+            print(f"knowledge harvest not queued for {slug}: {e}", file=sys.stderr)
 
     # ---- trace
     def trace_summary(self, slug):

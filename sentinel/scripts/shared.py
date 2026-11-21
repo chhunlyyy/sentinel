@@ -54,8 +54,10 @@ def git(directory, *args, check=True):
 
 class Shared:
     def __init__(self, workspace, config):
-        state = config.get("state") or {}
-        self.dir = Path(workspace) / state.get("dir", ".sentinel") / "shared"
+        self.workspace = Path(workspace)
+        self.config = config or {}
+        state = self.config.get("state") or {}
+        self.dir = self.workspace / state.get("dir", ".sentinel") / "shared"
         self.url = state.get("shared_repo") or ""
         self.ref = state.get("shared_ref") or "main"
         self.local = state.get("shared_mode") == "local"
@@ -90,9 +92,11 @@ class Shared:
     def has_remote(self):
         return self.is_clone() and bool(git(self.dir, "remote", check=False).stdout.strip())
 
-    def pull(self):
+    def pull(self, refresh=True):
         if self.local:
             self.init_local()
+            if refresh:
+                self.refresh_knowledge()
             return
         if not self.url:
             sys.exit("state.shared_repo is empty; set it in sentinel.config.yaml")
@@ -113,6 +117,8 @@ class Shared:
             git(self.dir, "fetch", "--tags", "origin")
         if git(self.dir, "rev-parse", "--verify", "HEAD", check=False).returncode != 0:
             self.scaffold()
+            if refresh:
+                self.refresh_knowledge()
             return
         git(self.dir, "checkout", self.ref)
         is_branch = git(self.dir, "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{self.ref}", check=False).returncode == 0
@@ -120,6 +126,16 @@ class Shared:
             git(self.dir, "merge", "--ff-only", f"origin/{self.ref}")
         head = git(self.dir, "rev-parse", "--short", "HEAD").stdout.strip()
         print(f"shared repo at {self.ref} ({head})")
+        if refresh:
+            self.refresh_knowledge()
+
+    def refresh_knowledge(self):
+        """Queue a knowledge refresh after a pull. Never fails the pull."""
+        try:
+            import kb_worker
+            kb_worker.on_pull(self.workspace, self.config)
+        except Exception as e:  # noqa: BLE001
+            print(f"knowledge refresh not queued: {e}", file=sys.stderr)
 
     def write_ci(self):
         target = self.dir / ".github" / "workflows" / "sentinel-shared.yml"

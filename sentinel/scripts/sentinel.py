@@ -1302,6 +1302,163 @@ def cmd_clean(args):
     print(f"removed {len(removed)} item(s)")
 
 
+def _kb_shared_dir(config_path, config):
+    """Return the shared dir path used by knowledge commands."""
+    from shared import Shared
+    return str(Shared(config_path.parent, config).dir)
+
+
+def _kb_scrubber(config_path):
+    import scrub
+    workspace = config_path.parent
+    return scrub.Scrubber(workspace, scrub.env_values(workspace))
+
+
+def cmd_kb_ingest(args):
+    import knowledge
+    config_path, config = load_config(args.dir)
+    kc = knowledge.kb_config(config)
+    if not kc["enabled"]:
+        print("knowledge base is disabled (knowledge.enabled = false)")
+        return
+    require_shared(config_path, config)
+    shared_dir = _kb_shared_dir(config_path, config)
+    scrubber = _kb_scrubber(config_path)
+    if getattr(args, "no_summarize", False):
+        config = dict(config)
+        kb_override = dict(config.get("knowledge") or {})
+        kb_override["summarize"] = False
+        config["knowledge"] = kb_override
+    results = knowledge.ingest(
+        shared_dir, str(config_path.parent), config,
+        scrubber=scrubber,
+        only_repo=args.repo,
+        only_branch=args.branch,
+        no_summarize=getattr(args, "no_summarize", False),
+    )
+    total = sum(c for repo in results.values() for c in repo.values())
+    for repo_id, branches in results.items():
+        for branch, count in branches.items():
+            print(f"{repo_id}@{branch}: {count} change(s)")
+    print(f"total: {total} change(s) ingested")
+    if getattr(args, "publish", False):
+        import kb_worker
+        msg = f"sentinel: knowledge ingest for {args.repo}" if args.repo else "sentinel: knowledge ingest"
+        outcome = kb_worker.publish_under_lock(config_path.parent, config, scrubber, msg)
+        print(f"published: {outcome}")
+
+
+def cmd_kb_snapshot(args):
+    import knowledge
+    config_path, config = load_config(args.dir)
+    kc = knowledge.kb_config(config)
+    if not kc["enabled"]:
+        print("knowledge base is disabled (knowledge.enabled = false)")
+        return
+    require_shared(config_path, config)
+    shared_dir = _kb_shared_dir(config_path, config)
+    scrubber = _kb_scrubber(config_path)
+    workspace = str(config_path.parent)
+    repos = config.get("repos", [])
+    if args.repo:
+        repos = [r for r in repos if r.get("id") == args.repo]
+        if not repos:
+            sys.exit(f"repo not found in config: {args.repo}")
+    for repo_cfg in repos:
+        repo_path = (Path(workspace) / repo_cfg["path"]).resolve()
+        if not repo_path.exists():
+            continue
+        knowledge.snapshot_repo(shared_dir, workspace, repo_cfg, config, scrubber=scrubber, force=args.force)
+        print(f"snapshot completed for {repo_cfg['id']}")
+
+
+def cmd_kb_backfill(args):
+    import knowledge
+    config_path, config = load_config(args.dir)
+    kc = knowledge.kb_config(config)
+    if not kc["enabled"]:
+        print("knowledge base is disabled (knowledge.enabled = false)")
+        return
+    require_shared(config_path, config)
+    shared_dir = _kb_shared_dir(config_path, config)
+    estimate = knowledge.estimate_backfill(shared_dir, str(config_path.parent), config, since=args.since)
+    total_est = sum(c for repo in estimate.values() for c in repo.values())
+    print(f"estimated changes to backfill: {total_est}")
+    for repo_id, branches in estimate.items():
+        for branch, count in branches.items():
+            print(f"  {repo_id}@{branch}: {count}")
+    if not args.yes:
+        try:
+            answer = input("proceed? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\naborted")
+            return
+        if answer not in ("y", "yes"):
+            print("aborted")
+            return
+    # Clear cursors so ingest starts from backfill_months (or --since)
+    if args.since:
+        # Override backfill window via config override
+        config = dict(config)
+        # We compute the months difference roughly
+        from datetime import datetime as _dt
+        try:
+            since_date = _dt.strptime(args.since, "%Y-%m-%d")
+        except ValueError:
+            sys.exit(f"invalid date: {args.since}; use YYYY-MM-DD")
+        diff_days = (_dt.now() - since_date).days
+        kb_override = dict(config.get("knowledge") or {})
+        kb_override["backfill_months"] = max(1, diff_days // 30 + 1)
+        config["knowledge"] = kb_override
+    scrubber = _kb_scrubber(config_path)
+    results = knowledge.ingest(
+        shared_dir, str(config_path.parent), config,
+        scrubber=scrubber,
+    )
+    total = sum(c for repo in results.values() for c in repo.values())
+    print(f"backfilled {total} change(s)")
+
+
+def cmd_kb_status(args):
+    import knowledge
+    config_path, config = load_config(args.dir)
+    kc = knowledge.kb_config(config)
+    if not kc["enabled"]:
+        print("knowledge base is disabled")
+        return
+    require_shared(config_path, config)
+    shared_dir = _kb_shared_dir(config_path, config)
+    knowledge.ensure_layout(shared_dir)
+    info = knowledge.status(shared_dir, config)
+    import kb_worker
+    info["jobs"] = kb_worker.job_summary_from_db(state_dir_of(config_path, config) / "sentinel.db")
+    if args.json:
+        print(json.dumps(info, indent=2))
+    else:
+        print(f"records: {info['records']['total']} total, {info['records']['active']} active, {info['records']['dropped']} dropped")
+        for repo, count in info.get("by_repo", {}).items():
+            print(f"  {repo}: {count}")
+        for ck, cur in info.get("cursors", {}).items():
+            sha = cur.get("sha", "?")[:8] if isinstance(cur, dict) else str(cur)[:8]
+            print(f"cursor {ck}: {sha}")
+        jobs = info["jobs"]
+        if jobs:
+            print(f"jobs: {jobs['queued']} queued")
+            for label in ("last_success", "last_failure"):
+                if jobs[label]:
+                    print(f"  {label.replace('_', ' ')}: {jobs[label]['run']} at {jobs[label]['at']}" + (f" ({jobs[label]['error']})" if jobs[label]["error"] else ""))
+
+
+def cmd_kb_worker(args):
+    import kb_worker
+    config_path, config = load_config(args.dir)
+    if not kb_worker.knowledge_enabled(config):
+        return
+    handled = kb_worker.run_worker(config_path.parent)
+    if handled is not None:
+        print(f"knowledge worker handled {handled} job(s)")
+
+
 PASSTHROUGH = {
     "release-check": {"script": "release_check.py", "config": True, "workspace": True},
     "qa-data": {"script": "qa_data.py", "config": True},
@@ -1565,6 +1722,34 @@ def main():
     backup_cmd.add_argument("--force", action="store_true", help="keep a copy whose audit chain is broken (recorded as chain_ok false)")
     backup_cmd.add_argument("--yes", action="store_true", help="accepted and ignored: restore always asks for the typed hash prefix")
     backup_cmd.set_defaults(func=cmd_backup, parser=backup_cmd)
+
+    # -- kb (knowledge base) -------------------------------------------------
+    kb = sub.add_parser("kb", help="knowledge base: ingest, backfill, status")
+    kb_sub = kb.add_subparsers(dest="kb_cmd", required=True)
+
+    kb_ingest = kb_sub.add_parser("ingest", help="ingest changes from tracked branches into the knowledge base")
+    kb_ingest.add_argument("--repo", help="only this repo id")
+    kb_ingest.add_argument("--branch", help="only this branch")
+    kb_ingest.add_argument("--no-summarize", action="store_true", help="skip agent summarization (deterministic only)")
+    kb_ingest.add_argument("--publish", action="store_true", help="publish changes under the knowledge lock after ingest")
+    kb_ingest.set_defaults(func=cmd_kb_ingest)
+
+    kb_snapshot = kb_sub.add_parser("snapshot", help="build snapshot summaries from branch tip")
+    kb_snapshot.add_argument("--repo", help="only this repo id")
+    kb_snapshot.add_argument("--force", action="store_true", help="force regeneration even if tree hash unchanged")
+    kb_snapshot.set_defaults(func=cmd_kb_snapshot)
+
+    kb_backfill = kb_sub.add_parser("backfill", help="backfill change records from history")
+    kb_backfill.add_argument("--since", metavar="YYYY-MM-DD", help="backfill since this date instead of the default window")
+    kb_backfill.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    kb_backfill.set_defaults(func=cmd_kb_backfill)
+
+    kb_status_parser = kb_sub.add_parser("status", help="show knowledge base status")
+    kb_status_parser.add_argument("--json", action="store_true")
+    kb_status_parser.set_defaults(func=cmd_kb_status)
+
+    kb_worker_parser = kb_sub.add_parser("worker", help="internal: process queued knowledge jobs")
+    kb_worker_parser.set_defaults(func=cmd_kb_worker)
 
     add_passthrough_commands(sub)
 

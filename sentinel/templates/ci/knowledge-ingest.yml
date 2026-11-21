@@ -1,0 +1,80 @@
+# Sentinel Knowledge Base Ingest workflow
+# Ingests changes from tracked branches into the shared team knowledge base.
+#
+# Note: Gitea Actions accepts this same file format.
+#
+# Configuration:
+# - Tracked branches: List your project repository's tracked branches under `push.branches`
+#   (default: develop and main). Update this list to match `knowledge.branches` in sentinel.config.yaml.
+# - Secrets required:
+#     SENTINEL_SHARED_REPO_URL: git URL of the team's shared repository
+#     SENTINEL_SHARED_TOKEN: access token with read/write permissions to the shared repository
+# - Set REPO_ID, REPO_PROFILE and the branch list below to match this repo's entry in the
+#   workspace's sentinel.config.yaml (the project repo does not contain that file, so this
+#   workflow writes a minimal one-repo config for the run).
+
+name: sentinel-knowledge-ingest
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+
+concurrency:
+  group: sentinel-knowledge-ingest
+  cancel-in-progress: false
+
+env:
+  REPO_ID: backend          # this repo's id in sentinel.config.yaml
+  REPO_PROFILE: generic     # its stack profile
+  TRACKED_BRANCHES: "[develop, main]"   # same as knowledge.branches; first = summary branch
+  SENTINEL_KB_NO_SPAWN: "1"  # no background worker on CI; publishing happens in this job
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: repo
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install sentinel-pipeline
+        run: uv tool install sentinel-pipeline
+
+      - name: Clone shared repo
+        env:
+          SHARED_URL: ${{ secrets.SENTINEL_SHARED_REPO_URL }}
+          SHARED_TOKEN: ${{ secrets.SENTINEL_SHARED_TOKEN }}
+        run: |
+          AUTH_URL=$(echo "$SHARED_URL" | sed -E "s#https://#https://${SHARED_TOKEN}@#")
+          git clone "$AUTH_URL" .sentinel/shared
+          git -C repo fetch origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Write a one-repo Sentinel config
+        env:
+          SHARED_URL: ${{ secrets.SENTINEL_SHARED_REPO_URL }}
+        run: |
+          cat > sentinel.config.yaml <<CONFIG
+          version: 1
+          shape: single
+          repos:
+            - id: ${REPO_ID}
+              path: ./repo
+              role: app
+              profile: ${REPO_PROFILE}
+              knowledge:
+                branches: ${TRACKED_BRANCHES}
+          state:
+            shared_repo: ${SHARED_URL}
+          knowledge:
+            summarize: false
+          CONFIG
+
+      - name: Ingest knowledge and publish
+        run: sentinel kb ingest --repo "$REPO_ID" --no-summarize --publish

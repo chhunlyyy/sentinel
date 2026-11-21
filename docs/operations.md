@@ -14,6 +14,7 @@ Everyday commands for running Sentinel 1.1.0: notifications, statistics, the aud
 | Run needs a human, or is blocked | action or warning, with the reason |
 | A task failed, or a provider is unavailable | warning |
 | A verification check failed | warning |
+| Knowledge harvest failed | warning |
 | Run completed and waiting for acceptance | action: `sentinel accept` |
 | Run accepted, rejected or failed | info or warning |
 
@@ -83,6 +84,31 @@ A backup uses the SQLite backup API, so it is consistent while the server runs, 
 
 `restore` is for a human at a terminal: it replaces the registry, so it asks you to type the first 8 characters of the backup's hash, refuses while a task or a Sentinel server is running, and first saves the current registry as `backups/pre-restore-<time>.db`. A backup is as sensitive as the registry, which holds unscrubbed request text; see [security](security.md#audit-log-and-backups).
 
+## Knowledge base
+
+Commands for inspecting the team [knowledge base](knowledge.md) and background harvesting jobs:
+
+```bash
+sentinel kb status
+sentinel kb status --json
+```
+
+`sentinel kb status` reports tracked branch cursors, record counts (total, active, and dropped), counts by repository, and the state of background harvesting jobs (`queued`, `last_success`, `last_failure`).
+
+### Worker logs and lock
+
+The background harvest worker logs to:
+
+```
+.sentinel/kb-worker.log
+```
+
+The worker acquires a PID lock file at `.sentinel/kb-worker.lock` to ensure only one worker processes harvest jobs per workspace. Dead worker locks are detected and replaced automatically.
+
+### Retrying failed jobs
+
+The worker automatically retries transient errors up to 3 times with backoff (5s, 30s). When a job fails permanently (for example, if `scrub --check` detects a secret) or retries are exhausted, the job state becomes `failed` and triggers a `knowledge.failed` notification. The registry does not provide a separate retry command; after fixing the problem (e.g. updating scrub patterns or credentials), re-run `sentinel kb ingest` with `--publish` to ingest and publish current changes.
+
 ## Release checklist
 
 For the maintainer who cuts a release. The gate never tags, publishes or pushes; those steps stay with you.
@@ -93,9 +119,9 @@ For the maintainer who cuts a release. The gate never tags, publishes or pushes;
 4. Run the gate: `python3 tools/release_gate.py`. It runs the dashboard scripts, the offline wheel install, the selftest, the unit and security suites and the acceptance-criteria check, and writes `release-evidence.json`. `--allow-dirty` runs everything on a dirty tree but can never report "release ready".
 5. The gate prints `release ready` only when every manual item in `tests/release/manual.json` has `status: done` with a date and a machine. Until then it prints `release candidate: N manual checks pending owner` and lists them.
 6. Do the manual checks on a machine that allows user namespaces and with a screen reader: the loopback-only namespace runs (AC-OPS-01i, AC-DSH-06g) and the screen-reader pass. Record each in `tests/release/manual.json` as `status: done`, with the date and the machine.
-7. The wheel to publish is `sentinel_pipeline-1.2.4-py3-none-any.whl` (distribution `sentinel-pipeline`, command `sentinel`), with the sdist. It includes the dashboard UI; a `uv tool install git+https://…` install has the CLI without it (see [installation](installation.md#the-dashboard-ui)).
-8. Tag and push: `git tag v1.2.4 && git push origin v1.2.4`. The tag must equal `v` plus the content of `sentinel/VERSION`. The release workflow (below) then reruns the gate, publishes the wheel and sdist to PyPI and pushes the image `ghcr.io/chhunlyyy/sentinel` with the tags `1.2.4` and `latest`. Nothing in this repository tags or publishes by itself.
-9. Check the result: `uv tool install sentinel-pipeline` in a clean environment prints `sentinel --version` 1.2.4, and the documented `docker run` command in the README shows the dashboard.
+7. The wheel to publish is `sentinel_pipeline-1.3.0-py3-none-any.whl` (distribution `sentinel-pipeline`, command `sentinel`), with the sdist. It includes the dashboard UI; a `uv tool install git+https://…` install has the CLI without it (see [installation](installation.md#the-dashboard-ui)).
+8. Tag and push: `git tag v1.3.0 && git push origin v1.3.0`. The tag must equal `v` plus the content of `sentinel/VERSION`. The release workflow (below) then reruns the gate, publishes the wheel and sdist to PyPI and pushes the image `ghcr.io/chhunlyyy/sentinel` with the tags `1.3.0` and `latest`. Nothing in this repository tags or publishes by itself.
+9. Check the result: `uv tool install sentinel-pipeline` in a clean environment prints `sentinel --version` 1.3.0, and the documented `docker run` command in the README shows the dashboard.
 
 ## Release workflow and repository settings
 

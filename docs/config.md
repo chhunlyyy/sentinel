@@ -29,6 +29,8 @@ repos:
 - `role`: free-form (`app`, `backend`, `frontend`, `mobile`, anything). Generated agents are named `<role>-coder`, `<role>-cleaner`, `<role>-hardener`, `<role>-repro`. The roles `frontend` and `mobile` are treated as client repos by the `no_permanent_frontend_tests` rule.
 - `profile`: `flutter`, `spring-gradle`, `nextjs`, `node`, `python`, or `generic`. A profile supplies default commands, the change-map column rules, and the QA driver. A repo can override any command under `commands` (`build`, `lint`, `typecheck`, `test`, `mutate`). An empty command is skipped.
 - `guidelines`: optional path (relative to the workspace) to a markdown file with extra rules for this repo, for example API conventions. Its text is appended to every stage prompt for that repo under "Project guidelines". A missing file prints a warning.
+- `knowledge`: optional knowledge base settings for this repository.
+  - `branches`: list of tracked branch names (for example `[develop, main]`). When omitted, defaults to the repository's default branch (`origin/HEAD`, else the current local HEAD branch). The first entry is the summary branch: snapshot summaries are built from its tip.
 - `write_scope`: reserved; currently the boundary check treats the whole repo as the stage's scope.
 
 ## qa
@@ -235,7 +237,7 @@ agents:
   reviewer: { runner: claude, model: opus }
 ```
 
-A key is a task role: `specifier`, `test_designer`, `tdd_red`, `qa_red` (reads the `tdd_red` retry cap), `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `docs`, or a repo role such as `backend-coder`. `runner` and `model` resolve exactly like [routing](#routing-a-model-or-provider-per-stage-optional); `max_retries` overrides the retry limit of that role (the TDD roles `tdd_red`, `tdd_green` and `tdd_refactor` read `tdd` instead). Write scope is not set here: read-only roles (`specifier`, `test_designer`, `reviewer`, `qa`, `retrospective`) always get an empty write scope, a coder role gets its repo, and `repos[].write_scope` narrows a repo further. A task that writes outside its scope fails with `E_SCOPE` and parks the run for a human.
+A key is a task role: `specifier`, `test_designer`, `tdd_red`, `qa_red` (reads the `tdd_red` retry cap), `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `docs`, `knowledge` (summarizes knowledge base records and module snapshots), or a repo role such as `backend-coder`. `runner` and `model` resolve exactly like [routing](#routing-a-model-or-provider-per-stage-optional); `max_retries` overrides the retry limit of that role (the TDD roles `tdd_red`, `tdd_green` and `tdd_refactor` read `tdd` instead). Role `knowledge` falls back to the runner configured for `coder`, then to the default runner; summarization can be turned off with `knowledge.summarize: false` or environment variable `SENTINEL_KB_NO_AGENT=1`. Write scope is not set here: read-only roles (`specifier`, `test_designer`, `reviewer`, `qa`, `retrospective`) always get an empty write scope, a coder role gets its repo, and `repos[].write_scope` narrows a repo further. A task that writes outside its scope fails with `E_SCOPE` and parks the run for a human.
 
 ## tdd
 
@@ -287,6 +289,29 @@ All default to `false`. A rule only adds its text to the stage prompts and the r
 | `no_coauthor_trailer` | No Co-Authored-By or AI attribution lines. |
 | `agents_never_run_git` | Agents never commit, push, stash, reset, or switch branches. |
 | `no_permanent_frontend_tests` | Client repos (role `frontend` or `mobile`) keep no permanent test suite. In a version 2 run their behavior groups use QA scenarios as the Red evidence (TDD-09): a `qa_red` task writes the scripts, the engine runs them through `qa.scenario_run`, and the exception is recorded in the cycle, the evidence rows, the events and the report. R12 refuses the run (NEEDS_HUMAN, `E_PRECONDITION`) when the QA driver is not usable: configure `qa.driver`, `qa.scenario_run`, `qa.scenario_report` and `qa.start_commands`, then run `sentinel resolve <slug> --refresh-config -m "..."`, or turn the rule off. The release check fails if test infrastructure is left behind. |
+
+## knowledge
+
+Controls the team knowledge base ([knowledge.md](knowledge.md)) in the shared repo.
+
+```yaml
+knowledge:
+  enabled: true                 # default true; false turns off harvesting and ingest
+  auto_push: true               # default true; automatically push knowledge/ and proposals/knowledge-*
+  backfill_months: 3            # default 3; history window in months for initial backfill
+  max_changes_per_ingest: 200   # default 200; cap on changes processed per ingest run
+  summarize: true               # default true; false produces deterministic records without agent calls
+  max_summaries: 300            # default 300; agent calls per command or worker job
+```
+
+- `enabled`: when `false`, background harvest after runs and catch-up ingest are skipped.
+- `auto_push`: when `true`, the background worker commits and pushes `knowledge/` and `proposals/knowledge-*` after `scrub --check` passes. It never pushes unpushed specifications, invariants, or tests.
+- `backfill_months`: default history window used by `sentinel kb backfill` and initial branch ingest.
+- `max_changes_per_ingest`: safety cap per invocation. The cursor advances commit-by-commit, keeping ingest resumable.
+- `summarize`: when `false`, change records and snapshots use deterministic git metadata only (no agent calls).
+- `max_summaries`: the most agent calls one command or one worker job makes for summaries (default 300). After that, records and summaries keep only their deterministic part; `0` turns agent calls off.
+
+Summarization routes through role `knowledge` under `agents` (fallback: `coder`, then default runner; see [agents](#agents)).
 
 ## limits
 
