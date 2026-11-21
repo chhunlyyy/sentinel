@@ -55,5 +55,6 @@ export function fakeAnswers(): Record<string, unknown> {
     analytics: analyticsSmall(),
     notification_read: { ...fourNotifications()[0], read_at: '2026-11-14T11:30:00.000000Z' },
     factory: db.factory?.['digital-hr'],
+    factory_state: { paused: false, paused_at: null, running_total: 3, max_agents: 4 },
   };
 }

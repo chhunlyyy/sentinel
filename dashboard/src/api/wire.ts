@@ -475,6 +475,13 @@ export interface WFactoryActivity {
   text: string;
 }
 
+export interface WFactoryStatus {
+  paused: boolean;
+  paused_at: string | null;
+  running_total: number;
+  max_agents: number;
+}
+
 export interface WFactory {
   project: string;
   factory_paused: boolean;

@@ -52,7 +52,7 @@ test.describe('keyboard use', () => {
     const outlines: boolean[] = [];
     await open(page, '/overview');
     await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
-    await tabTo(page, /^My Approvals/, 40, outlines);
+    await tabTo(page, /^Approvals/, 40, outlines);
     await page.keyboard.press('Enter');
     // a route change moves focus to the main area and sets the page title (finding: focus and title on navigation)
     await expect(page.getByRole('main')).toBeFocused();
