@@ -124,7 +124,8 @@ function FloorNetwork({ snap, selectedSlug, selectedNodeId, onSelectRun, onSelec
         background: 'var(--floor-canvas-bg)', overflowX: 'auto',
       }}
     >
-      <div style={{ position: 'relative', minWidth: 900, aspectRatio: '1000 / 560' }}>
+      {/* side margins keep the first and last station labels (120px wide) inside the canvas */}
+      <div style={{ position: 'relative', minWidth: 820, margin: '0 56px', aspectRatio: '1000 / 560' }}>
         <EdgeLayer states={states} buildLaneYs={buildLaneYs} />
 
         {stationsToRender.map((s) => {
@@ -173,25 +174,25 @@ function FloorNetwork({ snap, selectedSlug, selectedNodeId, onSelectRun, onSelec
           </div>
         )}
 
-        {/* Legend */}
-        <div className="floor-legend" aria-hidden="true">
-          <span className="floor-legend-item">
-            <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--floor-working-edge)', display: 'inline-block' }} />
-            agent
-          </span>
-          <span className="floor-legend-item">
-            <span style={{ width: 12, height: 12, borderRadius: 3, border: '2px solid var(--floor-text-muted)', display: 'inline-block' }} />
-            engine
-          </span>
-          <span className="floor-legend-item">
-            <span style={{ width: 10, height: 10, transform: 'rotate(45deg)', border: '2px solid var(--floor-waiting-edge)', display: 'inline-block' }} />
-            you decide
-          </span>
-          <span className="floor-legend-item">
-            <span style={{ width: 18, borderTop: '2px dashed var(--floor-feed-active)', display: 'inline-block' }} />
-            knowledge feeding agents
-          </span>
-        </div>
+      </div>
+      {/* Legend: below the canvas, in normal flow, so it never covers a station */}
+      <div className="floor-legend" aria-hidden="true">
+        <span className="floor-legend-item">
+          <span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid var(--floor-working-edge)', display: 'inline-block' }} />
+          agent
+        </span>
+        <span className="floor-legend-item">
+          <span style={{ width: 12, height: 12, borderRadius: 3, border: '2px solid var(--floor-text-muted)', display: 'inline-block' }} />
+          engine
+        </span>
+        <span className="floor-legend-item">
+          <span style={{ width: 10, height: 10, transform: 'rotate(45deg)', border: '2px solid var(--floor-waiting-edge)', display: 'inline-block' }} />
+          you decide
+        </span>
+        <span className="floor-legend-item">
+          <span style={{ width: 18, borderTop: '2px dashed var(--floor-feed-active)', display: 'inline-block' }} />
+          knowledge feeding agents
+        </span>
       </div>
     </section>
   );

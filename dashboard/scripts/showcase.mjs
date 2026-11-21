@@ -43,8 +43,8 @@ const post = (path, body) => fetch(`${base}/__control/${path}`, { method: 'POST'
 await waitUp();
 const browser = await chromium.launch(process.env.SENTINEL_CHROMIUM_PATH ? { executablePath: process.env.SENTINEL_CHROMIUM_PATH } : {});
 
-async function session(scheme) {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: scheme, deviceScaleFactor: 1 });
+async function session(scheme, viewport = { width: 1440, height: 900 }) {
+  const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: 1 });
   // the fake server accepts this session (the real one hands it out at /auth?t=<token>)
   await ctx.addCookies([{ name: 'sentinel_session', value: 'test-session', url: base, httpOnly: true, sameSite: 'Strict' }]);
   return { ctx, page: await ctx.newPage() };
@@ -78,7 +78,18 @@ try {
   await post('reset', { fixture: 'two-projects', presets: ['approvals'] });
   let { ctx, page } = await session('light');
 
-  await show(page, '/');
+  // the factory floor is the landing screen once a project exists; it needs a wide window to show every station
+  for (const scheme of ['light', 'dark']) {
+    const wide = await session(scheme, { width: 1920, height: 1000 });
+    await show(wide.page, '/');
+    await wide.page.locator('svg').first().waitFor({ timeout: 8000 }).catch(() => undefined);
+    await wide.page.waitForTimeout(1200);
+    // crop the empty space right of the content column
+    await wide.page.screenshot({ path: join(out, `dashboard-factory-floor${scheme === 'dark' ? '-dark' : ''}.png`), clip: { x: 0, y: 0, width: 1490, height: 960 } });
+    await wide.ctx.close();
+  }
+
+  await show(page, '/overview');
   await png(page, 'overview');
   await frame(page, 'overview');
 
