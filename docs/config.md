@@ -313,6 +313,22 @@ knowledge:
 
 Summarization routes through role `knowledge` under `agents` (fallback: `coder`, then default runner; see [agents](#agents)).
 
+## factory
+
+Controls who drives a run and how much runs at once (Sentinel 2.0).
+
+```yaml
+factory:
+  driver: engine                # default engine; engine | ai-tool, for runs created at the dashboard
+  max_tasks_per_project: 2      # default 2; agent tasks running at once in this project
+  max_agents: 4                 # default 4; agent tasks running at once over every project of the service
+```
+
+- `driver`: `engine` means the Sentinel service runs the run itself: triage and the decisions file are agent tasks (roles `triage` and `planner`), verification is called in the service, and the AI tool is used for the work only. `ai-tool` keeps the earlier behavior: an AI tool runs the `/sentinel` skill loop around `sentinel next`. A run created with `sentinel run new` is driven by you (`cli`) unless you pass `--driver engine --request "<text>"`. One driver owns a run: `sentinel next` on an engine-driven run answers `wait` with `driven_by: engine`.
+- An engine-driven run starts only when every role it may use routes to a CLI runner: set `agents.<role>.runner` (or `routing`) for `triage`, `planner`, `specifier`, `test_designer`, `tdd_red`, `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `hardener` and `docs`. The native adapter needs an AI tool session and is refused. Otherwise the run is BLOCKED with the roles named; fix the config and run `sentinel resolve <slug> --refresh-config -m "..."`.
+- `max_tasks_per_project` and `max_agents`: the dispatcher starts no further task while either limit is reached; the run waits in the queue the factory view shows. Running tasks are never stopped by a limit.
+- `sentinel pause <slug>` and `sentinel unpause <slug>` stop and resume starting tasks for one run; `sentinel note <slug> "<text>"` adds a note that the next agent task of the run receives in its prompt (section "Note from the owner"), once.
+
 ## limits
 
 ```yaml

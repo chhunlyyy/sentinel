@@ -273,7 +273,7 @@ def cmd_sync_adapters(args):
 
 
 _HUMAN_SUBCOMMANDS = ["approve", "accept", "resolve", "run export", "run import", "dashboard", "notifications read", "backup restore",
-                      "audit export"]
+                      "audit export", "pause", "unpause", "note"]
 HUMAN_ONLY_COMMANDS = (
     [f"Bash(sentinel {c}:*)" for c in _HUMAN_SUBCOMMANDS]
     # the global --dir option in front of the command, as `--dir X` and as `--dir=X` (an abbreviation such as `--di X` cannot be
@@ -392,19 +392,47 @@ def new_v2_run(args, config_path, config):
     unknown = [r for r in only if r not in {c["id"] for c in config["repos"]}]
     if unknown:
         raise SentinelError("E_VALIDATION", f"unknown repo(s): {', '.join(unknown)}")
+    driver, request = getattr(args, "driver", "cli"), (getattr(args, "request", None) or "").strip() or None
+    if driver == "engine" and not request:
+        raise SentinelError("E_VALIDATION", "--driver engine needs --request: the engine's triage agent reads the request text")
     engine = open_registry(config_path, config)
     try:
         if engine.reg.get_run(args.slug):
             sys.exit(f"run {args.slug} already exists; use `sentinel resume {args.slug}`")
         claim_run(config_path, config, args.slug, False)
         try:
-            engine.create_run(args.slug, "orchestrator", type=args.type, baseline=baseline_of(config_path, config, only))
+            engine.create_run(args.slug, "orchestrator", type=args.type, baseline=baseline_of(config_path, config, only),
+                              request=request, driver=driver)
         except BaseException:
             if not engine.reg.get_run(args.slug):  # row not committed: nothing owns the lock
                 from shared import Shared
                 Shared(config_path.parent, config).release(args.slug)
             raise
         print((run_dir(config_path, config, args.slug) / "state.json").read_text())
+    finally:
+        engine.close()
+
+
+def cmd_run_control(args):
+    """pause | unpause | note: a person's factory controls. Refused inside a task process and without a terminal; audited."""
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        slug = check_slug(args.slug)
+        user, _ = human_identity()
+        err = gate_error(args.command)
+        if err:
+            engine.audit(user, "cli", f"{args.command}_refused", slug, reason=err.code)
+            raise err
+        if args.command == "note":
+            engine.add_note(slug, args.text, user=user, channel="cli")
+            print(f"note stored for the next agent task of {slug}")
+        elif args.command == "pause":
+            engine.pause_run(slug, args.comment, user=user, channel="cli")
+            print(f"run {slug} paused: nothing new starts; running tasks finish")
+        else:
+            engine.unpause_run(slug, args.comment, user=user, channel="cli")
+            print(f"run {slug} unpaused")
     finally:
         engine.close()
 
@@ -1582,6 +1610,10 @@ def main():
     new.add_argument("--legacy", action="store_true", help="create a 0.1 run (also implied by --tier and --adhoc)")
     new.add_argument("--type", help="run type for a version 2 run")
     new.add_argument("--repos", help="comma-separated repo ids a version 2 run covers (default: all)")
+    new.add_argument("--driver", choices=["engine", "cli"], default="cli",
+                     help="who drives a version 2 run: cli (you, or an AI tool with the /sentinel skill; default) or engine "
+                          "(the Sentinel service runs it; needs --request and a CLI runner for every role)")
+    new.add_argument("--request", help="the request text of a version 2 run (needed by --driver engine)")
     new.set_defaults(func=cmd_run_new)
     update = run_sub.add_parser("update")
     update.add_argument("slug")
@@ -1705,6 +1737,17 @@ def main():
 
     stop_parser = sub.add_parser("stop", help="stop the running Sentinel service (alias of service stop)")
     stop_parser.set_defaults(func=cmd_stop)
+
+    for name, text in (("pause", "pause a version 2 run: the factory starts nothing more for it, running tasks finish"),
+                       ("unpause", "let a paused version 2 run continue")):
+        ctl = sub.add_parser(name, help=text + " (human, interactive terminal only)")
+        ctl.add_argument("slug")
+        ctl.add_argument("-m", "--comment", help="why")
+        ctl.set_defaults(func=cmd_run_control, command=name)
+    note = sub.add_parser("note", help="send a note to the next agent task of a version 2 run (human, interactive terminal only)")
+    note.add_argument("slug")
+    note.add_argument("text")
+    note.set_defaults(func=cmd_run_control, command="note")
 
     triage = sub.add_parser("triage", help="submit triage factors for a version 2 run; the engine sets the tier")
     triage.add_argument("slug")

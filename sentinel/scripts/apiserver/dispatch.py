@@ -1,5 +1,8 @@
-"""Q2 dispatch: while the server runs, ready CLI tasks of runs created through the API are started with
-`sentinel task run`, the same path as the CLI. Native tasks and every orchestrator step wait for the AI tool.
+"""Q2 dispatch: while the server runs, ready CLI tasks of runs that have a driver (`engine` or `ai-tool`) are started with
+`sentinel task run`, the same path as the CLI. Runs with driver `engine` are driven here: `factory.drive` does the orchestrator
+steps (triage, decisions, verify) with agent tasks and in-process engine calls. For driver `ai-tool` every orchestrator step
+waits for the AI tool. A run with driver `cli` is never touched. A paused run starts nothing; running tasks finish.
+Starts respect `factory.max_tasks_per_project` and `factory.max_agents`.
 The engine's own start checks decide, so a race with an orchestrator has one winner.
 """
 import os
@@ -9,20 +12,30 @@ import threading
 import time
 
 import adapters
+import factory
 import run_stage
 import runtime
+from engine import Engine
+from errors import SentinelError
 from paths import ROOT
 
 SENTINEL = str(ROOT / "scripts" / "sentinel.py")
 FINAL = ("COMPLETED", "FAILED", "CANCELLED")
 MAX_ORCHESTRATOR_LAUNCHES = 3   # per (run, state); after that the run waits for a human
 
-RUNS = ("SELECT slug, state FROM runs WHERE origin = 'dashboard' AND workflow_version = '2' "
+MAX_VERIFY_FAILURES = 3        # per (run, state); after that the run waits for a human
+
+RUNS = ("SELECT slug, state FROM runs WHERE driver = 'ai-tool' AND paused = 0 AND workflow_version = '2' "
         "AND state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY created_at, id")
 
-CANDIDATES = ("SELECT t.id FROM tasks t JOIN runs r ON r.id = t.run_id WHERE r.origin = 'dashboard' "
-              "AND r.workflow_version = '2' AND r.state NOT IN ('COMPLETED','FAILED','CANCELLED') "
+ENGINE_RUNS = ("SELECT slug FROM runs WHERE driver = 'engine' AND paused = 0 AND workflow_version = '2' "
+               "AND state NOT IN ('COMPLETED','FAILED','CANCELLED') ORDER BY created_at, id")
+
+CANDIDATES = ("SELECT t.id FROM tasks t JOIN runs r ON r.id = t.run_id WHERE r.driver IN ('engine', 'ai-tool') "
+              "AND r.paused = 0 AND r.workflow_version = '2' AND r.state NOT IN ('COMPLETED','FAILED','CANCELLED') "
               "AND t.state = 'QUEUED' AND t.adapter = 'cli' ORDER BY t.created_at, t.id")
+
+RUNNING = "SELECT id FROM tasks WHERE state = 'RUNNING'"
 
 
 def _wait_quietly(proc):
@@ -44,6 +57,10 @@ class Dispatcher:
         self.backoff = max(interval * 5, 1.0)
         self.log = log or (lambda msg: None)
         self.children = {}   # task id -> Popen
+        self.child_project = {}   # task id -> project id
+        self.workers = {}    # (project id, slug) -> Thread running an in-process verification
+        self.verify_failures = {}   # (project id, slug, state) -> count
+        self.verify_last = {}       # (project id, slug) -> time of the last verification start
         self.last = {}       # task id -> time of the last start
         self._stop = threading.Event()
         self._thread = None
@@ -81,15 +98,117 @@ class Dispatcher:
         with self._once:
             for tid in [t for t, p in self.children.items() if p.poll() is not None]:
                 self.children.pop(tid)
-            for project in self.projects.list():
-                if self.projects.probe(project)[0] != "available":
-                    continue
+                self.child_project.pop(tid, None)
+            available = [p for p in self.projects.list() if self.projects.probe(p)[0] == "available"]
+            load = {p.id: self._running(p) for p in available}
+            total = sum(len(v) for v in load.values())
+            for project in available:
+                limits = self._limits(project)
                 for tid in self._candidates(project):
+                    if len(load[project.id]) >= limits["max_tasks_per_project"] or total >= limits["max_agents"]:
+                        break
                     proc = self._spawn(project, tid)
                     if proc:
                         started.append(proc)
+                        load[project.id].add(tid)
+                        total += 1
                 started.extend(self._orchestrate(project))
+                self._drive_engine_runs(project)
         return started
+
+    def wait_workers(self, timeout=30):
+        """Wait for the in-process verification threads (tests, shutdown)."""
+        end = time.time() + timeout
+        for thread in list(self.workers.values()):
+            thread.join(max(0.0, end - time.time()))
+
+    # ---- limits
+    def _limits(self, project):
+        try:
+            return factory.factory_config(self.projects.require(project))
+        except Exception:
+            return factory.factory_config({})
+
+    def _running(self, project):
+        """Ids of the tasks that count against the limits: RUNNING in the registry, plus the ones this dispatcher has
+        just started and the registry does not show as RUNNING yet."""
+        ids = set()
+        try:
+            with self.projects.reader(project) as conn:
+                if conn is not None:
+                    ids = {r[0] for r in conn.execute(RUNNING)}
+        except Exception as e:
+            self.log(f"dispatch: {project.id}: {type(e).__name__}: {e}")
+        ids |= {tid for tid, p in self.children.items() if p.poll() is None and self.child_project.get(tid) == project.id}
+        return ids
+
+    # ---- engine-driven runs
+    def _drive_engine_runs(self, project):
+        """One factory pass for every engine-driven run of the project. Never from a task process."""
+        if os.environ.get(adapters.TASK_ENV):
+            return
+        try:
+            with self.projects.reader(project) as conn:
+                if conn is None:
+                    return
+                slugs = [r[0] for r in conn.execute(ENGINE_RUNS)]
+        except Exception as e:
+            self.log(f"dispatch: {project.id}: {type(e).__name__}: {e}")
+            return
+        if not slugs:
+            return
+        verify = []
+        try:
+            with self.projects.engine(project) as eng:
+                for slug in slugs:
+                    try:
+                        done = factory.drive(eng, slug)
+                    except SentinelError as e:
+                        self.log(f"dispatch: factory {project.id}/{slug}: {e.code}: {e.message}")
+                        continue
+                    if done and done["action"] == "verify":
+                        verify.append(slug)
+        except Exception as e:
+            self.log(f"dispatch: factory {project.id}: {type(e).__name__}: {e}")
+        for slug in verify:
+            self._start_verify(project, slug)
+
+    def _start_verify(self, project, slug):
+        key = (project.id, slug)
+        thread = self.workers.get(key)
+        if (thread and thread.is_alive()) or time.time() - self.verify_last.get(key, 0) < self.backoff:
+            return
+        self.verify_last[key] = time.time()
+        thread = threading.Thread(target=self._verify, args=(project, slug), name=f"sentinel-verify-{slug}", daemon=True)
+        self.workers[key] = thread
+        thread.start()
+
+    def _verify(self, project, slug):
+        """`sentinel verify` in this process. The engine has its own connection (no project lock: a round takes minutes)."""
+        key = (project.id, slug)
+        try:
+            config = self.projects.require(project)
+            eng = Engine(self.projects.state_dir(project, config), project.path, config)
+        except Exception as e:
+            self.log(f"dispatch: verify {project.id}/{slug}: {type(e).__name__}: {e}")
+            return
+        try:
+            state = eng._get(slug)["state"]
+            skey = (project.id, slug, state)
+            try:
+                factory.verify(eng, slug)
+                self.verify_failures.pop(skey, None)
+            except SentinelError as e:
+                if e.code in ("E_LOCKED", "E_PRECONDITION", "E_TRANSITION"):   # a round runs elsewhere, a task is open, or the run moved
+                    return
+                n = self.verify_failures[skey] = self.verify_failures.get(skey, 0) + 1
+                self.log(f"dispatch: verify {project.id}/{slug}: {e.code}: {e.message}")
+                if n >= MAX_VERIFY_FAILURES:
+                    factory._park(eng, slug, f"verification failed {n} times in the factory: {e.code}: {e.message}")
+        except Exception as e:
+            self.log(f"dispatch: verify {project.id}/{slug}: {type(e).__name__}: {e}")
+        finally:
+            eng.close()
 
     # ---- orchestrator auto-drive
     def _orchestrator(self):
@@ -193,4 +312,5 @@ class Dispatcher:
                                 stderr=subprocess.DEVNULL, start_new_session=True,
                                 env=adapters.child_env(config))
         self.children[tid] = proc
+        self.child_project[tid] = project.id
         return proc
