@@ -15,13 +15,16 @@ import yaml
 
 import engine as engine_mod
 import health
+import kb_worker
+import knowledge
 import scopes
+import shared
 from errors import SentinelError
 from paths import ROOT
 
 from . import userdir
 from .projects import CONFIG_NAME
-from .views import validation
+from .views import decode_cursor, encode_cursor, parse_limit, validation
 
 WORKFLOWS = engine_mod.RUN_TYPES
 DIFF_LIMIT = 1024 * 1024
@@ -557,3 +560,106 @@ def changes_diff(eng, project, slug, query):
     hunks = _parse_hunks(out.decode("utf-8", "replace"))
     answer["hunks"] = hunks if mode == "inline" else [_split(h) for h in hunks]
     return answer
+
+
+# ---- Knowledge read routes
+def _kb_shared_path(project, config):
+    return str(shared.Shared(project.path, config).dir)
+
+
+def knowledge_status(projects, project):
+    config = projects.require(project)
+    kc = knowledge.kb_config(config)
+    shared_dir = _kb_shared_path(project, config)
+    if not kc["enabled"]:
+        return {
+            "enabled": False,
+            "records": {"total": 0, "active": 0, "dropped": 0},
+            "cursors": {},
+            "by_repo": {},
+            "jobs": None,
+        }
+    knowledge.ensure_layout(shared_dir)
+    info = knowledge.status(shared_dir, config)
+    db_path = projects.state_dir(project, config) / "sentinel.db"
+    info["jobs"] = kb_worker.job_summary_from_db(db_path) if db_path.is_file() else None
+    return info
+
+
+def knowledge_records(projects, project, query):
+    config = projects.require(project)
+    shared_dir = _kb_shared_path(project, config)
+    knowledge.ensure_layout(shared_dir)
+    index = knowledge.read_index(shared_dir)
+
+    filt = query.get("filter", "all")
+    if filt not in ("all", "verified", "inferred"):
+        raise validation("filter must be all, verified, or inferred", "filter", allowed=["all", "verified", "inferred"])
+
+    q = (query.get("q") or "").strip().lower()
+    limit = parse_limit(query)
+    cursor = query.get("cursor")
+    offset = 0
+    if cursor:
+        decoded = decode_cursor(cursor, 1)
+        if not isinstance(decoded[0], int) or decoded[0] < 0:
+            raise validation("cursor is not valid", "cursor")
+        offset = decoded[0]
+
+    matching = []
+    for key in sorted(index):
+        entry = index[key]
+        if filt != "all" and entry.get("provenance") != filt:
+            continue
+        if q:
+            haystack = f"{key} {entry.get('repo', '')} {' '.join(entry.get('files') or [])}".lower()
+            if q not in haystack:
+                continue
+
+        rec_file = Path(shared_dir) / entry.get("path", "")
+        if rec_file.is_file():
+            try:
+                meta, _ = knowledge.read_record(rec_file)
+            except Exception:
+                meta = dict(entry)
+        else:
+            meta = dict(entry)
+        meta["key"] = key
+        matching.append(meta)
+
+    slice_items = matching[offset: offset + limit]
+    next_cursor = encode_cursor(offset + limit) if offset + limit < len(matching) else None
+    return {"items": slice_items, "next": next_cursor, "total": len(matching)}
+
+
+def knowledge_record(projects, project, key):
+    config = projects.require(project)
+    shared_dir = _kb_shared_path(project, config)
+    index = knowledge.read_index(shared_dir)
+    if key not in index:
+        raise SentinelError("E_NOT_FOUND", f"knowledge record {key} not found", {"key": key})
+    entry = index[key]
+    rec_file = Path(shared_dir) / entry.get("path", "")
+    if not rec_file.is_file():
+        raise SentinelError("E_NOT_FOUND", f"knowledge record file for {key} not found", {"key": key})
+    meta, body = knowledge.read_record(rec_file)
+    return {"key": key, "meta": meta, "body": body, "path": entry.get("path")}
+
+
+def knowledge_ci_template(projects, project, query):
+    config = projects.require(project)
+    repo_id = query.get("repo")
+    if not repo_id:
+        raise validation("repo query parameter is required", "repo")
+    repos = config.get("repos") or []
+    repo = next((r for r in repos if isinstance(r, dict) and r.get("id") == repo_id), None)
+    if not repo:
+        raise SentinelError("E_NOT_FOUND", f"repo {repo_id} not found in project configuration", {"repo": repo_id})
+    profile = repo.get("profile") or "generic"
+    branches = (repo.get("knowledge") or {}).get("branches") or (config.get("knowledge") or {}).get("branches") or ["develop", "main"]
+    tpl_file = ROOT / "templates" / "ci" / "knowledge-ingest.yml"
+    text = tpl_file.read_text(encoding="utf-8")
+    text = re.sub(r"REPO_ID:.*", f"REPO_ID: {repo_id}", text)
+    text = re.sub(r"REPO_PROFILE:.*", f"REPO_PROFILE: {profile}", text)
+    text = re.sub(r'TRACKED_BRANCHES:.*', f'TRACKED_BRANCHES: "{json.dumps(branches)}"', text)
+    return {"repo": repo_id, "profile": profile, "branches": branches, "template": text, "filename": "sentinel-knowledge-ingest.yml"}

@@ -24,6 +24,8 @@ from shared import Shared
 
 KIND = "kb_harvest"
 KIND_REFRESH = "refresh"
+KIND_INGEST = "ingest"
+KIND_SNAPSHOT = "snapshot"
 LOCK_NAME = "knowledge"
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = (5, 30)  # waits after attempt 1 and attempt 2
@@ -67,6 +69,26 @@ def enqueue_refresh(registry):
             return job["id"]
     now = _now()
     return registry.insert_row("kb_jobs", {"kind": KIND_REFRESH, "run_slug": None, "state": "queued", "attempts": 0,
+                                           "created_at": now, "updated_at": now})
+
+
+def enqueue_ingest(registry):
+    """Queue an ingest job; only one queued or running ingest job at a time (dedupe). Returns the job id."""
+    for job in registry.rows("kb_jobs", kind=KIND_INGEST):
+        if job["state"] in ("queued", "running"):
+            return job["id"]
+    now = _now()
+    return registry.insert_row("kb_jobs", {"kind": KIND_INGEST, "run_slug": None, "state": "queued", "attempts": 0,
+                                           "created_at": now, "updated_at": now})
+
+
+def enqueue_snapshot(registry):
+    """Queue a snapshot job; only one queued or running snapshot job at a time (dedupe). Returns the job id."""
+    for job in registry.rows("kb_jobs", kind=KIND_SNAPSHOT):
+        if job["state"] in ("queued", "running"):
+            return job["id"]
+    now = _now()
+    return registry.insert_row("kb_jobs", {"kind": KIND_SNAPSHOT, "run_slug": None, "state": "queued", "attempts": 0,
                                            "created_at": now, "updated_at": now})
 
 
@@ -404,12 +426,20 @@ def process_job(registry, workspace, config, job):
         except SystemExit as stop:
             raise RuntimeError(f"cannot pull the shared repo: {stop}") from None
         knowledge.ensure_layout(shared_dir)
-        if kind == KIND_REFRESH:
+        if kind in (KIND_REFRESH, KIND_INGEST):
             knowledge.ingest(str(shared_dir), str(workspace), config, scrubber=scrubber)
             refresh = getattr(knowledge, "refresh_summaries", None)
             if refresh:
                 refresh(str(shared_dir), str(workspace), config, scrubber=scrubber)
-            return publish(shared, config, scrubber, "sentinel: knowledge refresh")
+            return publish(shared, config, scrubber, f"sentinel: knowledge {kind}")
+        elif kind == KIND_SNAPSHOT:
+            repos = config.get("repos", [])
+            for repo_cfg in repos:
+                repo_path = (Path(workspace) / repo_cfg["path"]).resolve()
+                if not repo_path.exists():
+                    continue
+                knowledge.snapshot_repo(shared_dir, workspace, repo_cfg, config, scrubber=scrubber)
+            return publish(shared, config, scrubber, "sentinel: knowledge snapshot")
         else:
             write_run_record(registry, workspace, config, shared_dir, slug, scrubber)
             knowledge.ingest(str(shared_dir), str(workspace), config, scrubber=scrubber)

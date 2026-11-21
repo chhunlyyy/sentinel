@@ -272,6 +272,75 @@ def h_config_diff(ctx, project):
     return readroutes.configuration_diff(ctx.projects, project, ctx.query)
 
 
+# ---- W3 Setup and Detection
+def h_detect(ctx):
+    return 200, manage.detect_paths(ctx.body)
+
+
+def h_shared_test(ctx):
+    return 200, manage.test_shared(ctx.body)
+
+
+def h_routing_suggest(ctx):
+    return 200, manage.suggest_routing()
+
+
+# ---- Config Form
+@_project_read
+def h_config_form(ctx, project):
+    return manage.config_form(ctx.projects, project)
+
+
+def h_config_preview(ctx, pid):
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    return 200, ctx.clean(project, manage.config_preview(ctx, project, ctx.body))
+
+
+def h_config_save(ctx, pid):
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    return 200, ctx.clean(project, manage.config_save(ctx, project, ctx.body))
+
+
+# ---- Knowledge
+@_project_read
+def h_knowledge_status(ctx, project):
+    return readroutes.knowledge_status(ctx.projects, project)
+
+
+@_project_read
+def h_knowledge_records(ctx, project):
+    return readroutes.knowledge_records(ctx.projects, project, ctx.query)
+
+
+def h_knowledge_record(ctx, pid, key):
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    return 200, ctx.clean(project, readroutes.knowledge_record(ctx.projects, project, key))
+
+
+@_project_read
+def h_knowledge_ci_template(ctx, project):
+    return readroutes.knowledge_ci_template(ctx.projects, project, ctx.query)
+
+
+def h_knowledge_ingest(ctx, pid):
+    return 202, manage.knowledge_ingest(ctx, pid)
+
+
+def h_knowledge_snapshot(ctx, pid):
+    return 202, manage.knowledge_snapshot(ctx, pid)
+
+
+def h_knowledge_backfill_estimate(ctx, pid):
+    return 200, manage.knowledge_backfill_estimate(ctx, pid, ctx.body)
+
+
+def h_knowledge_backfill(ctx, pid):
+    return 200, manage.knowledge_backfill(ctx, pid, ctx.body)
+
+
 # ---- one run: decisions and controls
 def h_approvals(ctx, slug):
     project = ctx.locate(slug)
@@ -453,6 +522,20 @@ ROUTES = [
     Route("GET", "orchestrator", "orchestrator", h_orchestrator),
     Route("PUT", "orchestrator_put", "orchestrator", h_orchestrator_put),
     Route("GET", "analytics", "reports/analytics", h_analytics),
+    Route("POST", "detect", "detect", h_detect),
+    Route("POST", "shared_test", "shared/test", h_shared_test),
+    Route("GET", "routing_suggest", "routing/suggest", h_routing_suggest),
+    Route("GET", "config_form", "projects/{pid}/config/form", h_config_form),
+    Route("POST", "config_preview", "projects/{pid}/config/preview", h_config_preview),
+    Route("POST", "config_save", "projects/{pid}/config/save", h_config_save, ("manage.write_config",)),
+    Route("GET", "knowledge_status", "projects/{pid}/knowledge/status", h_knowledge_status),
+    Route("GET", "knowledge_records", "projects/{pid}/knowledge/records", h_knowledge_records),
+    Route("GET", "knowledge_record", "projects/{pid}/knowledge/records/{key}", h_knowledge_record),
+    Route("GET", "knowledge_ci_template", "projects/{pid}/knowledge/ci-template", h_knowledge_ci_template),
+    Route("POST", "knowledge_ingest", "projects/{pid}/knowledge/ingest", h_knowledge_ingest, ("kb_worker.enqueue_ingest",)),
+    Route("POST", "knowledge_snapshot", "projects/{pid}/knowledge/snapshot", h_knowledge_snapshot, ("kb_worker.enqueue_snapshot",)),
+    Route("POST", "knowledge_backfill_estimate", "projects/{pid}/knowledge/backfill/estimate", h_knowledge_backfill_estimate),
+    Route("POST", "knowledge_backfill", "projects/{pid}/knowledge/backfill", h_knowledge_backfill, ("knowledge.ingest",)),
 ]
 
 for _r in ROUTES:

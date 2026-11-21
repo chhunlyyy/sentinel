@@ -37,7 +37,7 @@ def looks_like_git_url(url):
 
 def verify_remote(url, timeout=25):
     try:
-        result = subprocess.run(["git", "ls-remote", url], capture_output=True, text=True, timeout=timeout, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        result = subprocess.run(["git", "ls-remote", "--", url], capture_output=True, text=True, timeout=timeout, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     except subprocess.TimeoutExpired:
         return False, "timed out", 0
     if result.returncode != 0:
