@@ -1,5 +1,7 @@
 # Quickstart
 
+The short path from install to an accepted change. The full walkthroughs are the [dashboard user guide](gui-guide.md) and the [command-line guide](cli-guide.md).
+
 ## 1. Install
 
 Install the Sentinel engine:
@@ -42,8 +44,8 @@ In the dashboard, click **Create project** (or open `/projects/new`):
 ## 4. Send your first task
 
 1. Click **New task** (or open `/tasks/new`).
-2. Enter your task description (for example, "Add CSV export button to reports page") and choose the run type (`feature`, `bug`, `refactor`, etc.).
-3. Click **Send to factory**. The Sentinel service creates the version 2 run and immediately starts driving it.
+2. Choose the kind (Feature, Bug fix or Docs only) and describe the task in plain words (for example, "Add a CSV export button to the reports page").
+3. Click **Create task**. The Sentinel service creates the version 2 run and immediately starts driving it.
 
 ## 5. Watch the Factory Floor
 
@@ -52,7 +54,7 @@ The dashboard lands on the **Factory Floor** (`/floor`):
 - **Station path**: Watch your task token advance: Intake > Triage > Spec > Gate Spec > Gherkin > Gate Gherkin > Build > Verify > Report > Gate Accept > Knowledge.
 - **Active agents**: Neurons show running agents with their role, runner, model, and elapsed time.
 - **Build lanes**: During execution, the build station fans out into parallel lanes per behavior, executing Red (failing test), Green (pass), and Refactor phases.
-- **Controls**: Pause or unpause the run, or click **Step in with note** to give guidance to the next agent task.
+- **Controls**: Pause or resume the run, cancel it, or send a note that the next agent task reads once.
 
 ## 6. Review, approvals and acceptance
 
