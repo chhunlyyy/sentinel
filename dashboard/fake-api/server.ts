@@ -307,6 +307,19 @@ route('GET', `${V}/projects/{pid}/configuration/diff`, (c) => {
   const text = d.diffs[`${a}:${b}`] ?? `--- version ${a}\n+++ version ${b}\n@@ limits @@\n-limits.task_timeout: 900\n+limits.task_timeout: 1200\n limits.max_retries: 3\n`;
   return [200, E.configDiff(a, b, text)];
 });
+route('GET', `${V}/projects/{pid}/factory`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  const snap = db.factory?.[pid] ?? {
+    project: pid,
+    generated_at: '2026-11-21T10:15:02.123456Z',
+    stations: ['intake', 'triage', 'spec', 'gate_spec', 'gherkin', 'gate_gherkin', 'build', 'verify', 'report', 'gate_accept', 'knowledge'],
+    limits: { driver: 'engine', max_tasks_per_project: 2, max_agents: 4, running_in_project: 0, running_total: 0 },
+    runs: [],
+    queue: [],
+  };
+  return [200, snap];
+});
+
 route('GET', `${V}/projects/{pid}/tasks`, (c) => {
   const p = page(proj(c.params[0]).runs, c.query);
   return [200, { items: p.items.map(E.runSummary), next: p.next }];
@@ -525,6 +538,54 @@ route('POST', `${V}/tasks/{slug}/control`, (c) => {
       throw new ApiErr(400, 'E_VALIDATION', 'unknown action', { field: 'action' });
   }
   return [200, wrun(run)];
+});
+
+route('POST', `${V}/tasks/{slug}/pause`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  if (['COMPLETED', 'CANCELLED'].includes(run.detail.state)) {
+    throw new ApiErr(409, 'E_TRANSITION', 'the run cannot be paused now');
+  }
+  for (const f of Object.values(db.factory ?? {})) {
+    const r = f.runs.find((x) => x.slug === c.params[0]);
+    if (r) {
+      r.paused = true;
+      if (r.stations[r.station] === 'working') r.stations[r.station] = 'paused';
+    }
+  }
+  pushEvent('run.paused', { slug: c.params[0] });
+  return [200, wrun(run)];
+});
+
+route('POST', `${V}/tasks/{slug}/unpause`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  for (const f of Object.values(db.factory ?? {})) {
+    const r = f.runs.find((x) => x.slug === c.params[0]);
+    if (r) {
+      r.paused = false;
+      if (r.stations[r.station] === 'paused') r.stations[r.station] = 'working';
+    }
+  }
+  pushEvent('run.unpaused', { slug: c.params[0] });
+  return [200, wrun(run)];
+});
+
+route('POST', `${V}/tasks/{slug}/note`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  const b = body(c);
+  if (typeof b.text !== 'string' || !b.text.trim()) {
+    throw new ApiErr(400, 'E_VALIDATION', 'text is required', { field: 'text' });
+  }
+  if (b.text.length > 4000) {
+    throw new ApiErr(400, 'E_VALIDATION', 'text exceeds 4000 characters', { field: 'text' });
+  }
+  for (const f of Object.values(db.factory ?? {})) {
+    const r = f.runs.find((x) => x.slug === c.params[0]);
+    if (r) {
+      r.pending_notes = (r.pending_notes ?? 0) + 1;
+    }
+  }
+  pushEvent('run.note_added', { slug: c.params[0] });
+  return [201, { ...wrun(run), note: { text: b.text } }];
 });
 
 // ---- providers, orchestrator, agents, folders, project creation ----

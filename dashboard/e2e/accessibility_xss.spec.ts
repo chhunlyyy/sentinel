@@ -7,8 +7,8 @@ const RUN_URL = '/projects/digital-hr/runs/leave-balance';
 
 type Screen = { name: string; theme: 'light' | 'dark'; route: string; wait: string | RegExp; setup?: (api: Api) => Promise<void> };
 const screens: Screen[] = [
-  { name: 'Overview', theme: 'light', route: '/', wait: 'Overview' },
-  { name: 'Overview', theme: 'dark', route: '/', wait: 'Overview' },
+  { name: 'Overview', theme: 'light', route: '/overview', wait: 'Overview' },
+  { name: 'Overview', theme: 'dark', route: '/overview', wait: 'Overview' },
   { name: 'Projects', theme: 'light', route: '/projects', wait: 'Projects' },
   { name: 'Configuration of digital-hr', theme: 'light', route: '/projects/digital-hr/configuration', wait: 'Configuration' },
   { name: 'Health checks', theme: 'light', route: '/settings/health', wait: 'Health checks' },
@@ -50,7 +50,7 @@ test.describe('keyboard use', () => {
   test('AC-DSH-01g approving a specification with the keyboard only', async ({ page, api }) => {
     await api.preset('approvals');
     const outlines: boolean[] = [];
-    await open(page, '/');
+    await open(page, '/overview');
     await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
     await tabTo(page, /^My Approvals/, 40, outlines);
     await page.keyboard.press('Enter');

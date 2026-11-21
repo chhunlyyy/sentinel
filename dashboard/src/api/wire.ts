@@ -403,3 +403,70 @@ export interface WAnalytics {
   };
   rework: { spec_revisions: number; gherkin_revisions: number; changes_requested: number; findings_routed: number } | WNullMetric;
 }
+
+// ---- Factory (W4) ----
+
+/** Station states returned per run in GET /api/v1/projects/{pid}/factory */
+export type WStationState = 'done' | 'working' | 'waiting' | 'paused' | 'queued' | 'next' | 'todo';
+
+export interface WFactoryAgent {
+  task: string;
+  role: string;
+  runner: string;
+  model: string | null;
+  adapter: string;
+  started_at: string;
+}
+
+export interface WFactoryLane {
+  cycle: string;
+  name: string;
+  repo: string;
+  state: string;
+  red: WStationState;
+  green: WStationState;
+  refactor: WStationState;
+}
+
+export interface WFactoryRun {
+  slug: string;
+  title: string;
+  type: string;
+  driver: string;
+  paused: boolean;
+  state: string;
+  tier: number | null;
+  station: string;
+  stations: Record<string, WStationState>;
+  next_station: string | null;
+  agents: Record<string, WFactoryAgent[]>;
+  lanes: WFactoryLane[];
+  attention: { kind: 'needs_human' | 'blocked'; reason: string } | null;
+  pending_notes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WFactoryQueueItem {
+  slug: string;
+  title: string;
+  position: number;
+  reason: string;
+}
+
+export interface WFactoryLimits {
+  driver: string;
+  max_tasks_per_project: number;
+  max_agents: number;
+  running_in_project: number;
+  running_total: number;
+}
+
+export interface WFactory {
+  project: string;
+  generated_at: string;
+  stations: string[];
+  limits: WFactoryLimits;
+  runs: WFactoryRun[];
+  queue: WFactoryQueueItem[];
+}

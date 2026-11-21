@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Create project</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0F1419}
+a{color:#4FD1C1}a:hover{color:#8AE5DA}
+button,input,select{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #0F1419; color: #E6EAEE; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px; border-bottom: 1px solid #26303A; background: #121820">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #E6EAEE"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4FD1C1" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="5" r="2.2"></circle><circle cx="12" cy="19" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle><path d="M7 11l3-4M7 13l3 4M14 6l3 4M14 18l3-4"></path></svg><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">Sentinel</span></a>
+<span style="color: #9AA6B2">/ New project</span>
+<span style="flex: 1 1 auto"></span>
+<a href="Main.dc.html" style="font-size: 13px">Cancel</a>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; padding: 28px 24px; max-width: 1240px; margin: 0 auto; box-sizing: border-box">
+<nav aria-label="Steps" style="flex: 1 1 220px; max-width: 260px">
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+<li><button type="button" onClick="{{s.go}}" aria-current="{{s.current}}" style="width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px; border-radius: 10px; border: 1px solid {{s.border}}; background: {{s.bg}}; color: #E6EAEE; cursor: pointer">
+<span style="width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; background: {{s.dotBg}}; color: {{s.dotFg}}">{{s.mark}}</span>
+<span style="display: flex; flex-direction: column"><span style="font-weight: 600">{{s.name}}</span><span style="font-size: 12px; color: #9AA6B2">{{s.hint}}</span></span>
+</button></li>
+</sc-for>
+</ol>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+
+<sc-if value="{{is1}}" hint-placeholder-val="{{ true }}">
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Where is the code?</h1>
+<p style="margin: 0; color: #C5CDD5">Add one or more repositories. Sentinel never moves them; it only reads and works in branches you can review.</p>
+<label style="display: flex; flex-direction: column; gap: 6px"><span style="font-weight: 600">Project name</span>
+<input value="mef-hr" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #3A4654; background: #171D24; color: #E6EAEE"></label>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-weight: 600">Repositories</span>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #26303A; background: #171D24">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; flex: 1 1 260px">~/work/mef-hr/backend</span><span style="font-size: 12px; color: #7FE3D7">git repo · branch develop</span><button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A4654; background: transparent; color: #C5CDD5; cursor: pointer">Remove</button></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #26303A; background: #171D24">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; flex: 1 1 260px">~/work/mef-hr/frontend</span><span style="font-size: 12px; color: #7FE3D7">git repo · branch develop</span><button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A4654; background: transparent; color: #C5CDD5; cursor: pointer">Remove</button></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px dashed #3A4654; background: transparent; color: #E6EAEE; cursor: pointer">+ Choose a folder</button>
+<button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px dashed #3A4654; background: transparent; color: #E6EAEE; cursor: pointer">+ Clone from a URL</button>
+</div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{is2}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">We looked at your repos</h1>
+<p style="margin: 0; color: #C5CDD5">Everything below was detected. Change only what is wrong.</p>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px">
+<div style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: center"><strong style="font-size: 16px">backend</strong><span style="font-size: 12px; padding: 2px 8px; border-radius: 8px; background: #1F2730">Spring · Gradle</span></div>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">Test command<input value="./gradlew test --parallel" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">Build command<input value="./gradlew build -x test" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">Branches the team merges to (knowledge tracks these)<input value="develop, main" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label>
+</div>
+<div style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: center"><strong style="font-size: 16px">frontend</strong><span style="font-size: 12px; padding: 2px 8px; border-radius: 8px; background: #1F2730">Next.js</span></div>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">Test command<input value="npm test" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">Build command<input value="npm run build" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">Branches the team merges to (knowledge tracks these)<input value="develop" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label>
+</div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{is3}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Shared team knowledge</h1>
+<p style="margin: 0; color: #C5CDD5">A private git repo your team owns. Specs, rules, the regression suite and the knowledge base live there, so every teammate’s factory learns the same things.</p>
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="font-weight: 600; margin-bottom: 8px">Where</legend>
+<label style="display: flex; gap: 10px; align-items: center; padding: 12px; border-radius: 12px; border: 1px solid #2E8C81; background: #122A28"><input type="radio" name="where" checked> Use a team repo URL</label>
+<label style="display: flex; gap: 10px; align-items: center; padding: 12px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><input type="radio" name="where"> Local only on this machine (try it out)</label>
+</fieldset>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end">
+<label style="flex: 1 1 360px; display: flex; flex-direction: column; gap: 6px"><span style="font-weight: 600">Clone URL</span><input value="https://git.example.com/mef/sentinel-shared.git" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #3A4654; background: #171D24; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 13px"></label>
+<button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #3A4654; background: #1C242D; color: #E6EAEE; font-weight: 600; cursor: pointer">Test access</button>
+<span style="font-size: 13px; color: #7FE3D7; padding-bottom: 12px">✓ can read and push</span>
+</div>
+<div style="padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 8px">
+<strong>Build knowledge from history</strong>
+<p style="margin: 0; font-size: 13px; color: #C5CDD5">Changes your team made without Sentinel become knowledge too. Last 3 months on develop and main: about 140 changes, up to 300 summary calls on your knowledge model.</p>
+<label style="display: flex; gap: 10px; align-items: center; font-size: 13px"><input type="checkbox" checked> Run the backfill in the background after setup</label>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{is4}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Your AI team</h1>
+<p style="margin: 0; color: #C5CDD5">Suggested: cheap fast models for sizing, scenarios and summaries; a strong model where code is written. Change any row.</p>
+<div style="border-radius: 14px; border: 1px solid #26303A; overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; min-width: 560px; font-size: 13px">
+<thead><tr style="background: #171D24; color: #9AA6B2; text-align: left"><th scope="col" style="padding: 10px 14px">Role</th><th scope="col" style="padding: 10px 14px">Provider</th><th scope="col" style="padding: 10px 14px">Model</th><th scope="col" style="padding: 10px 14px">Why</th></tr></thead>
+<tbody>
+<sc-for list="{{roles}}" as="r" hint-placeholder-count="7">
+<tr style="border-top: 1px solid #26303A"><th scope="row" style="padding: 10px 14px; text-align: left; font-weight: 600">{{r.role}}</th>
+<td style="padding: 8px 14px"><select aria-label="Provider for {{r.role}}" style="min-height: 38px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; padding: 0 8px"><option>{{r.provider}}</option><option>claude</option><option>agy</option><option>codex</option></select></td>
+<td style="padding: 8px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px">{{r.model}}</td>
+<td style="padding: 8px 14px; color: #9AA6B2">{{r.why}}</td></tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+<p style="margin: 0; font-size: 12px; color: #9AA6B2">Every role must use a command-line provider: the factory starts agents itself.</p>
+</section>
+</sc-if>
+
+<sc-if value="{{is5}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Ready to open the factory</h1>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px">
+<li style="padding: 12px; border-radius: 10px; background: #171D24">✓ 2 repositories, commands detected, baseline build passes</li>
+<li style="padding: 12px; border-radius: 10px; background: #171D24">✓ Shared repo cloned, knowledge folder created</li>
+<li style="padding: 12px; border-radius: 10px; background: #171D24">✓ 3 providers answer; every role routed</li>
+<li style="padding: 12px; border-radius: 10px; background: #2A2212; color: #F5C776">! frontend has no lint command. Optional: add one later in Settings.</li>
+</ul>
+<p style="margin: 0; font-size: 13px; color: #9AA6B2">Sentinel writes sentinel.config.yaml in the project folder. You can still edit it by hand or with the CLI.</p>
+</section>
+</sc-if>
+
+<div style="display: flex; flex-wrap: wrap; gap: 10px; padding-top: 8px; border-top: 1px solid #26303A">
+<button type="button" onClick="{{back}}" style="min-height: 48px; padding: 0 18px; border-radius: 12px; border: 1px solid #3A4654; background: transparent; color: #E6EAEE; font-weight: 600; cursor: pointer">Back</button>
+<sc-if value="{{notLast}}" hint-placeholder-val="{{ true }}">
+<button type="button" onClick="{{next}}" style="min-height: 48px; padding: 0 22px; border-radius: 12px; border: 0; background: #4FD1C1; color: #062420; font-weight: 600; cursor: pointer">Continue</button>
+</sc-if>
+<sc-if value="{{is5}}" hint-placeholder-val="{{ false }}">
+<a href="Project.dc.html" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 12px; background: #4FD1C1; color: #062420; font-weight: 600; text-decoration: none">Create project</a>
+</sc-if>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { step: 1 }; }
+  renderVals() {
+    var self = this, step = this.state.step;
+    var NAMES = [['Repositories', 'where the code is'], ['Detected setup', 'stack, commands, branches'], ['Shared knowledge', 'team repo and history'], ['AI team', 'who does which job'], ['Check and create', 'final checks']];
+    var steps = NAMES.map(function (n, i) {
+      var k = i + 1, on = k === step, done = k < step;
+      return { name: n[0], hint: n[1], mark: done ? '✓' : String(k), current: on ? 'step' : 'false',
+        border: on ? '#4FD1C1' : '#26303A', bg: on ? '#16222A' : '#141A21',
+        dotBg: done ? '#2E8C81' : on ? '#4FD1C1' : '#1F2730', dotFg: done || on ? '#062420' : '#C5CDD5',
+        go: function () { self.setState({ step: k }); } };
+    });
+    var roles = [
+      { role: 'triage', provider: 'agy', model: 'gemini-3.8-flash', why: 'short judgment, cheap' },
+      { role: 'specifier', provider: 'claude', model: 'sonnet-4.6', why: 'clear writing' },
+      { role: 'gherkin', provider: 'agy', model: 'gemini-3.8-flash-high', why: 'structured, cheap' },
+      { role: 'coder', provider: 'claude', model: 'sonnet-4.6', why: 'writes the code' },
+      { role: 'reviewer', provider: 'claude', model: 'opus-4.6', why: 'hard tier 4 reviews only' },
+      { role: 'knowledge', provider: 'agy', model: 'gemini-3.8-flash-medium', why: 'many small summaries' },
+      { role: 'planner', provider: 'agy', model: 'gemini-3.8-flash-high', why: 'writes decisions.md' }
+    ];
+    return {
+      steps: steps, roles: roles, is1: step === 1, is2: step === 2, is3: step === 3, is4: step === 4, is5: step === 5, notLast: step < 5,
+      next: function () { self.setState({ step: Math.min(5, step + 1) }); },
+      back: function () { self.setState({ step: Math.max(1, step - 1) }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

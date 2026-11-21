@@ -92,4 +92,8 @@ export const calls = {
   addRepository: (c: Client, pid: string, body: O.NewRepo) => c.post<unknown>(buildPath('addRepository', { pid }), body),
   deleteProject: (c: Client, pid: string) => c.del<unknown>(buildPath('deleteProject', { pid })),
   removeRepository: (c: Client, pid: string, rid: string) => c.del<unknown>(buildPath('removeRepository', { pid, rid })),
+  factory: (c: Client, pid: string) => c.get<W.WFactory>(buildPath('factory', { pid })),
+  pause: (c: Client, slug: string, pid: string, comment?: string) => c.post<W.WRun>(buildPath('pause', { slug }, { project: pid }), { ...(comment ? { comment } : {}) }),
+  unpause: (c: Client, slug: string, pid: string, comment?: string) => c.post<W.WRun>(buildPath('unpause', { slug }, { project: pid }), { ...(comment ? { comment } : {}) }),
+  sendNote: (c: Client, slug: string, pid: string, text: string) => c.post<W.WRun>(buildPath('note', { slug }, { project: pid }), { text }),
 };

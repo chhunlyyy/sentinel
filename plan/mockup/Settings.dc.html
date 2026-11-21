@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0F1419}
+a{color:#4FD1C1}a:hover{color:#8AE5DA}
+button,input,select{font-family:inherit}
+@media (prefers-reduced-motion: no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #0F1419; color: #E6EAEE; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px; border-bottom: 1px solid #26303A; background: #121820">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #E6EAEE"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4FD1C1" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="5" r="2.2"></circle><circle cx="12" cy="19" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle><path d="M7 11l3-4M7 13l3 4M14 6l3 4M14 18l3-4"></path></svg><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">Sentinel</span></a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 2px; margin-left: 8px">
+<a href="Floor.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Factory floor</a>
+<a href="NewTask.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">New task</a>
+<a href="Approve.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Approvals</a>
+<a href="Project.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Projects</a>
+<a href="Knowledge.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Knowledge</a>
+<a href="Settings.dc.html" aria-current="page" style="padding: 8px 12px; border-radius: 8px; background: #1C242D; color: #E6EAEE; text-decoration: none; font-weight: 600">Settings</a>
+</nav>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 22px; padding: 24px; max-width: 1320px; margin: 0 auto; box-sizing: border-box">
+<nav aria-label="Settings sections" style="flex: 1 1 200px; max-width: 240px; display: flex; flex-direction: column; gap: 4px">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+<button type="button" onClick="{{t.pick}}" aria-current="{{t.cur}}" style="text-align: left; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid {{t.border}}; background: {{t.bg}}; color: #E6EAEE; font-weight: 600; cursor: pointer">{{t.label}}</button>
+</sc-for>
+</nav>
+
+<main style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+<sc-if value="{{isService}}" hint-placeholder-val="{{ true }}">
+<section style="display: flex; flex-direction: column; gap: 14px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px">Factory service</h1>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px; border-radius: 14px; border: 1px solid #2E8C81; background: #122A28">
+<span class="pulse" style="width: 10px; height: 10px; border-radius: 50%; background: #4FD1C1"></span>
+<span style="flex: 1 1 240px">Running since 08:02 · 127.0.0.1:8765 · 2 agents busy</span>
+<button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A4654; background: #1C242D; color: #E6EAEE; font-weight: 600; cursor: pointer">Restart</button>
+<button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #5A2A2A; background: transparent; color: #F2A3A3; font-weight: 600; cursor: pointer">Stop service</button>
+</div>
+<label style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><input type="checkbox" checked style="width: 20px; height: 20px"><span><strong>Start at login</strong><span style="display: block; font-size: 12px; color: #9AA6B2">Runs the service when you log in, so queued tasks continue after a restart.</span></span></label>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px">
+<label style="display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><strong>Parallel tasks per project</strong><input type="number" value="2" min="1" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><strong>Parallel agents in total</strong><input type="number" value="4" min="1" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><strong>Notify me</strong><select style="min-height: 40px; padding: 0 8px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE"><option>At every gate and failure</option><option>Failures only</option></select></label>
+</div>
+<p style="margin: 0; font-size: 12px; color: #9AA6B2">Same as <span style="font-family: 'JetBrains Mono', monospace">sentinel service start | stop | status</span> in a terminal.</p>
+</section>
+</sc-if>
+
+<sc-if value="{{isProviders}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 14px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px">Providers and agents</h1>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px">
+<div style="padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 6px"><strong>claude</strong><span style="font-size: 12px; color: #7FE3D7">✓ answers · 3 models</span><button type="button" style="min-height: 40px; border-radius: 8px; border: 1px solid #3A4654; background: transparent; color: #E6EAEE; cursor: pointer">Test</button></div>
+<div style="padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 6px"><strong>agy</strong><span style="font-size: 12px; color: #7FE3D7">✓ answers · 6 models</span><button type="button" style="min-height: 40px; border-radius: 8px; border: 1px solid #3A4654; background: transparent; color: #E6EAEE; cursor: pointer">Test</button></div>
+<div style="padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 6px"><strong>codex</strong><span style="font-size: 12px; color: #F5C776">! not signed in</span><button type="button" style="min-height: 40px; border-radius: 8px; border: 1px solid #3A4654; background: transparent; color: #E6EAEE; cursor: pointer">How to sign in</button></div>
+</div>
+<p style="margin: 0; color: #C5CDD5">Routing per role lives here for this project or as a global default. Same table as in the project wizard.</p>
+<a href="NewProject.dc.html" style="font-size: 13px">See the routing table</a>
+</section>
+</sc-if>
+
+<sc-if value="{{isConfig}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px; flex: 1 1 auto">Project settings · mef-hr</h1>
+<button type="button" onClick="{{toggleYaml}}" style="min-height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #3A4654; background: transparent; color: #E6EAEE; cursor: pointer">{{yamlLabel}}</button>
+</div>
+<sc-if value="{{showForm}}" hint-placeholder-val="{{ true }}">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px">
+<fieldset style="margin: 0; padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 8px"><legend style="font-weight: 600; padding: 0 4px">Commands · backend</legend>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">test<input value="./gradlew test --parallel" style="min-height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">lint<input value="./gradlew spotlessCheck" style="min-height: 38px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace; font-size: 12px"></label></fieldset>
+<fieldset style="margin: 0; padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 8px"><legend style="font-weight: 600; padding: 0 4px">Limits</legend>
+<label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px">Review rounds<input type="number" value="2" style="width: 70px; min-height: 38px; padding: 0 8px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE"></label>
+<label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px">Task retries<input type="number" value="2" style="width: 70px; min-height: 38px; padding: 0 8px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE"></label></fieldset>
+<fieldset style="margin: 0; padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 8px"><legend style="font-weight: 600; padding: 0 4px">Knowledge</legend>
+<label style="display: flex; gap: 10px; align-items: center; font-size: 13px"><input type="checkbox" checked> Publish knowledge automatically</label>
+<label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px">Summary calls per job<input type="number" value="300" style="width: 90px; min-height: 38px; padding: 0 8px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE"></label>
+<label style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px">Backfill months<input type="number" value="3" style="width: 90px; min-height: 38px; padding: 0 8px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE"></label></fieldset>
+<fieldset style="margin: 0; padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24; display: flex; flex-direction: column; gap: 8px"><legend style="font-weight: 600; padding: 0 4px">Policies</legend>
+<label style="display: flex; gap: 10px; align-items: center; font-size: 13px"><input type="checkbox" checked> Agents never run git</label>
+<label style="display: flex; gap: 10px; align-items: center; font-size: 13px"><input type="checkbox"> No new code comments</label>
+<label style="display: flex; gap: 10px; align-items: center; font-size: 13px"><input type="checkbox" checked> Security gate for auth changes</label></fieldset>
+</div>
+</sc-if>
+<sc-if value="{{showYaml}}" hint-placeholder-val="{{ false }}">
+<pre style="margin: 0; padding: 16px; border-radius: 12px; border: 1px solid #26303A; background: #0B0F13; white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7; color: #B8C2CC">  repos:
+    - id: backend
+      commands:
+<span style="color: #F2A3A3">-       lint: null</span>
+<span style="color: #9EE6B0">+       lint: ./gradlew spotlessCheck</span>
+  knowledge:
+<span style="color: #9EE6B0">+   max_summaries: 300</span></pre>
+</sc-if>
+<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+<button type="button" style="min-height: 48px; padding: 0 20px; border-radius: 12px; border: 0; background: #4FD1C1; color: #062420; font-weight: 600; cursor: pointer">Save (2 changes)</button>
+<span style="font-size: 12px; color: #9AA6B2">Validated against the schema and saved to sentinel.config.yaml with history.</span>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{isAbout}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px">Health and updates</h1>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+<li style="padding: 12px; border-radius: 10px; background: #171D24">✓ Sentinel 2.0.0 · up to date</li>
+<li style="padding: 12px; border-radius: 10px; background: #171D24">✓ Registry writable · backup daily</li>
+<li style="padding: 12px; border-radius: 10px; background: #2A2212; color: #F5C776">! Shared repo has 1 unpushed spec change · <a href="#">Publish (needs approval)</a></li>
+</ul>
+</section>
+</sc-if>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { tab: 'service', yaml: false }; }
+  renderVals() {
+    var self = this, tab = this.state.tab, yaml = this.state.yaml;
+    var tabs = [['service', 'Factory service'], ['providers', 'Providers and agents'], ['config', 'Project settings'], ['about', 'Health and updates']].map(function (t) {
+      var on = tab === t[0];
+      return { label: t[1], cur: on ? 'page' : 'false', border: on ? '#4FD1C1' : '#26303A', bg: on ? '#16222A' : '#141A21', pick: function () { self.setState({ tab: t[0] }); } };
+    });
+    return {
+      tabs: tabs, isService: tab === 'service', isProviders: tab === 'providers', isConfig: tab === 'config', isAbout: tab === 'about',
+      showForm: !yaml, showYaml: yaml, yamlLabel: yaml ? 'Back to the form' : 'Preview the YAML change',
+      toggleYaml: function () { self.setState({ yaml: !yaml }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

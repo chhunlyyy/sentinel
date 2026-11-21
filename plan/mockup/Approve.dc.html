@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Approve specification</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0F1419}
+a{color:#4FD1C1}a:hover{color:#8AE5DA}
+button,input,textarea{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #0F1419; color: #E6EAEE; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.55">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px; border-bottom: 1px solid #26303A; background: #121820">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #E6EAEE"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4FD1C1" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="5" r="2.2"></circle><circle cx="12" cy="19" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle><path d="M7 11l3-4M7 13l3 4M14 6l3 4M14 18l3-4"></path></svg><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">Sentinel</span></a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 2px; margin-left: 8px">
+<a href="Floor.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Factory floor</a>
+<a href="NewTask.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">New task</a>
+<a href="Approve.dc.html" aria-current="page" style="padding: 8px 12px; border-radius: 8px; background: #1C242D; color: #E6EAEE; text-decoration: none; font-weight: 600">Approvals <span style="background: #F5B547; color: #1A1206; border-radius: 10px; padding: 0 7px; font-size: 12px; font-weight: 600">1</span></a>
+<a href="Project.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Projects</a>
+<a href="Knowledge.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Knowledge</a>
+<a href="Settings.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Settings</a>
+</nav>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; padding: 22px 24px; max-width: 1360px; margin: 0 auto; box-sizing: border-box">
+<main style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 26px">Fix payroll rounding · specification v1</h1>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA6B2">sha256 4f1c09ab…e21d</span>
+</div>
+<div role="tablist" aria-label="View" style="display: flex; gap: 6px">
+<button type="button" role="tab" aria-selected="{{tabText}}" onClick="{{showText}}" style="min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid {{tabTextBorder}}; background: #171D24; color: #E6EAEE; cursor: pointer">Specification</button>
+<button type="button" role="tab" aria-selected="{{tabDiff}}" onClick="{{showDiff}}" style="min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid {{tabDiffBorder}}; background: #171D24; color: #E6EAEE; cursor: pointer">Changes since v0</button>
+<button type="button" role="tab" aria-selected="false" style="min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #26303A; background: #171D24; color: #E6EAEE; cursor: pointer">Knowledge used</button>
+</div>
+<sc-if value="{{isText}}" hint-placeholder-val="{{ true }}">
+<article style="padding: 22px 26px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 14px">
+<section><h2 style="margin: 0 0 6px; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Problem</h2><p style="margin: 0; color: #C5CDD5">Net pay is rounded per line item, so a payslip with many allowances can be off by up to 0.04 against the bank file.</p></section>
+<section><h2 style="margin: 0 0 6px; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Requirements</h2>
+<ol style="margin: 0; padding-left: 20px; color: #C5CDD5; display: flex; flex-direction: column; gap: 4px">
+<li><strong style="color: #E6EAEE">REQ-1</strong> Round once, on the final net amount, half-up to 2 decimals.</li>
+<li><strong style="color: #E6EAEE">REQ-2</strong> Payslip lines show unrounded values to 4 decimals in the PDF detail.</li>
+<li><strong style="color: #E6EAEE">REQ-3</strong> The bank export total equals the sum of payslip net amounts.</li>
+<li><strong style="color: #E6EAEE">REQ-4</strong> Payslips already issued are not recalculated.</li>
+</ol></section>
+<section><h2 style="margin: 0 0 6px; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Acceptance criteria</h2>
+<ul style="margin: 0; padding-left: 20px; color: #C5CDD5; display: flex; flex-direction: column; gap: 4px">
+<li>AC-1 A payslip with 12 allowances of 0.125 nets 1.50, not 1.56.</li>
+<li>AC-2 Export of 300 payslips: total equals the sum of nets.</li>
+<li>AC-3 Recalculating a closed period is refused.</li>
+</ul></section>
+<section><h2 style="margin: 0 0 6px; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Risks</h2><p style="margin: 0; color: #C5CDD5">Touches payroll calculation (regression risk high). Invariant in scope: “issued payslips are immutable”.</p></section>
+</article>
+</sc-if>
+<sc-if value="{{isDiff}}" hint-placeholder-val="{{ false }}">
+<pre style="margin: 0; padding: 18px; border-radius: 14px; border: 1px solid #26303A; background: #0B0F13; white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.7"><span style="color: #9AA6B2">@@ Requirements @@</span>
+<span style="color: #F2A3A3">- REQ-1 Round each line item half-up to 2 decimals.</span>
+<span style="color: #9EE6B0">+ REQ-1 Round once, on the final net amount, half-up to 2 decimals.</span>
+<span style="color: #9EE6B0">+ REQ-4 Payslips already issued are not recalculated.</span></pre>
+</sc-if>
+</main>
+
+<aside aria-label="Your decision" style="flex: 1 1 320px; max-width: 400px; display: flex; flex-direction: column; gap: 12px">
+<section style="padding: 18px; border-radius: 14px; border: 1px solid #B8862F; background: #1E1A12; display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Your decision</h2>
+<div role="radiogroup" aria-label="Decision" style="display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{choices}}" as="c" hint-placeholder-count="3">
+<button type="button" role="radio" aria-checked="{{c.checked}}" onClick="{{c.pick}}" style="text-align: left; min-height: 48px; padding: 8px 12px; border-radius: 10px; border: 1px solid {{c.border}}; background: {{c.bg}}; color: #E6EAEE; cursor: pointer"><strong>{{c.label}}</strong><span style="display: block; font-size: 12px; color: #9AA6B2">{{c.hint}}</span></button>
+</sc-for>
+</div>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px">Comment for the agent (optional)<textarea rows="3" style="padding: 10px; border-radius: 10px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE"></textarea></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px">Type the first 8 characters of the hash to confirm: <span style="font-family: 'JetBrains Mono', monospace; color: #F5C776">4f1c09ab</span>
+<input placeholder="4f1c09ab" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: 'JetBrains Mono', monospace"></label>
+<a href="Floor.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 48px; border-radius: 12px; background: #F5B547; color: #1A1206; font-weight: 600; text-decoration: none">Confirm: {{decisionLabel}}</a>
+<p style="margin: 0; font-size: 12px; color: #9AA6B2">Recorded in the audit log with channel dashboard. Agents cannot approve: this needs your session.</p>
+</section>
+<section style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; font-size: 12px; letter-spacing: .4px; text-transform: uppercase; color: #9AA6B2">Also waiting</h2>
+<p style="margin: 0; font-size: 13px; color: #C5CDD5">Nothing else. Next likely: “Audit log filter” spec in about 5 min.</p>
+</section>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { tab: 'text', d: 'approve' }; }
+  renderVals() {
+    var self = this, tab = this.state.tab, d = this.state.d;
+    var C = [['approve', 'Approve', 'The agents write the Gherkin scenarios next'], ['changes', 'Request changes', 'The specifier revises; you review v2'], ['reject', 'Reject', 'The run stops']];
+    var choices = C.map(function (c) {
+      var on = d === c[0];
+      return { label: c[1], hint: c[2], checked: on ? 'true' : 'false', border: on ? '#F5B547' : '#3A4654', bg: on ? '#2A2212' : '#171D24',
+        pick: function () { self.setState({ d: c[0] }); } };
+    });
+    var L = { approve: 'Approve', changes: 'Request changes', reject: 'Reject' };
+    return {
+      choices: choices, decisionLabel: L[d], isText: tab === 'text', isDiff: tab === 'diff',
+      tabText: tab === 'text' ? 'true' : 'false', tabDiff: tab === 'diff' ? 'true' : 'false',
+      tabTextBorder: tab === 'text' ? '#4FD1C1' : '#26303A', tabDiffBorder: tab === 'diff' ? '#4FD1C1' : '#26303A',
+      showText: function () { self.setState({ tab: 'text' }); }, showDiff: function () { self.setState({ tab: 'diff' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

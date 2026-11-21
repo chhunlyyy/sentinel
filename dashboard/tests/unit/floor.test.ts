@@ -1,0 +1,242 @@
+import { describe, expect, test } from 'vitest';
+import { floorSnapshot } from '../../src/components/floor/adapt.ts';
+import { buildLanePositions, stationById, STATIONS, MAX_LANES } from '../../src/components/floor/layout.ts';
+import { stateLook, feedEdgeCls } from '../../src/components/floor/look.ts';
+import { stationsOf } from '../../src/screens/Floor.tsx';
+import type * as W from '../../src/api/wire.ts';
+
+const SAMPLE_WIRE_FACTORY: W.WFactory = {
+  project: 'digital-hr',
+  generated_at: '2026-11-21T10:15:02.123456Z',
+  stations: [
+    'intake', 'triage', 'spec', 'gate_spec', 'gherkin', 'gate_gherkin',
+    'build', 'verify', 'report', 'gate_accept', 'knowledge',
+  ],
+  limits: {
+    driver: 'engine',
+    max_tasks_per_project: 2,
+    max_agents: 4,
+    running_in_project: 2,
+    running_total: 3,
+  },
+  runs: [
+    {
+      slug: 'leave-balance',
+      title: 'Show the remaining leave days on the home page',
+      type: 'feature',
+      driver: 'engine',
+      paused: false,
+      state: 'EXECUTING',
+      tier: 3,
+      station: 'build',
+      stations: {
+        intake: 'done', triage: 'done', spec: 'done', gate_spec: 'done',
+        gherkin: 'done', gate_gherkin: 'done',
+        build: 'working', verify: 'next', report: 'todo', gate_accept: 'todo', knowledge: 'todo',
+      },
+      next_station: 'verify',
+      agents: {
+        build: [
+          {
+            task: 't-0123456789ab',
+            role: 'tdd_green',
+            runner: 'claude',
+            model: 'sonnet',
+            adapter: 'cli',
+            started_at: '2026-11-21T10:12:40.000000Z',
+          },
+        ],
+      },
+      lanes: [
+        {
+          cycle: 'c-0123456789ab',
+          name: 'Remaining days show',
+          repo: 'backend',
+          state: 'GREEN_RUNNING',
+          red: 'done',
+          green: 'working',
+          refactor: 'todo',
+        },
+      ],
+      attention: null,
+      pending_notes: 0,
+      created_at: '2026-11-21T09:58:00.000000Z',
+      updated_at: '2026-11-21T10:12:40.000000Z',
+    },
+  ],
+  queue: [
+    {
+      slug: 'payroll-export',
+      title: 'Export payroll as CSV',
+      position: 1,
+      reason: 'the project limit of 2 running tasks is reached',
+    },
+  ],
+};
+
+describe('factory floor snapshot-to-view mapping', () => {
+  test('maps project, limits, and queue items', () => {
+    const snap = floorSnapshot(SAMPLE_WIRE_FACTORY);
+    expect(snap.project).toBe('digital-hr');
+    expect(snap.generatedAt).toBe('2026-11-21T10:15:02.123456Z');
+    expect(snap.limits).toEqual({
+      driver: 'engine',
+      maxTasksPerProject: 2,
+      maxAgents: 4,
+      runningInProject: 2,
+      runningTotal: 3,
+    });
+    expect(snap.queue).toHaveLength(1);
+    expect(snap.queue[0]).toEqual({
+      slug: 'payroll-export',
+      title: 'Export payroll as CSV',
+      position: 1,
+      reason: 'the project limit of 2 running tasks is reached',
+    });
+  });
+
+  test('maps run fields, initials, and colors', () => {
+    const snap = floorSnapshot(SAMPLE_WIRE_FACTORY);
+    expect(snap.runs).toHaveLength(1);
+    const r = snap.runs[0];
+    expect(r.slug).toBe('leave-balance');
+    expect(r.short).toBe('LB');
+    expect(r.paused).toBe(false);
+    expect(r.station).toBe('build');
+    expect(r.stateLabel).toBe('Working');
+    expect(r.stationLabel).toBe('Build');
+    expect(r.nextStation).toBe('verify');
+    expect(r.color).toBeDefined();
+  });
+
+  test('maps agents per station', () => {
+    const snap = floorSnapshot(SAMPLE_WIRE_FACTORY);
+    const r = snap.runs[0];
+    expect(r.agents.build).toBeDefined();
+    expect(r.agents.build).toHaveLength(1);
+    expect(r.agents.build[0]).toEqual({
+      task: 't-0123456789ab',
+      role: 'tdd_green',
+      runner: 'claude',
+      model: 'sonnet',
+      adapter: 'cli',
+      startedAt: '2026-11-21T10:12:40.000000Z',
+    });
+  });
+
+  test('maps lanes and their TDD phase states', () => {
+    const snap = floorSnapshot(SAMPLE_WIRE_FACTORY);
+    const r = snap.runs[0];
+    expect(r.lanes).toHaveLength(1);
+    expect(r.lanes[0]).toEqual({
+      cycle: 'c-0123456789ab',
+      name: 'Remaining days show',
+      repo: 'backend',
+      state: 'GREEN_RUNNING',
+      red: 'done',
+      green: 'working',
+      refactor: 'todo',
+    });
+  });
+
+  test('stationsOf preserves states when not paused', () => {
+    const snap = floorSnapshot(SAMPLE_WIRE_FACTORY);
+    const r = snap.runs[0];
+    const states = stationsOf(r);
+    expect(states.build).toBe('working');
+    expect(states.intake).toBe('done');
+    expect(states.verify).toBe('next');
+    expect(states.report).toBe('todo');
+  });
+
+  test('stationsOf maps working to paused when run is paused', () => {
+    const wirePaused: W.WFactory = {
+      ...SAMPLE_WIRE_FACTORY,
+      runs: [
+        {
+          ...SAMPLE_WIRE_FACTORY.runs[0],
+          paused: true,
+        },
+      ],
+    };
+    const snap = floorSnapshot(wirePaused);
+    const r = snap.runs[0];
+    expect(r.stateLabel).toBe('Paused');
+    const states = stationsOf(r);
+    expect(states.build).toBe('paused');
+    expect(states.intake).toBe('done');
+  });
+});
+
+describe('station look and edge styling', () => {
+  test('returns correct edge classes for each state', () => {
+    expect(stateLook('done').edgeCls).toBe('floor-e-done');
+    expect(stateLook('working').edgeCls).toBe('floor-e-active');
+    expect(stateLook('waiting').edgeCls).toBe('floor-e-wait');
+    expect(stateLook('paused').edgeCls).toBe('floor-e-pause');
+    expect(stateLook('queued').edgeCls).toBe('floor-e-todo');
+    expect(stateLook('next').edgeCls).toBe('floor-e-todo');
+    expect(stateLook('todo').edgeCls).toBe('floor-e-todo');
+  });
+
+  test('feedEdgeCls returns active class only when working', () => {
+    expect(feedEdgeCls('working')).toBe('floor-e-feed-on');
+    expect(feedEdgeCls('done')).toBe('floor-e-feed');
+    expect(feedEdgeCls('waiting')).toBe('floor-e-feed');
+    expect(feedEdgeCls('todo')).toBe('floor-e-feed');
+  });
+
+  test('live property is true for working and waiting states', () => {
+    expect(stateLook('working').live).toBe(true);
+    expect(stateLook('waiting').live).toBe(true);
+    expect(stateLook('done').live).toBe(false);
+    expect(stateLook('paused').live).toBe(false);
+    expect(stateLook('todo').live).toBe(false);
+  });
+});
+
+describe('build lane layout', () => {
+  test('0 or 1 lane places neuron in the center at y=250', () => {
+    expect(buildLanePositions(0)).toEqual([{ x: 670, y: 250 }]);
+    expect(buildLanePositions(1)).toEqual([{ x: 670, y: 250 }]);
+  });
+
+  test('2 lanes place neurons symmetrically at y=170 and y=330', () => {
+    expect(buildLanePositions(2)).toEqual([
+      { x: 670, y: 170 },
+      { x: 670, y: 330 },
+    ]);
+  });
+
+  test('3 lanes match mockup positions: 90, 250, 410', () => {
+    expect(buildLanePositions(3)).toEqual([
+      { x: 670, y: 90 },
+      { x: 670, y: 250 },
+      { x: 670, y: 410 },
+    ]);
+  });
+
+  test('caps drawn lanes at MAX_LANES (6)', () => {
+    const eight = buildLanePositions(8);
+    expect(eight).toHaveLength(MAX_LANES);
+    expect(eight[0].y).toBe(90);
+    expect(eight[eight.length - 1].y).toBe(410);
+  });
+});
+
+describe('station metadata', () => {
+  test('all 11 fixed stations are defined in order', () => {
+    expect(STATIONS).toHaveLength(11);
+    const ids = STATIONS.map((s) => s.id);
+    expect(ids).toEqual([
+      'intake', 'triage', 'spec', 'gate_spec', 'gherkin', 'gate_gherkin',
+      'build', 'verify', 'report', 'gate_accept', 'knowledge',
+    ]);
+  });
+
+  test('stationById finds existing station and returns undefined for unknown', () => {
+    expect(stationById('spec')?.name).toBe('Specification');
+    expect(stationById('gate_spec')?.kind).toBe('gate');
+    expect(stationById('unknown')).toBeUndefined();
+  });
+});

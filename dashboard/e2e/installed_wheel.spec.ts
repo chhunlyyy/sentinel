@@ -44,6 +44,9 @@ test.afterAll(() => {
 
 async function signIn(page: Page) {
   await page.goto(info!.url);
+  // with a registered project the landing screen is the factory floor (2.0); the overview has its own route
+  await expect(page.getByRole('heading', { name: 'Factory floor', level: 1 })).toBeVisible();
+  await page.goto(`http://127.0.0.1:${info!.port}/#/overview`);
   await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
 }
 
@@ -74,7 +77,7 @@ test('AC-DSH-06h a session with the network cable out: every screen renders and 
   await signIn(page);
   const p = info!.project;
   const screens = [
-    '/', '/projects', `/projects/${p}`, '/tasks', '/tasks/new', '/approvals', '/runs', '/quality', '/reports', '/settings/installation',
+    '/', '/overview', '/projects', `/projects/${p}`, '/tasks', '/tasks/new', '/approvals', '/runs', '/quality', '/reports', '/settings/installation',
     '/settings/health', `/projects/${p}/configuration`, `/projects/${p}/audit`, `/projects/${p}/runs/demo-run`,
   ];
   for (const route of screens) {
