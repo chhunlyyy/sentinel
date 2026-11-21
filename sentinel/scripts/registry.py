@@ -17,7 +17,7 @@ from errors import SentinelError
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 _ID_PREFIX = {"runs": "r-", "tasks": "t-", "approvals": "a-", "cycles": "c-",
               "evidence": "e-", "artifacts": "ar-", "findings": "f-", "changed_files": "cf-",
-              "verification_rounds": "vr-"}
+              "verification_rounds": "vr-", "kb_jobs": "kj-"}
 
 
 def _busy_ms():

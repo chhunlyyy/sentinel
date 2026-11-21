@@ -27,7 +27,7 @@ from util import connect_ro
 USER_DB = "user.db"
 SCHEMA_VERSION = "1"
 CANDIDATES = ("approval.requested", "approval.decided", "run.created", "run.state_changed", "task.finished",
-              "evidence.recorded", "run.status_changed")
+              "evidence.recorded", "run.status_changed", "knowledge.failed")
 ID = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*):(\d+)")
 GATE_TITLE = {"specification": "Specification", "gherkin": "Gherkin"}
 GATE_ARG = {"specification": "spec", "gherkin": "gherkin"}
@@ -86,6 +86,8 @@ def rule(event_type, payload, slug):
     elif event_type == "evidence.recorded":
         if not p.get("cycle") and (p.get("verdict") == "fail" or p.get("passed") is False):
             return "warning", f"Verification failed: {p.get('kind') or 'check'}", f"{base}/verification", nxt
+    elif event_type == "knowledge.failed":
+        return "warning", "Knowledge harvest failed", base, "sentinel kb status"
     elif event_type == "run.status_changed":
         execution, acceptance = p.get("execution_status"), p.get("acceptance_status")
         if execution == "failed":

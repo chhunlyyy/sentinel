@@ -68,7 +68,23 @@ def health_view(projects, cfgdir):
             continue
         workspaces.append((project.id, project.path / CONFIG_NAME, config, projects.state_dir(project, config)))
     items = health.checks(cfgdir, workspaces)
-    return {"items": items, "ready": health.ready(items), "checked_at": _now()}
+    view = {"items": items, "ready": health.ready(items), "checked_at": _now()}
+    jobs = _knowledge_jobs(workspaces)
+    if jobs:  # only once a project has run a harvest job, so installations without knowledge keep their answer
+        view["knowledge"] = jobs
+    return view
+
+
+def _knowledge_jobs(workspaces):
+    """Knowledge job status (queued, last success, last failure) of each project that has run a harvest job."""
+    import kb_worker
+    out = {}
+    for pid, _, config, state_dir in workspaces:
+        db = state_dir / "sentinel.db" if state_dir else None
+        summary = kb_worker.job_summary_from_db(db) if db and db.is_file() else None
+        if summary and (summary["queued"] or summary["last_success"] or summary["last_failure"]):
+            out[pid] = summary
+    return out
 
 
 # ---- repositories and readiness

@@ -1395,6 +1395,8 @@ def cmd_kb_status(args):
     shared_dir = _kb_shared_dir(config_path, config)
     knowledge.ensure_layout(shared_dir)
     info = knowledge.status(shared_dir, config)
+    import kb_worker
+    info["jobs"] = kb_worker.job_summary_from_db(state_dir_of(config_path, config) / "sentinel.db")
     if args.json:
         print(json.dumps(info, indent=2))
     else:
@@ -1404,6 +1406,22 @@ def cmd_kb_status(args):
         for ck, cur in info.get("cursors", {}).items():
             sha = cur.get("sha", "?")[:8] if isinstance(cur, dict) else str(cur)[:8]
             print(f"cursor {ck}: {sha}")
+        jobs = info["jobs"]
+        if jobs:
+            print(f"jobs: {jobs['queued']} queued")
+            for label in ("last_success", "last_failure"):
+                if jobs[label]:
+                    print(f"  {label.replace('_', ' ')}: {jobs[label]['run']} at {jobs[label]['at']}" + (f" ({jobs[label]['error']})" if jobs[label]["error"] else ""))
+
+
+def cmd_kb_worker(args):
+    import kb_worker
+    config_path, config = load_config(args.dir)
+    if not kb_worker.knowledge_enabled(config):
+        return
+    handled = kb_worker.run_worker(config_path.parent)
+    if handled is not None:
+        print(f"knowledge worker handled {handled} job(s)")
 
 
 PASSTHROUGH = {
@@ -1688,6 +1706,9 @@ def main():
     kb_status_parser = kb_sub.add_parser("status", help="show knowledge base status")
     kb_status_parser.add_argument("--json", action="store_true")
     kb_status_parser.set_defaults(func=cmd_kb_status)
+
+    kb_worker_parser = kb_sub.add_parser("worker", help="internal: process queued knowledge jobs")
+    kb_worker_parser.set_defaults(func=cmd_kb_worker)
 
     add_passthrough_commands(sub)
 
