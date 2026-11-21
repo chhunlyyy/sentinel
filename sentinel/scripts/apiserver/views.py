@@ -72,7 +72,7 @@ def project_item(projects, project, with_counts=True):
 
 
 RUN_LIST_COLUMNS = ("slug", "type", "tier", "state", "execution_status", "acceptance_status", "workflow_version",
-                    "priority", "requested_tier", "origin", "created_at", "updated_at")
+                    "priority", "requested_tier", "origin", "driver", "paused", "created_at", "updated_at")
 
 
 def list_runs(projects, project, query):
@@ -89,9 +89,26 @@ def list_runs(projects, project, query):
             args += [cursor[0], cursor[0], cursor[1]]
         sql += " ORDER BY updated_at DESC, slug DESC LIMIT ?"
         rows = [dict(r) for r in conn.execute(sql, [*args, limit + 1])]
+    for r in rows:
+        r["paused"] = bool(r["paused"])
     more = len(rows) > limit
     rows = rows[:limit]
     return {"items": rows, "next": encode_cursor(rows[-1]["updated_at"], rows[-1]["slug"]) if more else None}
+
+
+def running_total(projects):
+    """RUNNING tasks over every available project (the global agent limit)."""
+    total = 0
+    for project in projects.list():
+        try:
+            if projects.probe(project)[0] != "available":
+                continue
+            with projects.reader(project) as conn:
+                if conn is not None:
+                    total += conn.execute("SELECT COUNT(*) FROM tasks WHERE state='RUNNING'").fetchone()[0]
+        except Exception:
+            continue
+    return total
 
 
 def locate_run(projects, slug, pid=None):
@@ -137,9 +154,12 @@ def approval_summary(reg, run):
 
 
 def _mark_dashboard(step, run, slug):
-    if run.get("origin") == "dashboard" and step.get("kind") == "orchestrator":
-        step["label"] = "waiting for AI tool"
-        step["resume_command"] = f"/sentinel resume {slug}"
+    if step.get("kind") == "orchestrator":
+        if run.get("driver") == "ai-tool":
+            step["label"] = "waiting for AI tool"
+            step["resume_command"] = f"/sentinel resume {slug}"
+        elif run.get("driver") == "engine":
+            step["label"] = "the engine does this step"
     return step
 
 
@@ -173,7 +193,8 @@ def run_detail(eng, project, slug):
         counts[t["state"]] = counts.get(t["state"], 0) + 1
     detail = {k: run.get(k) for k in ("slug", "request", "type", "tier", "initial_tier", "state", "execution_status",
                                       "acceptance_status", "workflow_version", "priority", "requested_tier", "origin",
-                                      "created_at", "updated_at", "finished_at")}
+                                      "driver", "paused", "created_at", "updated_at", "finished_at")}
+    detail["paused"] = bool(detail["paused"])
     detail["project"] = project.id
     detail["repos"] = [{"repo_id": r["repo_id"], "baseline_sha": r["baseline_sha"], "branch": r["branch"],
                         "final_sha": r["final_sha"]} for r in reg.run_repos(run["id"])]

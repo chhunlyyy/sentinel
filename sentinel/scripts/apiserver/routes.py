@@ -7,6 +7,7 @@ from errors import SentinelError
 from paths import slug_problem
 
 import analytics
+import factory
 import notifications
 
 from . import manage, ops, readroutes, views
@@ -294,6 +295,42 @@ def h_control(ctx, slug):
         return 200, ctx.clean(project, views.run_detail(eng, project, slug))
 
 
+def h_pause(ctx, slug):
+    ops.parse_pause(ctx.body)
+    project = ctx.locate(slug)
+    with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
+        ops.pause(eng, slug, ctx.body, ctx.user)
+        return 200, ctx.clean(project, views.run_detail(eng, project, slug))
+
+
+def h_unpause(ctx, slug):
+    ops.parse_pause(ctx.body)
+    project = ctx.locate(slug)
+    with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
+        ops.unpause(eng, slug, ctx.body, ctx.user)
+        return 200, ctx.clean(project, views.run_detail(eng, project, slug))
+
+
+def h_note(ctx, slug):
+    ops.parse_note(ctx.body)
+    project = ctx.locate(slug)
+    with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
+        note_id = ops.note(eng, slug, ctx.body, ctx.user)
+        return 201, ctx.clean(project, {"note": note_id, **views.run_detail(eng, project, slug)})
+
+
+def h_factory(ctx, pid):
+    if ctx.query:
+        extra = sorted(ctx.query)[0]
+        raise views.validation(f"unknown query parameter {extra}", extra)
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    ctx.projects.require(project)
+    total = views.running_total(ctx.projects)
+    with ctx.projects.engine(project) as eng:
+        return 200, ctx.clean(project, factory.snapshot(eng, project.id, total_running=total))
+
+
 # ---- across projects
 def h_approval_list(ctx):
     return 200, views.approvals_in(ctx.projects, ctx.query.get("state", "IN_REVIEW"))
@@ -385,6 +422,10 @@ ROUTES = [
     Route("POST", "acceptance", "tasks/{slug}/acceptance", h_acceptance, ("Engine.accept",)),
     Route("POST", "control", "tasks/{slug}/control", h_control,
           ("Engine.cancel_run", "Engine.resume_run", "Engine.cancel_task_control", "Engine.retry_task")),
+    Route("POST", "pause", "tasks/{slug}/pause", h_pause, ("Engine.pause_run",)),
+    Route("POST", "unpause", "tasks/{slug}/unpause", h_unpause, ("Engine.unpause_run",)),
+    Route("POST", "note", "tasks/{slug}/note", h_note, ("Engine.add_note",)),
+    Route("GET", "factory", "projects/{pid}/factory", h_factory),
     Route("GET", "approval_list", "approvals", h_approval_list),
     Route("GET", "audit", "audit", h_audit),
     Route("GET", "events", "events", h_events),

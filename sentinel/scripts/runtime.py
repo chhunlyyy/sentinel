@@ -25,7 +25,8 @@ from tasks import DEFAULT_TIMEOUT, OPEN_STATES, _int, _seconds_since
 TASK_ID = re.compile(r"t-[0-9a-f]{12}")
 ACTIVE = ("RUNNING", "WAITING_FOR_INPUT")
 EXEC_STATES = ("EXECUTING", "VERIFYING", "REVIEWING")
-ROLE_RUN_STATES = {"specifier": ("PLANNED",), "test_designer": ("SPECIFICATION_APPROVED",)}
+ROLE_RUN_STATES = {"specifier": ("PLANNED",), "test_designer": ("SPECIFICATION_APPROVED",),
+                   "triage": ("CREATED",), "planner": ("TRIAGED",)}
 PROCESS_GRACE = 30.0  # seconds a RUNNING CLI task may have no pid yet, and slack before recovery enforces a timeout
 TICK = 0.2
 STAGES = ROOT / "core" / "stages"
@@ -330,6 +331,9 @@ class RuntimeOps:
         brief = tdir / "brief.md"
         if brief.is_file():
             parts.append("## Brief\n\n" + brief.read_text(encoding="utf-8"))
+        notes = [n for n in self.reg.rows("run_notes", run_id=run["id"]) if not n["consumed_at"] or n["consumed_by"] == t["id"]]
+        if notes:
+            parts.append("## Note from the owner\n\n" + "\n\n".join(n["text"] for n in notes))
         try:
             import kb_context
             kb_text = kb_context.render_project_knowledge(
@@ -401,6 +405,7 @@ class RuntimeOps:
         adapter = adapters.get_adapter("native", self._run_config(run))
         job = adapters.Job(t["id"], str(tdir), str(self.workspace), (tdir / "prompt.md").read_text(encoding="utf-8"))
         self.start_task(t["id"])
+        self.consume_notes(run, t["id"])
         adapter.submit(job)
         self.wait_task(t["id"], "orchestrator")
         return self._outcome(t["id"], prompt=str(tdir / "prompt.md"), result=str(tdir / "result.json"),
@@ -445,6 +450,7 @@ class RuntimeOps:
             fallback, runner_id, model = alt, alt, None
             adapter = self.adapter_for(alt, slug)
         self.start_task(t["id"], provider=fallback, owner=True)
+        self.consume_notes(run, t["id"])
         job = adapters.Job(t["id"], str(tdir), self._workdir(cfg, t["repo_id"]),
                            (tdir / "prompt.md").read_text(encoding="utf-8"), model=model,
                            extra_dirs=[self.state_dir])
@@ -606,11 +612,16 @@ class RuntimeOps:
         run = self.bookkeep(slug)
         state = run["state"]
         base = {"run": slug, "state": state}
-        stops = self._stop_notices(run) if state not in machines.RUN_FINAL else []
+        engine_driven = run["driver"] == "engine"
+        stops = self._stop_notices(run) if state not in machines.RUN_FINAL and not engine_driven else []
         if stops:
             return {**base, "kind": "orchestrator", "stop_tasks": stops, "exit": 0,
                     "action": "stop the subagent of task " + ", ".join(stops)}
         step = self._step_for(run, base)
+        if engine_driven and step["kind"] in ("task", "orchestrator", "wait"):
+            # one driver per run: the engine loop does this work, so the skill is handed nothing to act on
+            return {**base, "kind": "wait", "driven_by": "engine", "exit": 0,
+                    "reason": "the engine drives this run (driver engine); do nothing and report this to the requester"}
         step.setdefault("exit", 6 if step["kind"] == "human" else 0)
         return step
 

@@ -59,7 +59,7 @@ export const audit = (pid: string, a: T.AuditRow): W.WAudit => ({
 
 export const runSummary = (s: T.RunSummary) => ({
   slug: s.slug, type: s.type, tier: s.tier, state: s.state, execution_status: s.execution_status, acceptance_status: s.acceptance_status,
-  workflow_version: s.workflow_version, priority: null, requested_tier: null, origin: null, created_at: s.updated_at, updated_at: s.updated_at,
+  workflow_version: s.workflow_version, priority: null, requested_tier: null, origin: null, driver: "cli", paused: false, created_at: s.updated_at, updated_at: s.updated_at,
 });
 
 const approval = (a: T.ApprovalState): W.WApproval => ({
@@ -92,7 +92,7 @@ export function run(d: T.Run, nextStep?: T.NextStep): W.WRun {
   return {
     slug: d.slug, project: d.project, request: d.request, type: d.type, tier: d.tier, initial_tier: d.initial_tier, state: d.state, reason: d.reason ?? null,
     execution_status: d.execution_status, acceptance_status: d.acceptance_status, workflow_version: d.workflow_version, priority: d.priority, requested_tier: null,
-    origin: null, created_at: d.created_at, updated_at: d.updated_at, finished_at: null,
+    origin: null, driver: "cli", paused: false, created_at: d.created_at, updated_at: d.updated_at, finished_at: null,
     repos: d.repos.map((r) => ({ repo_id: r.id, baseline_sha: r.baseline_sha, branch: r.branch, final_sha: r.final_sha })),
     approvals,
     config_snapshot: d.config_snapshot ? { id: d.config_snapshot.version, scope: 'workspace', sha256: d.config_snapshot.sha256, created_at: d.created_at } : null,

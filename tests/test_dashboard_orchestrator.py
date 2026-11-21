@@ -15,7 +15,7 @@ class Orchestrator(SV):
         self.use_config(single_model=False, runners={"orch": {"command": runner, "prompt_flag": "-p"}})
         self.mk(SLUG, state="CREATED")
         with self.eng.reg.transaction():
-            self.eng.reg.update_run(SLUG, origin="dashboard")
+            self.eng.reg.update_run(SLUG, origin="dashboard", driver="ai-tool")
         self.serve(dispatch=True, dispatch_interval=3600)
 
     def launches(self):
@@ -42,7 +42,7 @@ class Orchestrator(SV):
 
     def test_not_for_cli_runs(self):
         with self.eng.reg.transaction():
-            self.eng.reg.update_run(SLUG, origin="cli")
+            self.eng.reg.update_run(SLUG, origin="cli", driver="cli")
         self.srv.orchestrator = "orch"
         self.assertEqual(self.pump(), [])
 

@@ -18,6 +18,7 @@ import yaml
 
 import adapters
 import boundary
+import factory
 import machines
 import scopes
 from errors import SentinelError
@@ -27,9 +28,9 @@ from util import sha_bytes
 
 DEFAULT_TIMEOUT = 5400
 DEFAULT_RETRIES = 2
-READ_ONLY_ROLES = {"specifier", "test_designer", "reviewer", "qa", "retrospective"}
+READ_ONLY_ROLES = {"triage", "specifier", "test_designer", "reviewer", "qa", "retrospective"}
 CYCLE_ROLES = ("tdd_red", "qa_red", "tdd_green", "tdd_refactor")  # qa_red: Red by QA scenarios (TDD-09)
-ROLE_ORDER = ("specifier", "test_designer", "tdd_red", "qa_red", "tdd_green", "tdd_refactor", "reviewer", "qa", "hardener",
+ROLE_ORDER = ("triage", "planner", "specifier", "test_designer", "tdd_red", "qa_red", "tdd_green", "tdd_refactor", "reviewer", "qa", "hardener",
               "docs", "retrospective")  # display order only; the roles themselves come from core/stages
 
 
@@ -235,7 +236,8 @@ class TaskOps:
         constraints = {"timeout_seconds": timeout_seconds, "max_retries": max_retries}
         if must_follow_tdd is not None:
             constraints["must_follow_tdd"] = bool(must_follow_tdd)
-        shared = {"specifier": [f"specs/{run['slug']}/spec.md"], "test_designer": [f"specs/{run['slug']}/features/**"]}
+        shared = {"specifier": [f"specs/{run['slug']}/spec.md"], "test_designer": [f"specs/{run['slug']}/features/**"],
+                  "planner": [f"specs/{run['slug']}/decisions.md"]}
         if write is None:
             write = shared.get(role, [] if role in READ_ONLY_ROLES else [f"{r}/**" for r in names])
         permissions = {"read": read if read is not None else [f"{r}/**" for r in names], "write": write}
@@ -699,6 +701,11 @@ class TaskOps:
         elif data["status"] == "blocked":
             why = "; ".join(str(q) for q in data.get("questions") or []) or data["summary"]
             v.update(state="BLOCKED", message=why, park=f"{role} task blocked: {why}")
+        if v["state"] == "COMPLETED" and data is not None:
+            problems = factory.result_problems(self, run, task, data)
+            if problems:
+                v.update(state="FAILED", code="E_RESULT_SCHEMA", message="result is not valid: " + "; ".join(problems),
+                         details={"problems": problems})
         if data is not None:
             v["raw"] = raw
             claimed = data.get("claimed_changed_files") or []

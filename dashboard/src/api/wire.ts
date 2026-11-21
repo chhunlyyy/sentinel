@@ -127,6 +127,8 @@ export interface WRun {
   priority: string | null;
   requested_tier: number | null;
   origin: string | null;
+  driver: string;
+  paused: boolean;
   created_at: string;
   updated_at: string;
   finished_at: string | null;

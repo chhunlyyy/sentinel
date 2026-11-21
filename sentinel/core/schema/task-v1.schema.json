@@ -9,7 +9,7 @@
     "schema": {"const": "task-v1"},
     "id": {"type": "string", "minLength": 1},
     "run_id": {"type": "string", "minLength": 1},
-    "role": {"enum": ["specifier", "test_designer", "tdd_red", "qa_red", "tdd_green", "tdd_refactor", "repro", "hardener",
+    "role": {"enum": ["triage", "planner", "specifier", "test_designer", "tdd_red", "qa_red", "tdd_green", "tdd_refactor", "repro", "hardener",
                       "reviewer", "qa", "promotion", "docs", "rollout", "retrospective"]},
     "objective": {"type": "string", "minLength": 1},
     "provider": {

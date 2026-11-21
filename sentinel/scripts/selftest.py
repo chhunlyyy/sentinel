@@ -725,7 +725,7 @@ def phase_f_checks(tmp):
         status, _, payload = call("GET", "/api/v1/tasks/api-run/next", cookie=cookie)
         step = json.loads(payload)
         code, out = run(CLI + ["--dir", str(w), "next", "api-run", "--json"])
-        check("AC-TSK-03b the new run waits for the AI tool and the CLI sees the same run", step.get("label") == "waiting for AI tool" and step["resume_command"] == "/sentinel resume api-run" and json.loads(out)["kind"] == "orchestrator", payload[:200].decode() + out[-100:])
+        check("AC-TSK-03b the new run is driven by the engine: the skill is handed nothing and the CLI sees the same run", step.get("kind") == "wait" and step.get("driven_by") == "engine" and json.loads(out)["driven_by"] == "engine", payload[:200].decode() + out[-100:])
         status, _, payload = call("POST", "/api/v1/tasks/api-run/control", {"action": "cancel", "comment": "selftest"}, cookie=cookie, csrf=csrf)
         row = db_row(w, "api-run")
         check("AC-MON-02a a dashboard cancel moves the run to CANCELLED and is audited with channel dashboard", status == 200 and row["state"] == "CANCELLED" and db_all(w, "SELECT 1 FROM audit WHERE channel='dashboard' AND action='cancel' AND target='api-run'"), payload[:200])
@@ -904,8 +904,8 @@ def main():
         standalone_bad = []
         for stage_file in sorted((ROOT / "core" / "stages").glob("*.md")):
             stage_name = stage_file.stem
-            if (yaml.safe_load(stage_file.read_text().split("---\n")[1]) or {}).get("writes") in ("tests", "production", "gherkin", "qa_scripts"):
-                continue  # Phase D roles are driven by the engine, they have no standalone skill
+            if (yaml.safe_load(stage_file.read_text().split("---\n")[1]) or {}).get("writes") in ("tests", "production", "gherkin", "qa_scripts", "factory"):
+                continue  # Phase D and factory roles are driven by the engine, they have no standalone skill
             owners = [n for n in names if n != "sentinel" and f"--stage {stage_name}" in (skills_dir() / n / "SKILL.md").read_text()]
             if len(owners) != 1:
                 standalone_bad.append(f"{stage_name}:{owners}")

@@ -182,6 +182,29 @@
         }
       }
     },
+    "factory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "driver": {
+          "enum": [
+            "engine",
+            "ai-tool"
+          ],
+          "default": "engine"
+        },
+        "max_tasks_per_project": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2
+        },
+        "max_agents": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4
+        }
+      }
+    },
     "knowledge": {
       "type": "object",
       "additionalProperties": false,

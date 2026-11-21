@@ -95,6 +95,17 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/approvals?state=` | approvals across projects (default `IN_REVIEW`) |
 | POST | `/projects/{pid}/tasks` | body `{slug, request, type, repos?, priority?, tier?, ticket?}`; the run is created for the AI tool (`origin = dashboard`) and authorizes nothing; `?project=<pid>` on `/tasks/{slug}` routes selects the project when a slug exists twice |
 
+### Added in 2.0 (factory)
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/tasks/{slug}/pause` | body `{comment?}`; the dispatcher starts nothing more for the run, running tasks finish. Audit row `pause`, event `run.paused`. A finished or already paused run is `E_TRANSITION` |
+| POST | `/tasks/{slug}/unpause` | body `{comment?}`; audit row `unpause`, event `run.unpaused` |
+| POST | `/tasks/{slug}/note` | body `{text}` (at most 4000 characters); answer 201 with the run detail and `note`. The next agent task of the run gets the text once. Audit row `note`, event `run.note_added` |
+| GET | `/projects/{pid}/factory` | the factory snapshot, see [factory-api.md](factory-api.md) |
+
+Pause, unpause and note use the same session, CSRF and audit checks as `/tasks/{slug}/control`. Run detail and run list items carry `driver` (`engine`, `ai-tool`, `cli`) and `paused`.
+
 Only Phase F routes exist; every other route above answers `404 E_NOT_FOUND` until Phase G or H builds it. Check order: Host, Origin, session cookie, route, CSRF, body. HTTP-only codes (not engine codes): `E_AUTH` 401, `E_CSRF` 403, `E_HOST` 403, `E_ORIGIN` 403, `E_METHOD` 405, `E_BODY_TOO_LARGE` 413, `E_MEDIA_TYPE` 415, `E_INTERNAL` 500. Engine codes map to one status each (`apiserver/status.py`).
 
 ## 3. CLI contract (new and changed commands)
