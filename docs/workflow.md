@@ -23,6 +23,8 @@ Steps in square brackets are yours, in an interactive terminal (or in the dashbo
 9. **Report.** `sentinel report <slug>` writes `report.json` and `report.md`: acceptance rules, evidence, trace from requirements to scenarios, tests and code.
 10. **Accept.** `sentinel accept <slug>` shows the result and asks for the hash prefix (`--reject -m "..."` rejects). Execution status (completed, failed, cancelled) and acceptance status (pending, accepted, rejected) are separate; a rejected run never becomes accepted.
 
+Once accepted, Sentinel automatically harvests the run's changes into the team [knowledge base](knowledge.md) in the background. A detached worker records the verified run record, ingests recent commits from tracked branches, updates module summaries, verifies scrub rules, and auto-pushes `knowledge/` and `proposals/knowledge-*` to the shared repository. In addition, before starting a run, `sentinel sync pull` performs a catch-up ingest from tracked branches so team knowledge stays current.
+
 A version 2 run **never pushes to the shared repo by itself**, whatever `state.auto_sync_push` says. Publishing is a separate, explicit `sentinel sync push`.
 
 Everything above is also visible in the [dashboard](dashboard.md), including the two approvals and acceptance. The terminal always works.
@@ -123,5 +125,6 @@ Stages run inside whatever tool you work in, each in its own clean context. For 
 | What | Where | Shared? |
 |---|---|---|
 | Invariants, guidelines, specs, regression suite | `.sentinel/shared/` (a clone of the team's shared repo) | yes, merged straight into the shared repo's main branch |
+| Project knowledge base (change records, module summaries, cursors) | `.sentinel/shared/knowledge/` | yes, background auto-push of `knowledge/` after scrub |
 | Decisions, briefs, stage results, change map, PR draft, rollout notes, metrics | `.sentinel/runs/<slug>/` | no |
 | QA logs, screenshots, uploads | `.sentinel/cache/` | no |

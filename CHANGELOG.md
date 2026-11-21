@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Knowledge base: captures changes on tracked branches of project repositories into the shared repository as structured change records and module summaries, whether made through Sentinel or direct git commits.
+- Background harvest worker (`sentinel kb worker`): runs detached after accepted version 2 runs to record verified changes, run scrub checks, and auto-push only `knowledge/` and `proposals/knowledge-*` paths to the shared repository.
+- Knowledge base CLI: `sentinel kb ingest` to ingest git history, `sentinel kb backfill` to index historical commits with estimate confirmation, `sentinel kb snapshot` for module summaries, and `sentinel kb status` to inspect cursors, record counts, and job queue status.
+- Catch-up ingest on `sentinel sync pull`, CI workflow template for project repos (`sentinel/templates/ci/knowledge-ingest.yml`), and task prompt injection (`## Project knowledge`) for version 2 agents.
+- New configuration options under `knowledge` (top-level) and `repos[].knowledge.branches`, plus `knowledge` routing role.
+- New `knowledge.failed` event and local notification when background harvesting fails.
+
 ## 1.2.4
 
 ### Changed
