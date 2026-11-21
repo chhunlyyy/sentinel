@@ -97,3 +97,50 @@ and a new one for `GET /factory` if the recorder covers it), `docs/operations.md
   `dashboard/fixtures/two-projects.ts` factory sample, fake API factory snapshot, `e2e/factory_floor.spec.ts`,
   `dashboard/scripts/showcase.mjs`.
 - Never revert or rewrite a file you did not change. Commit on your own branch only.
+
+# Wave 2 (owner: "implement 1 to 6, add them all")
+
+Starts after workstreams A (API) and B (shell) are merged into `v2.1-ui`, so each branch starts from the new shell and API.
+
+## D. Usage limits and routing fix (items 1 and 2)
+
+1. **Usage limits.** When a provider CLI fails because of a usage or rate limit (detect from exit code and output per
+   adapter: Claude "usage limit reached ... resets at", Gemini/agy "quota", "RESOURCE_EXHAUSTED", HTTP 429), the task is
+   not FAILED: it becomes `WAITING_LIMIT` (or the existing parked state with a reason) with `retry_at` parsed from the
+   message (fallback: now + `routing.limit_backoff` default 30 min). The dispatcher retries after `retry_at`.
+   Optional `routing.fallback: {claude: agy, ...}` (or per role) runs the task on the fallback runner at once instead.
+   Floor shows the station as "Waiting for usage limit · retries 14:05" (paused look, not failed); a notification
+   `task.limit_reached`. CLI: `sentinel status` shows it; `sentinel resolve <slug> --retry-now`.
+2. **Routing fix.** When a project's routing blocks engine runs (factory.routing_problems), the dashboard shows a
+   "Fix routing" banner on the project home and floor; it opens a dialog with a suggested runner and model per role
+   (reuse the wizard's suggestion API), Preview the YAML change, Save (same config write path as Project settings, with
+   history). CLI: `sentinel doctor --fix-routing` prints the same suggestion and writes it after a yes.
+
+## E. Usage per task (item 3)
+
+- Record per agent task: runner, model, input/output tokens, cost estimate when the adapter reports them (Claude
+  `--output-format json` usage; others: null), wall time. Registry migration (new columns or table), rollback note.
+- Show: run page "Usage" panel (per task, per model, totals), floor side panel "This task used ...", Reports page
+  usage by project/model/week. CLI: `sentinel stats --usage [--project] [--since]`.
+- Optional `factory.budget: {tokens_per_day, usd_per_day}` per project; when reached, the project stops starting new
+  tasks (like the factory pause, project scope) with a notification `budget.reached`; resets next day; floor banner.
+
+## F. Desktop notifications and knowledge in the flow (items 4 and 5)
+
+4. **Desktop notifications.** Opt-in in Settings ("Desktop notifications for: gates waiting, failed tasks, usage limits,
+   finished runs"), browser Notification API, fired from the events stream while any dashboard tab is open; clicking
+   opens the page. Plus optional service-side `notify-send` (Linux) / `osascript` (macOS) when no tab is open
+   (`notifications.desktop: true` in user config). Never approves anything.
+5. **Knowledge in the flow.** New task screen: "Knowledge found" panel (related change records, invariants) from a
+   new `GET /api/v1/projects/{pid}/knowledge/related?q=` (reuse the knowledge search the agents use) and "Slots: N of M
+   busy, position K in the queue". Approve screen: "Knowledge used" tab listing the records/summaries the agents read
+   for that document (from the run's recorded knowledge reads; record them if not yet stored). Save as draft for new
+   tasks.
+
+## G. Housekeeping (item 6)
+
+- Fix the flaky `test_release::Installed::test_AC_OPS_01i` (find the timing/shared-state cause; no retries).
+- Accessibility: automated axe-core pass over every screen in e2e (no new violations), plus an accessibility-tree
+  review of the new header, floor and dialogs. Docs say plainly that a manual screen-reader pass is still not done.
+- Adapters: run the Gemini adapter against the real `gemini` CLI (installed here) on a tiny throwaway repo; fix what
+  breaks. Codex and Cursor CLIs are not installed: docs keep saying they are untried.
