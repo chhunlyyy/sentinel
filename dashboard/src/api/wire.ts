@@ -462,8 +462,26 @@ export interface WFactoryLimits {
   running_total: number;
 }
 
+export interface WFactoryWho {
+  role: string;
+  runner: string;
+  model: string | null;
+}
+
+export interface WFactoryActivity {
+  at: string;
+  run: string;
+  station: string;
+  text: string;
+}
+
 export interface WFactory {
   project: string;
+  factory_paused: boolean;
+  /** agent stations (triage, spec, gherkin, build, knowledge) from the routing config; a station without a route is absent */
+  who: Record<string, WFactoryWho>;
+  /** newest first, at most 20 */
+  activity: WFactoryActivity[];
   generated_at: string;
   stations: string[];
   limits: WFactoryLimits;

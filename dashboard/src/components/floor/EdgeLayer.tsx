@@ -9,6 +9,8 @@ interface EdgeLayerProps {
   states: Record<string, StationState>;
   /** y-positions for the N build lanes (in viewBox units) */
   buildLaneYs: number[];
+  /** state of each build lane, same order as buildLaneYs (falls back to the build station state) */
+  laneStates?: StationState[];
 }
 
 function ecls(states: Record<string, StationState>, id: string): string {
@@ -20,8 +22,10 @@ function feed(states: Record<string, StationState>, id: string): string {
   return feedEdgeCls(states[id] ?? 'todo');
 }
 
-export function EdgeLayer({ states, buildLaneYs }: EdgeLayerProps) {
+export function EdgeLayer({ states, buildLaneYs, laneStates }: EdgeLayerProps) {
   const lanes = buildLaneYs.length === 0 ? [250] : buildLaneYs;
+  const laneState = (i: number): StationState => laneStates?.[i] ?? states.build ?? 'todo';
+  const verifyState = states.verify ?? 'todo';
 
   return (
     <svg
@@ -51,8 +55,7 @@ export function EdgeLayer({ states, buildLaneYs }: EdgeLayerProps) {
       />
       {/* build lane feeds */}
       {lanes.map((y, i) => {
-        const isWorking = states.build === 'working';
-        const cls = isWorking ? 'floor-e-feed-on' : 'floor-e-feed';
+        const cls = feedEdgeCls(laneState(i));
         return (
           <path
             key={`feed-b${i}`}
@@ -98,7 +101,7 @@ export function EdgeLayer({ states, buildLaneYs }: EdgeLayerProps) {
       {lanes.map((y, i) => (
         <path
           key={`gb${i}`}
-          className={`floor-e ${ecls(states, 'build')}`}
+          className={`floor-e ${stateLook(laneState(i)).edgeCls}`}
           d={`M565 170 C 618 170, 618 ${y}, 670 ${y}`}
           vectorEffect="non-scaling-stroke"
         />
@@ -107,7 +110,7 @@ export function EdgeLayer({ states, buildLaneYs }: EdgeLayerProps) {
       {lanes.map((y, i) => (
         <path
           key={`bv${i}`}
-          className={`floor-e ${ecls(states, 'verify')}`}
+          className={`floor-e ${laneState(i) === 'done' && verifyState !== 'todo' ? 'floor-e-done' : ecls(states, 'verify')}`}
           d={`M670 ${y} C 722 ${y}, 722 250, 775 250`}
           vectorEffect="non-scaling-stroke"
         />
