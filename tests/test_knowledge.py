@@ -119,6 +119,30 @@ class TestPatchIdKey(unittest.TestCase):
         key = knowledge.change_key(self.repo, sha, "Add feature (#10)")
         self.assertEqual(key, "pr-10")
 
+    def test_merge_commit_without_pr_gets_stable_patch_id(self):
+        # Initial commit
+        commit_file(self.repo, "f.txt", "base\n", "init")
+        # Feature branch 1
+        _git(self.repo, "checkout", "-b", "feat1")
+        commit_file(self.repo, "f.txt", "base\nchange\n", "feat change")
+        _git(self.repo, "checkout", "main")
+        merge_sha1 = merge_branch(self.repo, "feat1", "main", "Merge branch 'feat1'")
+
+        key1 = knowledge.change_key(self.repo, merge_sha1, "Merge branch 'feat1'")
+        self.assertTrue(key1.startswith("p-"))
+        self.assertNotEqual(key1, f"p-{merge_sha1[:12]}")
+
+        # Another branch with identical diff from the same parent state
+        _git(self.repo, "checkout", "-b", "main2", f"{merge_sha1}^1")
+        _git(self.repo, "checkout", "-b", "feat2")
+        commit_file(self.repo, "f.txt", "base\nchange\n", "different message")
+        _git(self.repo, "checkout", "main2")
+        merge_sha2 = merge_branch(self.repo, "feat2", "main2", "Merge branch 'feat2'")
+
+        key2 = knowledge.change_key(self.repo, merge_sha2, "Merge branch 'feat2'")
+        self.assertNotEqual(merge_sha1, merge_sha2)
+        self.assertEqual(key1, key2)
+
 
 # ---------------------------------------------------------------------------
 # Develop-then-main promotion keeps one record with two reached entries
@@ -163,6 +187,109 @@ class TestPromotionMerge(unittest.TestCase):
         reached = index["pr-5"]["reached"]
         branches = {r["branch"] for r in reached}
         self.assertEqual(branches, {"develop", "main"})
+
+    def test_features_merged_to_develop_then_promoted_to_main(self):
+        # Initial commit on main
+        init_sha = commit_file(self.repo, "readme.md", "# project", "init")
+        config = {"repos": [{"id": "backend", "path": str(self.repo), "knowledge": {"branches": ["develop", "main"]}}]}
+        # Ingest main initially so cursor is at init
+        knowledge.ingest_branch(str(self.shared), "backend", str(self.repo), "main", config,
+                                tracked_branches=["develop", "main"])
+        index_init = knowledge.read_index(str(self.shared))
+
+        _git(self.repo, "checkout", "-b", "develop")
+
+        # Feature 1 merged to develop via merge commit
+        _git(self.repo, "checkout", "-b", "feature/1")
+        commit_file(self.repo, "f1.py", "print(1)", "feat 1")
+        _git(self.repo, "checkout", "develop")
+        m_dev1 = merge_branch(self.repo, "feature/1", "develop", "Merge branch 'feature/1'")
+
+        # Feature 2 merged to develop via merge commit
+        _git(self.repo, "checkout", "-b", "feature/2")
+        commit_file(self.repo, "f2.py", "print(2)", "feat 2")
+        _git(self.repo, "checkout", "develop")
+        m_dev2 = merge_branch(self.repo, "feature/2", "develop", "Merge branch 'feature/2'")
+
+        # Ingest develop
+        knowledge.ingest_branch(str(self.shared), "backend", str(self.repo), "develop", config,
+                                tracked_branches=["develop", "main"])
+
+        index_dev = knowledge.read_index(str(self.shared))
+        dev_keys = list(set(index_dev.keys()) - set(index_init.keys()))
+        self.assertEqual(len(dev_keys), 2)
+        for k in dev_keys:
+            reached_branches = [r["branch"] for r in index_dev[k]["reached"]]
+            self.assertEqual(reached_branches, ["develop"])
+
+        # Now merge develop into main with one merge commit
+        _git(self.repo, "checkout", "main")
+        m_main = merge_branch(self.repo, "develop", "main", "Merge branch 'develop' into main")
+
+        # Ingest main
+        knowledge.ingest_branch(str(self.shared), "backend", str(self.repo), "main", config,
+                                tracked_branches=["develop", "main"])
+
+        # Verify: no new record on main, each develop record gains a main reached entry
+        index_main = knowledge.read_index(str(self.shared))
+        new_on_main = set(index_main.keys()) - set(index_dev.keys())
+        self.assertEqual(len(new_on_main), 0, "No new record on main")
+        for k in dev_keys:
+            entry = index_main[k]
+            reached = entry["reached"]
+            branches = [r["branch"] for r in reached]
+            self.assertEqual(branches, ["develop", "main"])
+            main_reached = [r for r in reached if r["branch"] == "main"][0]
+            self.assertEqual(main_reached["sha"], m_main)
+            info_m = knowledge.commit_info(str(self.repo), m_main)
+            self.assertEqual(main_reached["at"], info_m["date"])
+
+    def test_feature_merged_straight_into_main_creates_one_record(self):
+        # Initial commit on main
+        commit_file(self.repo, "readme.md", "# project", "init")
+        config = {"repos": [{"id": "backend", "path": str(self.repo), "knowledge": {"branches": ["main"]}}]}
+        # Ingest main initially
+        knowledge.ingest_branch(str(self.shared), "backend", str(self.repo), "main", config,
+                                tracked_branches=["main"])
+        index_before = knowledge.read_index(str(self.shared))
+
+        # Merge feature branch straight into main via merge commit
+        _git(self.repo, "checkout", "-b", "feature/direct")
+        commit_file(self.repo, "src/feature.py", "x = 42", "add direct feature")
+        _git(self.repo, "checkout", "main")
+        m_sha = merge_branch(self.repo, "feature/direct", "main", "Merge branch 'feature/direct'")
+
+        count = knowledge.ingest_branch(str(self.shared), "backend", str(self.repo), "main", config,
+                                        tracked_branches=["main"])
+        self.assertEqual(count, 1)
+
+        index = knowledge.read_index(str(self.shared))
+        new_keys = list(set(index.keys()) - set(index_before.keys()))
+        self.assertEqual(len(new_keys), 1)
+        key = new_keys[0]
+        self.assertTrue(key.startswith("p-"))
+        self.assertEqual(index[key]["reached"][0]["branch"], "main")
+        self.assertEqual(index[key]["reached"][0]["sha"], m_sha)
+        info = knowledge.commit_info(str(self.repo), m_sha)
+        self.assertEqual(index[key]["reached"][0]["at"], info["date"])
+        self.assertEqual(index[key]["shas"], [m_sha])
+
+    def test_reached_at_is_commit_date_not_ingest_time(self):
+        commit_file(self.repo, "readme.md", "# project", "init")
+        _git(self.repo, "checkout", "-b", "feat")
+        commit_file(self.repo, "f.txt", "hello", "custom date commit")
+        _git(self.repo, "checkout", "main")
+        m_sha = merge_branch(self.repo, "feat", "main", "Merge feat")
+
+        info = knowledge.commit_info(str(self.repo), m_sha)
+        config = {"repos": [{"id": "backend", "path": str(self.repo), "knowledge": {"branches": ["main"]}}]}
+        knowledge.ingest_branch(str(self.shared), "backend", str(self.repo), "main", config,
+                                tracked_branches=["main"])
+
+        index = knowledge.read_index(str(self.shared))
+        entries = [r for e in index.values() for r in e.get("reached", []) if r.get("sha") == m_sha]
+        self.assertEqual(len(entries), 1, index)
+        self.assertEqual(entries[0]["at"], info["date"])
 
 
 # ---------------------------------------------------------------------------

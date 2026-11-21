@@ -69,15 +69,30 @@ def _git(repo_path, *args, check=True):
     return result
 
 
+def is_merge_commit(repo_path, sha):
+    """Return True if *sha* has a second parent."""
+    result = subprocess.run(
+        ["git", "-C", str(repo_path), "rev-parse", "--verify", "-q", f"{sha}^2"],
+        capture_output=True, text=True,
+    )
+    return result.returncode == 0
+
+
 def compute_patch_id(repo_path, sha):
     """Return the first 12 characters of ``git patch-id --stable`` for *sha*.
 
     If the commit has no diff (e.g. empty merge), return the sha itself truncated to 12 chars.
     """
-    diff = subprocess.run(
-        ["git", "-C", str(repo_path), "diff-tree", "-p", sha],
-        capture_output=True, text=True,
-    )
+    if is_merge_commit(repo_path, sha):
+        diff = subprocess.run(
+            ["git", "-C", str(repo_path), "diff", f"{sha}^1", sha],
+            capture_output=True, text=True,
+        )
+    else:
+        diff = subprocess.run(
+            ["git", "-C", str(repo_path), "diff-tree", "-p", sha],
+            capture_output=True, text=True,
+        )
     if not diff.stdout.strip():
         return sha[:12]
     pid = subprocess.run(
@@ -244,13 +259,19 @@ def write_record(path, meta, body, scrubber=None):
 
 def diffstat(repo_path, sha):
     """Return a compact diffstat string for *sha*."""
-    result = _git(repo_path, "diff-tree", "--stat", "--no-commit-id", sha, check=False)
+    if is_merge_commit(repo_path, sha):
+        result = _git(repo_path, "diff", "--stat", f"{sha}^1", sha, check=False)
+    else:
+        result = _git(repo_path, "diff-tree", "--stat", "--no-commit-id", sha, check=False)
     return result.stdout.strip()
 
 
 def changed_files(repo_path, sha):
     """Return the list of files changed in *sha*."""
-    result = _git(repo_path, "diff-tree", "--no-commit-id", "-r", "--name-only", sha, check=False)
+    if is_merge_commit(repo_path, sha):
+        result = _git(repo_path, "diff", "--name-only", f"{sha}^1", sha, check=False)
+    else:
+        result = _git(repo_path, "diff-tree", "--no-commit-id", "-r", "--name-only", sha, check=False)
     return [f for f in result.stdout.strip().split("\n") if f]
 
 
@@ -272,7 +293,7 @@ def top_modules(files):
 
 def commit_info(repo_path, sha):
     """Return a dict with message, author, date for *sha*."""
-    fmt = "%H%n%an%n%aI%n%B"
+    fmt = "%H%n%an%n%cI%n%B"
     result = _git(repo_path, "log", "-1", f"--format={fmt}", sha)
     lines = result.stdout.split("\n", 3)
     return {
@@ -383,7 +404,7 @@ def mark_dropped(shared_dir, repo_id, branch, tracked_branches, repo_path):
 # Upsert a record
 # ---------------------------------------------------------------------------
 
-def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubber=None):
+def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubber=None, index=None):
     """Create or update a change record.
 
     *info* is a dict from ``commit_info``.  When the record already exists and the branch
@@ -391,11 +412,12 @@ def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubb
     the knowledge root.
     """
     date_str = info["date"][:7]  # YYYY-MM
-    index = read_index(shared_dir)
+    if index is None:
+        index = read_index(shared_dir)
     files = changed_files(repo_path, sha)
     modules = top_modules(files)
     ds = diffstat(repo_path, sha)
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    commit_date = info.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     existing_entry = index.get(key)
     if existing_entry and existing_entry.get("path"):
@@ -406,7 +428,7 @@ def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubb
             reached = meta.get("reached", [])
             existing_branches = {r.get("branch") for r in reached}
             if branch not in existing_branches:
-                reached.append({"branch": branch, "sha": sha, "at": now})
+                reached.append({"branch": branch, "sha": sha, "at": commit_date})
                 meta["reached"] = reached
                 # Un-drop if it had been dropped and is now on a new branch
                 if meta.get("status") == "dropped":
@@ -416,7 +438,7 @@ def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubb
                 for r in reached:
                     if r.get("branch") == branch:
                         r["sha"] = sha
-                        r["at"] = now
+                        r["at"] = commit_date
                         break
             # Merge files
             existing_files = set(meta.get("files", []))
@@ -434,6 +456,7 @@ def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubb
             # Update index
             entry = existing_entry
             entry["reached"] = meta["reached"]
+            entry["shas"] = list(dict.fromkeys(r["sha"] for r in meta["reached"] if r.get("sha")))
             entry["files"] = meta["files"]
             entry["status"] = meta.get("status", "active")
             index[key] = entry
@@ -449,7 +472,7 @@ def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubb
         "repo": repo_id,
         "provenance": "inferred",
         "status": "active",
-        "reached": [{"branch": branch, "sha": sha, "at": now}],
+        "reached": [{"branch": branch, "sha": sha, "at": commit_date}],
         "authors": [author] if author else [],
         "title": title,
         "files": sorted(files),
@@ -475,6 +498,7 @@ def upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubb
         "path": rp,
         "repo": repo_id,
         "reached": meta["reached"],
+        "shas": [sha],
         "provenance": "inferred",
         "status": "active",
         "files": sorted(files),
@@ -593,13 +617,62 @@ def ingest_branch(shared_dir, repo_id, repo_path, branch, config, scrubber=None,
     if not cursor_sha:
         cursor_sha = backfill_start_sha(repo_path, tip, backfill_months)
 
+    index = read_index(shared_dir)
+    sha_to_keys = {}
+    for k, entry in index.items():
+        if entry.get("repo") == repo_id:
+            for s in (entry.get("shas") or []):
+                sha_to_keys.setdefault(s, []).append(k)
+
     count = 0
     for sha, message in first_parent_commits(repo_path, cursor_sha, tip):
         if count >= cap:
             break
         info = commit_info(repo_path, sha)
-        key = change_key(repo_path, sha, message)
-        upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubber=scrubber)
+
+        is_promotion = False
+        if is_merge_commit(repo_path, sha):
+            rev_res = _git(repo_path, "rev-list", f"{sha}^1..{sha}^2", check=False)
+            brought_in = [s for s in rev_res.stdout.strip().split("\n") if s.strip()] if rev_res.returncode == 0 else []
+            matched_keys = set()
+            for s in brought_in:
+                if s in sha_to_keys:
+                    for k in sha_to_keys[s]:
+                        matched_keys.add(k)
+            if matched_keys:
+                is_promotion = True
+                commit_date = info.get("date") or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                for k in sorted(matched_keys):
+                    entry = index.get(k)
+                    if not entry or not entry.get("path"):
+                        continue
+                    full = Path(shared_dir) / entry["path"]
+                    if not full.exists():
+                        continue
+                    meta, body = read_record(full)
+                    reached = meta.get("reached", [])
+                    if not any(r.get("branch") == branch for r in reached):
+                        reached.append({"branch": branch, "sha": sha, "at": commit_date})
+                        meta["reached"] = reached
+                        if meta.get("status") == "dropped":
+                            meta["status"] = "active"
+                        write_record(full, meta, body, scrubber=scrubber)
+                        entry["reached"] = meta["reached"]
+                        entry["status"] = meta.get("status", "active")
+                        shas_list = list(dict.fromkeys(r["sha"] for r in meta["reached"] if r.get("sha")))
+                        entry["shas"] = shas_list
+                        if k not in sha_to_keys.setdefault(sha, []):
+                            sha_to_keys[sha].append(k)
+                write_index(shared_dir, index)
+
+        if not is_promotion:
+            key = change_key(repo_path, sha, message)
+            upsert_record(shared_dir, repo_id, key, branch, sha, info, repo_path, scrubber=scrubber, index=index)
+            if key in index:
+                for s in index[key].get("shas", []):
+                    if key not in sha_to_keys.setdefault(s, []):
+                        sha_to_keys[s].append(key)
+
         # Advance cursor after each change
         cursor = read_cursor(shared_dir)
         cursor[ck] = {"sha": sha, "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
