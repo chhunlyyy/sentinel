@@ -2,62 +2,60 @@
 
 [![PyPI](https://img.shields.io/pypi/v/sentinel-pipeline?label=PyPI)](https://pypi.org/project/sentinel-pipeline/) [![Python](https://img.shields.io/pypi/pyversions/sentinel-pipeline)](https://pypi.org/project/sentinel-pipeline/) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/chhunlyyy/sentinel/blob/main/LICENSE) [![Docker image](https://img.shields.io/badge/docker-ghcr.io%2Fchhunlyyy%2Fsentinel-2496ed?logo=docker&logoColor=white)](https://github.com/chhunlyyy/sentinel/pkgs/container/sentinel)
 
-Sentinel 2.0 is the software factory for AI coding agents. Run `sentinel dashboard`, create a project in a few clicks with the guided setup wizard, write a task, send it to the factory, and watch it move from station to station along the factory floor until you accept the result.
+Sentinel is a software factory for AI coding agents that you run from your browser.
 
-The engine drives the factory loop directly: a detached Sentinel background service coordinates each step (triage, planning, TDD cycles, in-process verification, and reporting) through provider adapters. AI tools are used for the work, never for bookkeeping. Three human gates keep you in control: the specification, the Gherkin scenarios, and final acceptance. An agent's claim is never evidence.
+You write a task. Sentinel's agents size it, write the spec and the test scenarios, build it test first, and the engine checks the result itself. You watch every step on the factory floor and decide at three gates: the spec, the scenarios, and the final result. Every finished change also becomes team knowledge, so the next task starts smarter.
 
-It is provider-neutral. Any agent CLI that can read a prompt and edit files can run a stage: Claude Code, Codex, Gemini CLI, Antigravity, Cursor, or a human. Work is continuously captured into the team knowledge base on tracked branches, giving agents indexed change records and module summaries without blocking runs. The CLI still works for everything: every action in the GUI has an exact CLI counterpart.
+It works with the AI tools you already have: Claude Code, Antigravity, Codex, Gemini CLI, Cursor, or a human. Everything runs on your machine.
 
 ![A tour of the Sentinel dashboard: overview, approvals, a run, the specification review, workflow, TDD cycles, verification, trace and acceptance](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-tour.gif)
 
-*The local dashboard, with its built-in sample data (two imaginary projects). It runs on your machine and sends nothing anywhere.*
+*The dashboard with its built-in sample data (two imaginary projects).*
+
+## Start in three minutes
 
 ```bash
 uv tool install sentinel-pipeline     # the engine, with the dashboard included
-sentinel --version                    # 2.0.0
+sentinel dashboard                    # starts the background service and opens your browser
 ```
 
-No Python tools? One Docker command serves just the dashboard. See [Install](#install).
+Then, in the browser:
 
-![Sentinel gives a team one agent workflow and one shared repo](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/overview.svg)
+1. **Create a project.** The wizard finds your repositories' stack, test commands and branches, connects your team's shared repo, and suggests which AI model does which job.
+2. **Create a task.** Describe a feature or a bug in plain words.
+3. **Watch the factory floor.** Each station lights up as its agent works. When a station turns amber, it is waiting for you: review and approve.
+4. **Accept the result.** Read the report and the evidence the engine collected, then accept. The changes stay on a branch for your normal pull request.
 
-## Why
+Close the browser or the terminal at any time: the factory keeps working in the background.
 
-- One run of "implement this properly" usually means five or six hand-written agent prompts, a QA setup, and a lot of logs. Sentinel packages that as config.
-- Effort scales with the task. A typo fix is one coder call. A change to authorization rules runs the full pipeline.
-- The knowledge a team builds up (specs, project invariants, the regression suite) lives in one shared repo, so it stays current for everyone. Logs and caches stay local and disposable.
-- Work done with and without Sentinel is captured continuously into the team knowledge base, giving agents indexed change records and module summaries without blocking runs.
+## Two ways to use Sentinel
 
-## The version 2 flow
+| | For | Guide |
+|---|---|---|
+| **The dashboard** | Everyone. Create projects, send tasks, watch the factory, approve and accept, manage knowledge and settings, all in the browser. | [Dashboard user guide](docs/gui-guide.md) |
+| **The command line** | Power users, scripts, CI, and running Sentinel from inside your AI tool with `/sentinel`. Every dashboard action has a command. | [Command-line guide](docs/cli-guide.md) |
 
-In Sentinel 2.0, `sentinel run new <slug>` creates a **version 2 run**, where you control the requirements and Sentinel controls the process:
+Both drive the same engine, so you can mix them: create a task in the dashboard and approve it in a terminal, or the other way round.
+
+## How it works: a task through the factory
 
 ```
-run new > triage > specification > you approve > Gherkin > you approve > TDD cycles > verify > report > you accept
+Intake > Triage > Spec > [you approve] > Scenarios > [you approve] > Build (one lane per behavior) > Verify > Report > [you accept] > Knowledge
 ```
 
-Three human gates keep you in control: the specification, the Gherkin scenarios, and final acceptance (`sentinel review`, `sentinel approve`, `sentinel accept`, in a terminal or in the dashboard). After both initial approvals, the engine executes Red, Green and Refactor cycles per behavior with strict write scopes, runs independent in-process verification checks (an agent's claim is never evidence), compiles the report, and waits for you to accept the result. After acceptance, changes are automatically harvested into the team knowledge base. Any provider CLI can run a task; the engine decides the ordering, retries and evidence. A version 2 run never pushes to the shared repo by itself. Read the [workflow guide](docs/workflow.md). Runs created with `--legacy`, `--tier` or `--adhoc` use the 0.1 pipeline below, which is unchanged.
+- **Effort scales with the task.** Triage sizes it from seven risk factors. A typo fix is one coder call; a change to who may see salary data gets the full pipeline.
+- **Test first, per behavior.** Each behavior gets its own Red, Green and Refactor cycle, with a write scope the agent may not leave.
+- **An agent's claim is never evidence.** The engine runs the tests, lint, build and scope checks itself before you see the report.
+- **Agents cannot approve.** Approvals need your session and the first 8 characters of the document's hash.
+- **The team learns.** Accepted work, and work your team merges without Sentinel, becomes change records and module summaries in the shared repo. Agents read them before they start.
 
-The start of a run in a terminal. The output is real, and the last command shows the point of the design: an agent runs without a terminal, so it cannot approve.
+In the terminal the same flow is `sentinel run new`, `sentinel approve` and `sentinel accept`; see the [command-line guide](docs/cli-guide.md) and the [workflow guide](docs/workflow.md). The last command below shows the point of the design: an agent runs without a terminal, so it cannot approve.
 
 ![A terminal session: sentinel run new, triage and next, then sentinel approve refused with E_NOT_TTY](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/terminal-session.png)
 
 ## Dashboard
 
-`sentinel dashboard` starts the Sentinel background service on 127.0.0.1, registers your workspace, and opens the Factory Floor in your browser (`sentinel dashboard [provider]` optionally sets the AI tool). The service survives terminal close, keeping active runs moving; stop it with `sentinel stop` (or `sentinel service stop`). Pass `--foreground` to keep the server attached to your terminal.
-
-The dashboard includes:
-- **Factory Floor**: The default landing view showing runs as tokens moving through stations on a neural-network path, live agent status, behavior build lanes, pause and note controls, and queue limits.
-- **Overview**: System status and active run summaries at `/overview`.
-- **Projects**: Workspaces, repositories, configuration diffs and history, and the 5-step "Create project" wizard (`/projects/new`).
-- **Tasks**: Cross-project run list and "Create task" form.
-- **My Approvals**: Interactive reviews for specifications and Gherkin scenarios with diffs and typed hash confirmation.
-- **Runs**: Detailed run inspection, logs, diffs, verification checks, and requirement-to-code traceability.
-- **Knowledge**: Shared repository knowledge base status, backfill with estimate confirmation, records browser, and CI workflow template.
-- **Settings**: Background service controls, provider and role routing, schema-validated configuration editor with preview, and health checks (`sentinel doctor`).
-- **Reports**: Registry metrics including lead time, acceptance rate, approval wait, and task costs.
-
-See [the dashboard guide](docs/dashboard.md) and [operations](docs/operations.md) for notifications, stats, audit export and backup.
+`sentinel dashboard` starts the Sentinel background service on `127.0.0.1` and opens the factory floor. The screens: Factory floor, Overview, Projects (with the Create project wizard), Tasks, My Approvals, Runs, Knowledge, Reports and Settings. Stop the service with `sentinel stop`. The [dashboard user guide](docs/gui-guide.md) walks through them; the [dashboard reference](docs/dashboard.md) covers flags, Docker and security.
 
 The pictures use the dashboard's built-in sample data, not a real project.
 
@@ -71,113 +69,43 @@ The pictures use the dashboard's built-in sample data, not a real project.
 | **Dark theme** | **Reports** |
 | ![A run in the dark theme with its controls, approvals and changes](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-run-dark.png) | ![Reports: lead time, acceptance rate and approval wait](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/dashboard-reports.png) |
 
-The same screens are reachable with the keyboard, and the dashboard works with the network off. The pictures are made by [`dashboard/scripts/showcase.mjs`](dashboard/scripts/showcase.mjs), see [the dashboard guide](docs/dashboard.md#the-pictures-in-the-readme).
+Every screen works with the keyboard alone and with the network off. The pictures are made by [`dashboard/scripts/showcase.mjs`](dashboard/scripts/showcase.mjs), see [the dashboard reference](docs/dashboard.md#the-pictures-in-the-readme).
 
-## How it works (0.1 tiers)
-
-![Stages by tier](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/workflow.svg)
-
-```
-Tier 1  Coder
-Tier 2  [Repro, bugs only] > Coder > Release check > Metrics > Changelog line
-Tier 3  Specifier > Re-triage > Coder > Cleaner > Reviewer > Targeted QA > Regression promotion
-        > Release check > Docs and PR draft > Metrics
-Tier 4  Specifier > Re-triage > Coder > Cleaner > Hardener > Reviewer > Full QA > Regression promotion
-        > Release check > Docs and PR draft > Rollout notes > Retrospective > Metrics
-```
-
-The tier depends only on the size and risk of the task (repos touched, files changed, schema change, auth change, security surface). Any single high-risk factor raises the whole run. A reviewer blocker in tier 2 or 3 raises the tier automatically.
-
-For what each step does, who runs it, what it writes and when it stops, read [the workflow guide](docs/workflow.md). The stage-by-stage contract is in [skills/sentinel/pipeline.md](skills/sentinel/pipeline.md).
-
-## Project shapes
-
-`sentinel init` asks for the shape of your project and generates the repo list, agents, and cross-repo steps.
-
-| Shape | Repos | Behavior |
-|---|---|---|
-| single | one repo, role `app` | no cross-repo steps |
-| fullstack | backend and frontend | backend first, one sync checkpoint, then frontend |
-| fullstack-mobile | backend, frontend, mobile | backend first, one sync checkpoint, then frontend and mobile in parallel |
-| custom | any number of repos and roles | you define the order |
-
-Each repo has its own stack profile (`flutter`, `spring-gradle`, `nextjs`, `node`, `python`, or `generic`), so mixed stacks work.
-
-## Requirements
-
-- Python 3.10 or newer and [uv](https://docs.astral.sh/uv/) (or pipx). `uv` can fetch a suitable Python for you.
-- Node (for `npx`), only to install the skills.
-- git
-- An AI coding tool: Claude Code, Antigravity, Codex, Cursor, OpenCode, Devin, Windsurf, Amp, Pi, or any other tool the [skills installer](https://github.com/vercel-labs/skills) supports.
-- `mysql` and `mysqldump`, only if you use the MySQL QA data plugin.
+![Sentinel gives a team one agent workflow and one shared repo](https://raw.githubusercontent.com/chhunlyyy/sentinel/main/docs/images/overview.svg)
 
 ## Install
 
-Two parts, each installed once. The engine is the `sentinel` command; the skills are what your AI tool shows as `/sentinel`. Put the engine on the host: your AI tool runs it there.
+You need Python 3.10 or newer with [uv](https://docs.astral.sh/uv/) (or pipx), git, and at least one AI coding tool that has a command-line mode (for example Claude Code or Antigravity).
 
 ```bash
-# 1. the engine, with the dashboard included (PyPI distribution "sentinel-pipeline", command "sentinel")
-uv tool install sentinel-pipeline
-
-# 2. the skills, for your AI tool (leave -a off to choose from a list)
-npx skills@latest add chhunlyyy/sentinel -a claude-code
+uv tool install sentinel-pipeline     # or: pipx install sentinel-pipeline
+sentinel --version                    # 2.0.0
 ```
 
-No `uv`? `pipx install sentinel-pipeline` does the same. Check it with `sentinel --version`.
+The dashboard is included in the PyPI wheel. A git install (`uv tool install git+https://github.com/chhunlyyy/sentinel`) has the CLI but not the dashboard UI; see the [installation guide](docs/installation.md#the-dashboard-ui).
 
-Only want the dashboard, without installing Python tools? One Docker command serves it for the workspace in the current folder (the container holds no AI tool and no secret; it publishes on `127.0.0.1` only):
+Want Sentinel inside your AI tool as `/sentinel` too? Add the skills: `npx skills@latest add chhunlyyy/sentinel -a claude-code` (see the [command-line guide](docs/cli-guide.md#skills-for-your-ai-tool)).
+
+Only want to look at the dashboard, without Python? One Docker command serves it for the workspace in the current folder (no AI tool and no secret inside; published on `127.0.0.1` only):
 
 ```bash
 docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
 ```
 
-It prints `http://localhost:8765/auth?t=<token>`; open it. Add `--user $(id -u):$(id -g)` so files it writes in the workspace belong to you (then mount a private config folder you created with `mkdir -m 700 -p`, see the guide). On the host, `sentinel dashboard` picks a free port; `sentinel dashboard --port 8765` fixes it. See the [dashboard guide](docs/dashboard.md#docker).
+It prints `http://localhost:8765/auth?t=<token>`; open it. See the [dashboard reference](docs/dashboard.md#docker).
 
-A git install (`uv tool install git+https://github.com/chhunlyyy/sentinel`) is the developer path: it has the CLI but not the dashboard UI. See the [installation guide](docs/installation.md#the-dashboard-ui) for building it from a checkout.
-
-Agent names for `-a` include `claude-code`, `antigravity-cli`, `codex`, `cursor`, `opencode`, `devin`, `windsurf`, `amp` and `pi`. Skills run with your agent's full permissions, so read what you install; Sentinel's are plain markdown in [skills/](skills/).
-
-The [installation guide](docs/installation.md) covers prerequisites, where each tool's skills end up, verifying the install, rolling it out to a team, upgrading, uninstalling and troubleshooting.
-
-## Use it
-
-Type the command in your tool, or just ask for it in words (tools that do not have slash commands for skills load the skill from its description):
-
-| Command | What it does |
-|---|---|
-| `/sentinel <task>` | Runs a feature or bug fix through the pipeline at the right tier |
-| `/sentinel-setup` | Connects the team's shared repo, picks the project shape, writes the config |
-| `/sentinel-resume` | Continues a run that a usage limit or a closed session interrupted |
-| `/sentinel-status` | Shows setup health, open runs and cost statistics |
-| `/sentinel-sync` | Publishes a finished run's specs and regression tests to the shared repo, after approval |
-| `/sentinel-change-map` | Builds the HTML map of everything a run changed |
-| `/sentinel-repro` | Writes a failing test or exact steps for a bug, without fixing it |
-| `/sentinel-spec` | Turns a request into a spec with Gherkin scenarios and a QA procedure |
-| `/sentinel-code` | Implements a change in one repo |
-| `/sentinel-clean` | Refactors recent changes for readability |
-| `/sentinel-harden` | Runs mutation testing and plugs test gaps |
-| `/sentinel-review` | Skeptical read-only review of the current changes |
-| `/sentinel-qa` | Runs QA against the running system on throwaway data |
-| `/sentinel-promote` | Moves passing QA checks into the shared regression suite |
-| `/sentinel-release-check` | Runs the production-readiness gate |
-| `/sentinel-docs` | Updates docs and drafts the PR |
-| `/sentinel-rollout` | Collects deploy-time changes |
-| `/sentinel-retro` | Proposes new project invariants |
-
-You can pick the AI tool and model for each stage (for example the coder on Claude Opus, QA on Claude Sonnet, the hardener on Antigravity with a Gemini model) in `sentinel.config.yaml`; see [routing](docs/config.md#routing-a-model-or-provider-per-stage-optional).
-
-Every stage is also its own skill, so you can run just one without `/sentinel`: for example `/sentinel-review` for a review of your uncommitted changes, or `/sentinel-release-check` before you commit. Each stage skill uses the same instructions as the full pipeline and runs in its own clean context. A standalone run needs a config but no spec, lock or shared repo.
-
-First time in a project, start with `/sentinel-setup` (or run `sentinel init` yourself). It asks for the URL of your team's private shared repo and will not continue without one: that is where your team's rules, specs and regression suite live. Details are in [docs/quickstart.md](docs/quickstart.md).
+Upgrading from 1.x? Read [migrating to 2.0](docs/migration-2.0.md): engine-driven runs need every agent role routed to a command-line AI tool.
 
 ## Documentation
 
-- [Installation](docs/installation.md)
+- [Dashboard user guide](docs/gui-guide.md)
+- [Command-line guide](docs/cli-guide.md)
 - [Quickstart](docs/quickstart.md)
+- [Installation](docs/installation.md)
 - [Workflow, step by step](docs/workflow.md)
 - [Knowledge base](docs/knowledge.md)
-- [Dashboard](docs/dashboard.md)
-- [Operations: notifications, stats, audit, backup](docs/operations.md)
+- [Dashboard reference](docs/dashboard.md)
+- [Operations: service, notifications, stats, audit, backup](docs/operations.md)
 - [Configuration reference](docs/config.md)
 - [Security notes and residual risks](docs/security.md)
 - [Migrating from 1.x to 2.0.0](docs/migration-2.0.md)
@@ -188,7 +116,7 @@ First time in a project, start with `/sentinel-setup` (or run `sentinel init` yo
 
 ## Status
 
-Version 2.0.0 (beta). The software factory driver, the background service (`sentinel service`), the factory floor, project wizard, schema-driven settings form and knowledge base are covered by automated unit, integration, browser and security test suites (`python3 tools/release_gate.py` runs them all and checks that every approved acceptance criterion has a passing test). Known limits and residual risks are stated in [docs/security.md](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md): an agent that runs as your OS user can approve through a pseudo-terminal or the token file, and a provider CLI can run any command during a task. The factory driver, background service and live factory floor are new in 2.0.0 and have not yet been evaluated by multi-developer teams under prolonged real-world production workload. The dashboard project creation wizard and settings form replace previous file-only configuration, but manual screen-reader accessibility testing has not been performed (waived by owner). The 0.1 stages (specifier, reviewer, hardener, QA, promotion, docs, rollout, retrospective) have run for real on one project only, and the Codex, Gemini and Cursor adapters have not been tried against the real tools in production. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The PyPI distribution is named `sentinel-pipeline` because `sentinel` is taken; the command and the import package are still `sentinel`.
+Version 2.0.0 (beta). The factory driver, the background service, the factory floor, the project wizard, the settings form and the knowledge base have their own unit, integration, browser and security tests (`python3 tools/release_gate.py` runs them all and checks that every approved acceptance criterion has a passing test). They are new in 2.0.0 and have not yet run with whole teams over weeks of real work. Known limits and residual risks are in [docs/security.md](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md): an agent that runs as your OS user can approve through a pseudo-terminal or the token file, and a provider CLI can run any command during a task. A manual screen-reader pass has not been done. The Codex, Gemini and Cursor adapters have not been tried against the real tools. Read [docs/beta-testing.md](docs/beta-testing.md) before testing. The PyPI distribution is named `sentinel-pipeline` because `sentinel` is taken; the command and the import package are still `sentinel`.
 
 ## License
 
