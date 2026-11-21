@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 import adapters
+import factory
 from errors import SentinelError
 from paths import ROOT
 from apiserver import lifecycle, userdir
@@ -244,6 +245,7 @@ def service_status(as_json=False, cfgdir=None):
 
     projects_data = userdir.load_projects(cfgdir)
     projects_count = len(projects_data.get("projects", []))
+    paused = factory.pause_state(cfgdir)["paused"]
 
     if as_json:
         data = {
@@ -252,6 +254,7 @@ def service_status(as_json=False, cfgdir=None):
             "port": port,
             "uptime": round(uptime, 1) if uptime is not None else None,
             "projects_count": projects_count,
+            "factory_paused": paused,
             "log_path": str(log_path),
         }
         print(json.dumps(data, indent=2))
@@ -268,6 +271,18 @@ def service_status(as_json=False, cfgdir=None):
             _say("Sentinel service: not running")
             _say(f"  Registered projects: {projects_count}")
             _say(f"  Log: {log_path}")
+        _say(f"  Factory: {'paused (nothing new starts)' if paused else 'running'}")
+    return 0
+
+
+def factory_pause(paused, user, comment=None, cfgdir=None):
+    """`sentinel service pause|resume`: the same whole-factory switch as the dashboard button."""
+    cfgdir = Path(cfgdir) if cfgdir else userdir.config_dir()
+    state = factory.pause_state(cfgdir)["paused"]
+    factory.set_paused(cfgdir, paused, user, "cli", (comment or "").strip() or None)
+    word = "paused" if paused else "running"
+    _say(f"factory already {word}" if state == paused else
+         f"factory {word}: " + ("nothing new starts; running tasks finish" if paused else "agents start again"))
     return 0
 
 

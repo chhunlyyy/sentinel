@@ -241,5 +241,11 @@ def unpause(eng, slug, body, user):
     return eng.unpause_run(slug, parse_pause(body), user=user, channel=CHANNEL)
 
 
+def factory_pause(cfgdir, projects, paused, body, user):
+    """Pause or resume the whole factory (every project); audited in each available project."""
+    import factory
+    return factory.set_paused(cfgdir, paused, user, CHANNEL, parse_pause(body), projects)
+
+
 def note(eng, slug, body, user):
     return eng.add_note(slug, parse_note(body), user=user, channel=CHANNEL)

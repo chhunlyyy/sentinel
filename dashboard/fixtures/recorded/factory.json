@@ -1,40 +1,275 @@
 {
-  "project": "digital-hr",
-  "generated_at": "2026-11-21T10:15:02.123456Z",
-  "stations": ["intake", "triage", "spec", "gate_spec", "gherkin", "gate_gherkin", "build", "verify", "report", "gate_accept", "knowledge"],
-  "limits": {"driver": "engine", "max_tasks_per_project": 2, "max_agents": 4, "running_in_project": 2, "running_total": 3},
-  "runs": [
+  "activity": [
     {
-      "slug": "leave-balance",
-      "title": "Show the remaining leave days on the home page",
-      "type": "feature",
-      "driver": "engine",
-      "paused": false,
-      "state": "EXECUTING",
-      "tier": 3,
-      "station": "build",
-      "stations": {
-        "intake": "done", "triage": "done", "spec": "done", "gate_spec": "done",
-        "gherkin": "done", "gate_gherkin": "done",
-        "build": "working", "verify": "next", "report": "todo", "gate_accept": "todo", "knowledge": "todo"
-      },
-      "next_station": "verify",
-      "agents": {
-        "build": [{"task": "t-0123456789ab", "role": "tdd_green", "runner": "claude", "model": "sonnet",
-                   "adapter": "cli", "started_at": "2026-11-21T10:12:40.000000Z"}]
-      },
-      "lanes": [
-        {"cycle": "c-0123456789ab", "name": "Remaining days show", "repo": "backend", "state": "GREEN_RUNNING",
-         "red": "done", "green": "working", "refactor": "todo"}
-      ],
-      "attention": null,
-      "pending_notes": 0,
-      "created_at": "2026-11-21T09:58:00.000000Z",
-      "updated_at": "2026-11-21T10:12:40.000000Z"
+      "at": "2026-11-21T13:31:59.586649Z",
+      "run": "gherkin-run",
+      "station": "gate_gherkin",
+      "text": "Gherkin is waiting for you"
+    },
+    {
+      "at": "2026-11-21T13:31:59.583985Z",
+      "run": "gherkin-run",
+      "station": "gherkin",
+      "text": "Gherkin agent finished"
+    },
+    {
+      "at": "2026-11-21T13:31:59.574135Z",
+      "run": "gherkin-run",
+      "station": "gherkin",
+      "text": "Gherkin agent started"
+    },
+    {
+      "at": "2026-11-21T13:31:59.560431Z",
+      "run": "gherkin-run",
+      "station": "gate_spec",
+      "text": "You approved the specification"
+    },
+    {
+      "at": "2026-11-21T13:31:59.559270Z",
+      "run": "gherkin-run",
+      "station": "gate_spec",
+      "text": "Specification is waiting for you"
+    },
+    {
+      "at": "2026-11-21T13:31:59.557241Z",
+      "run": "gherkin-run",
+      "station": "spec",
+      "text": "Specification agent finished"
+    },
+    {
+      "at": "2026-11-21T13:31:59.547675Z",
+      "run": "gherkin-run",
+      "station": "spec",
+      "text": "Specification agent started"
+    },
+    {
+      "at": "2026-11-21T13:31:59.536456Z",
+      "run": "gherkin-run",
+      "station": "intake",
+      "text": "Task created"
+    },
+    {
+      "at": "2026-11-21T13:31:59.532079Z",
+      "run": "spec-run",
+      "station": "gate_spec",
+      "text": "Specification is waiting for you"
+    },
+    {
+      "at": "2026-11-21T13:31:59.530087Z",
+      "run": "spec-run",
+      "station": "spec",
+      "text": "Specification agent finished"
+    },
+    {
+      "at": "2026-11-21T13:31:59.519705Z",
+      "run": "spec-run",
+      "station": "spec",
+      "text": "Specification agent started"
+    },
+    {
+      "at": "2026-11-21T13:31:59.508812Z",
+      "run": "spec-run",
+      "station": "intake",
+      "text": "Task created"
+    },
+    {
+      "at": "2026-11-21T13:31:59.475193Z",
+      "run": "leave-balance",
+      "station": "gate_gherkin",
+      "text": "You approved the Gherkin"
+    },
+    {
+      "at": "2026-11-21T13:31:59.473101Z",
+      "run": "leave-balance",
+      "station": "gate_gherkin",
+      "text": "Gherkin is waiting for you"
+    },
+    {
+      "at": "2026-11-21T13:31:59.470206Z",
+      "run": "leave-balance",
+      "station": "gherkin",
+      "text": "Gherkin agent finished"
+    },
+    {
+      "at": "2026-11-21T13:31:59.460672Z",
+      "run": "leave-balance",
+      "station": "gherkin",
+      "text": "Gherkin agent started"
+    },
+    {
+      "at": "2026-11-21T13:31:59.446326Z",
+      "run": "leave-balance",
+      "station": "gate_spec",
+      "text": "You approved the specification"
+    },
+    {
+      "at": "2026-11-21T13:31:59.445005Z",
+      "run": "leave-balance",
+      "station": "gate_spec",
+      "text": "Specification is waiting for you"
+    },
+    {
+      "at": "2026-11-21T13:31:59.441298Z",
+      "run": "leave-balance",
+      "station": "spec",
+      "text": "Specification agent finished"
+    },
+    {
+      "at": "2026-11-21T13:31:59.429410Z",
+      "run": "leave-balance",
+      "station": "spec",
+      "text": "Specification agent started"
     }
   ],
-  "queue": [
-    {"slug": "payroll-export", "title": "Export payroll as CSV", "position": 1,
-     "reason": "the project limit of 2 running tasks is reached"}
-  ]
+  "factory_paused": false,
+  "generated_at": "2026-11-21T13:31:59.687118Z",
+  "limits": {
+    "driver": "engine",
+    "max_agents": 4,
+    "max_tasks_per_project": 2,
+    "running_in_project": 0,
+    "running_total": 0
+  },
+  "project": "digital-hr",
+  "queue": [],
+  "runs": [
+    {
+      "agents": {},
+      "attention": null,
+      "created_at": "2026-11-21T13:31:59.389600Z",
+      "driver": "cli",
+      "lanes": [
+        {
+          "cycle": "c-dc4d7c90561d",
+          "green": "todo",
+          "name": "features/balance.feature :: Rule Remaining balance",
+          "red": "queued",
+          "refactor": "todo",
+          "repo": "backend",
+          "state": "PLANNED"
+        },
+        {
+          "cycle": "c-996a876397b5",
+          "green": "todo",
+          "name": "features/balance.feature :: Rule Carry-over",
+          "red": "queued",
+          "refactor": "todo",
+          "repo": "backend",
+          "state": "PLANNED"
+        },
+        {
+          "cycle": "c-def1a1ca775c",
+          "green": "todo",
+          "name": "features/request_form.feature",
+          "red": "queued",
+          "refactor": "todo",
+          "repo": "frontend",
+          "state": "PLANNED"
+        }
+      ],
+      "next_station": "verify",
+      "paused": false,
+      "pending_notes": 0,
+      "slug": "leave-balance",
+      "state": "EXECUTING",
+      "station": "build",
+      "stations": {
+        "build": "queued",
+        "gate_accept": "todo",
+        "gate_gherkin": "done",
+        "gate_spec": "done",
+        "gherkin": "done",
+        "intake": "done",
+        "knowledge": "todo",
+        "report": "todo",
+        "spec": "done",
+        "triage": "done",
+        "verify": "next"
+      },
+      "tier": 3,
+      "title": "leave-balance",
+      "type": "feature",
+      "updated_at": "2026-11-21T13:31:59.480802Z"
+    },
+    {
+      "agents": {},
+      "attention": null,
+      "created_at": "2026-11-21T13:31:59.504166Z",
+      "driver": "cli",
+      "lanes": [],
+      "next_station": "gherkin",
+      "paused": false,
+      "pending_notes": 0,
+      "slug": "spec-run",
+      "state": "SPECIFICATION_REVIEW",
+      "station": "gate_spec",
+      "stations": {
+        "build": "todo",
+        "gate_accept": "todo",
+        "gate_gherkin": "todo",
+        "gate_spec": "waiting",
+        "gherkin": "next",
+        "intake": "done",
+        "knowledge": "todo",
+        "report": "todo",
+        "spec": "done",
+        "triage": "done",
+        "verify": "todo"
+      },
+      "tier": 3,
+      "title": "spec-run",
+      "type": "feature",
+      "updated_at": "2026-11-21T13:31:59.532269Z"
+    },
+    {
+      "agents": {},
+      "attention": null,
+      "created_at": "2026-11-21T13:31:59.532546Z",
+      "driver": "cli",
+      "lanes": [],
+      "next_station": "build",
+      "paused": false,
+      "pending_notes": 0,
+      "slug": "gherkin-run",
+      "state": "GHERKIN_REVIEW",
+      "station": "gate_gherkin",
+      "stations": {
+        "build": "next",
+        "gate_accept": "todo",
+        "gate_gherkin": "waiting",
+        "gate_spec": "done",
+        "gherkin": "done",
+        "intake": "done",
+        "knowledge": "todo",
+        "report": "todo",
+        "spec": "done",
+        "triage": "done",
+        "verify": "todo"
+      },
+      "tier": 3,
+      "title": "gherkin-run",
+      "type": "feature",
+      "updated_at": "2026-11-21T13:31:59.586735Z"
+    }
+  ],
+  "stations": [
+    "intake",
+    "triage",
+    "spec",
+    "gate_spec",
+    "gherkin",
+    "gate_gherkin",
+    "build",
+    "verify",
+    "report",
+    "gate_accept",
+    "knowledge"
+  ],
+  "who": {
+    "build": {
+      "model": null,
+      "role": "tdd_green",
+      "runner": "fake"
+    }
+  }
 }

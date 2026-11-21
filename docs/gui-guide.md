@@ -36,6 +36,10 @@ Open **Tasks** and click **Create task** (or use **New task** in the menu).
 
 Click **Create task**. The run joins the factory: it starts at once when a slot is free (two tasks per project and four agents in total by default), otherwise it waits in the queue.
 
+## Pause the whole factory
+
+**Pause factory** in the header (after you confirm) stops every project from starting new agent work: tasks already running finish, nothing new starts. The header then says "Factory paused". **Resume factory** starts work again; runs you paused one by one stay paused. The same switch from a terminal: `sentinel service pause` and `sentinel service resume`.
+
 ## Read the factory floor
 
 The factory floor draws the factory as a network of stations. Each task moves along it from left to right:

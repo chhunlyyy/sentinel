@@ -97,6 +97,7 @@ class Recorder(SV, PD):
         self.save("audit", h.get(f"/api/v1/audit?project=digital-hr"))
         self.save("readiness", h.get(f"{P}/readiness"))
         self.save("factory", h.get(f"{P}/factory"))
+        self.save("factory_state", h.get("/api/v1/factory"))
         self.save("repositories", h.get(f"{P}/repositories"))
         self.save("configuration", h.get(f"{P}/configuration"))
         history = self.save("config_history", h.get(f"{P}/configuration/history"))

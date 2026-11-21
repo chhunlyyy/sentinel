@@ -118,11 +118,15 @@ sentinel service start                # start the service detached in the backgr
 sentinel service start --port 8765    # fix the port
 sentinel service stop                 # stop the running service (or: sentinel stop)
 sentinel service status               # status, PID, port, uptime, projects, log path
-sentinel service status --json        # machine-readable JSON status
+sentinel service status --json        # machine-readable JSON status (includes factory_paused)
+sentinel service pause -m "reason"    # pause the whole factory: no new agent task starts in any project
+sentinel service resume               # resume it (runs keep their own pause)
 sentinel service run                  # run the server in the foreground
 ```
 
 The service logs to `~/.config/sentinel/service.log`.
+
+`sentinel service pause` (the dashboard's **Pause factory** button does the same) writes `~/.config/sentinel/factory.json`. While it is set the service starts no new agent task in any project; tasks already running finish, and `sentinel service status` shows `Factory: paused`. Each change is recorded in the audit log of every project as `factory_pause` or `factory_resume`. Both commands need a terminal and are refused inside a task process.
 
 On startup, the service automatically inspects registered projects for tasks left in `RUNNING` state by a previous server process and recovers them. Tasks that were interrupted are safely marked for retry.
 

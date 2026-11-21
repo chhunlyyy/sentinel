@@ -1,7 +1,8 @@
 """Q2 dispatch: while the server runs, ready CLI tasks of runs that have a driver (`engine` or `ai-tool`) are started with
 `sentinel task run`, the same path as the CLI. Runs with driver `engine` are driven here: `factory.drive` does the orchestrator
 steps (triage, decisions, verify) with agent tasks and in-process engine calls. For driver `ai-tool` every orchestrator step
-waits for the AI tool. A run with driver `cli` is never touched. A paused run starts nothing; running tasks finish.
+waits for the AI tool. A run with driver `cli` is never touched. A paused run starts nothing; running tasks finish. While the whole factory is paused (`factory.json` in the config
+dir) no project starts anything.
 Starts respect `factory.max_tasks_per_project` and `factory.max_agents`.
 The engine's own start checks decide, so a race with an orchestrator has one winner.
 """
@@ -99,6 +100,8 @@ class Dispatcher:
             for tid in [t for t, p in self.children.items() if p.poll() is not None]:
                 self.children.pop(tid)
                 self.child_project.pop(tid, None)
+            if factory.pause_state(self.projects.cfgdir)["paused"]:
+                return started   # the whole factory is paused: no new task, orchestrator launch or engine step; running tasks finish
             available = [p for p in self.projects.list() if self.projects.probe(p)[0] == "available"]
             load = {p.id: self._running(p) for p in available}
             total = sum(len(v) for v in load.values())

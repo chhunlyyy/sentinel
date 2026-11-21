@@ -74,6 +74,8 @@ sentinel resolve leave-export --refresh-config -m "routing fixed"          # pic
 sentinel service start        # start the factory in the background
 sentinel service status       # running or not, port, uptime, log file
 sentinel service stop         # or: sentinel stop
+sentinel service pause -m "deploy window"   # whole factory: nothing new starts in any project; running work finishes
+sentinel service resume       # runs you paused one by one stay paused
 sentinel service autostart on # start at login (Linux, systemd user unit)
 sentinel dashboard            # start the service if needed and open the browser
 sentinel dashboard --foreground   # the old way: the server lives in this terminal
