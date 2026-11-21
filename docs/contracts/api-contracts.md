@@ -100,6 +100,8 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/tasks/{slug}/pause` | body `{comment?}`; the dispatcher starts nothing more for the run, running tasks finish. Audit row `pause`, event `run.paused`. A finished or already paused run is `E_TRANSITION` |
+| GET | `/factory` | whole-factory pause state `{paused, paused_at, running_total, max_agents}`; see factory-api.md |
+| POST | `/factory/pause`, `/factory/resume` | body `{comment?}`; idempotent; the dispatcher starts no new agent task in any project. Audit rows `factory_pause`, `factory_resume`; events `factory.paused`, `factory.resumed` |
 | POST | `/tasks/{slug}/unpause` | body `{comment?}`; audit row `unpause`, event `run.unpaused` |
 | POST | `/tasks/{slug}/note` | body `{text}` (at most 4000 characters); answer 201 with the run detail and `note`. The next agent task of the run gets the text once. Audit row `note`, event `run.note_added` |
 | GET | `/projects/{pid}/factory` | the factory snapshot, see [factory-api.md](factory-api.md) |

@@ -16,6 +16,7 @@ computed by the engine from the factors. `snapshot` builds the factory view for 
 import hashlib
 import json
 import os
+from pathlib import Path
 
 import adapters
 import machines
@@ -46,6 +47,62 @@ def factory_config(config):
     if out["driver"] not in ("engine", "ai-tool"):
         out["driver"] = DRIVER_DEFAULT
     return out
+
+
+# ---- whole-factory pause (stored in the user config dir, read by the service on every pass)
+PAUSE_FILE = "factory.json"
+
+
+def pause_state(cfgdir=None):
+    """{"paused": bool, "paused_at": str|None} from <config dir>/factory.json. A missing or unreadable file means running."""
+    from apiserver import userdir
+    path = (userdir.config_dir() if cfgdir is None else Path(cfgdir)) / PAUSE_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"paused": False, "paused_at": None}
+    if not isinstance(data, dict) or data.get("paused") is not True:
+        return {"paused": False, "paused_at": None}
+    at = data.get("paused_at")
+    return {"paused": True, "paused_at": at if isinstance(at, str) else None}
+
+
+def set_paused(cfgdir, paused, user, channel, comment=None, projects=None):
+    """Pause or resume the whole factory: the service starts no new agent task in any project while paused; running tasks
+    finish and runs keep their own paused flag. Idempotent. Each change is audited in every available project.
+    Returns the new state."""
+    from apiserver import userdir
+    from apiserver.projects import ProjectSet
+    cfgdir = Path(cfgdir) if cfgdir is not None else userdir.config_dir()
+    paused = bool(paused)
+    if pause_state(cfgdir)["paused"] == paused:
+        return pause_state(cfgdir)
+    userdir.ensure_dir(cfgdir)
+    state = {"paused": True, "paused_at": userdir.now()} if paused else {"paused": False, "paused_at": None}
+    userdir._atomic_write(cfgdir / PAUSE_FILE, json.dumps(state, indent=2) + "\n")
+    projects = projects or ProjectSet(cfgdir)
+    for project in projects.list():
+        try:
+            if projects.probe(project)[0] != "available":
+                continue
+            with projects.engine(project, user, channel) as eng:
+                eng.audit(user, channel, "factory_pause" if paused else "factory_resume", "factory", reason=comment)
+        except Exception:
+            continue   # one broken project must not undo the change
+    return state
+
+
+def max_agents_over(projects):
+    """The largest `factory.max_agents` over the available projects (default 4)."""
+    best = None
+    for project in projects.list():
+        try:
+            if projects.probe(project)[0] != "available":
+                continue
+            best = max(best or 0, factory_config(projects.require(project))["max_agents"])
+        except Exception:
+            continue
+    return best or MAX_AGENTS
 
 
 # ---- routing preflight
@@ -351,16 +408,94 @@ def _agents(tasks, current, states):
     return out
 
 
+WHO_ROLES = (("triage", "triage"), ("spec", "specifier"), ("gherkin", "test_designer"), ("build", "tdd_green"))
+STATION_LABEL = {"intake": "Intake", "triage": "Triage", "spec": "Specification", "gherkin": "Gherkin", "build": "Build",
+                 "verify": "Verification", "report": "Report", "knowledge": "Knowledge"}
+ACTIVITY_MAX = 20
+
+
+def who(config):
+    """{station: {"role", "runner", "model"}} for the agent stations, from the routing the dispatcher uses (`select_adapter`;
+    knowledge summaries use the route `find_route` gives, as knowledge.py does). A station without a CLI route is left out."""
+    from run_stage import find_route
+    from tasks import select_adapter
+    out = {}
+    for station, role in WHO_ROLES:
+        adapter, runner, model = select_adapter(config, role)
+        if adapter == "cli":
+            out[station] = {"role": role, "runner": runner, "model": model}
+    route = find_route(config, "knowledge") or find_route(config, "coder")
+    if route and route.get("runner"):
+        out["knowledge"] = {"role": "knowledge", "runner": route["runner"], "model": route.get("model")}
+    return out
+
+
+def _activity_station(type_, p):
+    if type_ in ("approval.requested", "approval.decided"):
+        return "gate_spec" if p.get("gate") == "specification" else "gate_gherkin"
+    if type_ == "acceptance.decided":
+        return "gate_accept"
+    if type_ == "knowledge.failed":
+        return "knowledge"
+    return ROLE_STATION.get(p["role"], "build") if p.get("role") else "intake"
+
+
+def _activity_text(type_, p, station):
+    label = STATION_LABEL.get(station, station)
+    state = p.get("state")
+    if type_ == "task.started":
+        return f"{label} agent started"
+    if type_ == "task.finished":
+        return {"COMPLETED": f"{label} agent finished", "FAILED": f"{label} agent failed"}.get(state)
+    if type_ == "approval.requested":
+        return f"{'Specification' if p.get('gate') == 'specification' else 'Gherkin'} is waiting for you"
+    if type_ == "approval.decided":
+        what = "Changes requested on" if p.get("decision") in ("changes", "changes_requested") else "You approved"
+        return f"{what} the {'specification' if p.get('gate') == 'specification' else 'Gherkin'}"
+    if type_ == "acceptance.decided":
+        return "You accepted the result" if p.get("decision") == "accept" else "You rejected the result"
+    return {"run.created": "Task created", "run.paused": "Run paused", "run.unpaused": "Run resumed",
+            "run.note_added": "Note added", "knowledge.failed": "Knowledge job failed"}.get(type_)
+
+
+ACTIVITY_TYPES = ("task.started", "task.finished", "approval.requested", "approval.decided", "acceptance.decided", "run.created",
+                  "run.paused", "run.unpaused", "run.note_added", "knowledge.failed")
+
+
+def activity(reg, slugs):
+    """The latest registry rows of the given runs as [{"at", "run", "station", "text"}], newest first, at most ACTIVITY_MAX."""
+    marks = ",".join("?" * len(ACTIVITY_TYPES))
+    items = []
+    for row in reg._c.execute(
+            f"SELECT e.at, e.type, e.payload, r.slug FROM events e JOIN runs r ON r.id = e.run_id WHERE e.type IN ({marks}) "
+            "ORDER BY e.id DESC LIMIT 400", ACTIVITY_TYPES):
+        if row["slug"] not in slugs:
+            continue
+        p = json.loads(row["payload"]) if row["payload"] else {}
+        p = p if isinstance(p, dict) else {}
+        t = row["type"]
+        station = _activity_station(t, p)
+        text = _activity_text(t, p, station)
+        if text:
+            items.append({"at": row["at"], "run": row["slug"], "station": station, "text": text})
+    for job in reg.rows("kb_jobs"):
+        if job["kind"] == "kb_harvest" and job["state"] == "done" and job["run_slug"] in slugs:
+            items.append({"at": job["updated_at"], "run": job["run_slug"], "station": "knowledge", "text": "Knowledge job done"})
+    items.sort(key=lambda i: i["at"] or "", reverse=True)
+    return items[:ACTIVITY_MAX]
+
+
 def running_tasks(reg):
     """How many tasks are RUNNING in a registry."""
     return reg._c.execute("SELECT COUNT(*) FROM tasks WHERE state='RUNNING'").fetchone()[0]
 
 
-def snapshot(eng, project_id, total_running=None, now=None):
+def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False):
     """The factory of one project: every non-final run with its stations, build lanes and agents, plus the queue of runs the
     limits keep from starting. Everything is read from the registry and the engine's own views; nothing is stored for display.
     A COMPLETED run stays until its acceptance is decided and its knowledge job ended. `total_running` is the number of
-    running tasks over all projects (the global limit); it defaults to this project's own count."""
+    running tasks over all projects (the global limit); it defaults to this project's own count. `factory_paused` is the
+    whole-factory pause flag; `who` and `activity` are built from the routing config and the registry."""
     reg = eng.reg
     limits = factory_config(eng.config)
     here = running_tasks(reg)
@@ -391,7 +526,8 @@ def snapshot(eng, project_id, total_running=None, now=None):
                 and any(t["state"] == "QUEUED" and t["adapter"] == "cli" for t in tasks):
             queue.append({"slug": run["slug"], "title": item["title"], "position": len(queue) + 1, "reason": full})
     return {"project": project_id, "generated_at": now or _now(), "stations": list(STATIONS),
-            "limits": {**limits, "running_in_project": here, "running_total": total}, "runs": runs, "queue": queue}
+            "limits": {**limits, "running_in_project": here, "running_total": total}, "runs": runs, "queue": queue,
+            "factory_paused": bool(factory_paused), "who": who(eng.config), "activity": activity(reg, {r["slug"] for r in runs})}
 
 
 def _now():

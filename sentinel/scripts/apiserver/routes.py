@@ -397,7 +397,30 @@ def h_factory(ctx, pid):
     ctx.projects.require(project)
     total = views.running_total(ctx.projects)
     with ctx.projects.engine(project) as eng:
-        return 200, ctx.clean(project, factory.snapshot(eng, project.id, total_running=total))
+        return 200, ctx.clean(project, factory.snapshot(eng, project.id, total_running=total,
+                                                        factory_paused=factory.pause_state(ctx.api.cfgdir)["paused"]))
+
+
+def _factory_pause_body(ctx):
+    return {**factory.pause_state(ctx.api.cfgdir), "running_total": views.running_total(ctx.projects),
+            "max_agents": factory.max_agents_over(ctx.projects)}
+
+
+def h_factory_get(ctx):
+    if ctx.query:
+        extra = sorted(ctx.query)[0]
+        raise views.validation(f"unknown query parameter {extra}", extra)
+    return 200, _factory_pause_body(ctx)
+
+
+def h_factory_pause(ctx):
+    ops.factory_pause(ctx.api.cfgdir, ctx.projects, True, ctx.body, ctx.user)
+    return 200, _factory_pause_body(ctx)
+
+
+def h_factory_resume(ctx):
+    ops.factory_pause(ctx.api.cfgdir, ctx.projects, False, ctx.body, ctx.user)
+    return 200, _factory_pause_body(ctx)
 
 
 # ---- across projects
@@ -495,6 +518,9 @@ ROUTES = [
     Route("POST", "unpause", "tasks/{slug}/unpause", h_unpause, ("Engine.unpause_run",)),
     Route("POST", "note", "tasks/{slug}/note", h_note, ("Engine.add_note",)),
     Route("GET", "factory", "projects/{pid}/factory", h_factory),
+    Route("GET", "factory_state", "factory", h_factory_get),
+    Route("POST", "factory_pause", "factory/pause", h_factory_pause, ("factory.set_paused",)),
+    Route("POST", "factory_resume", "factory/resume", h_factory_resume, ("factory.set_paused",)),
     Route("GET", "approval_list", "approvals", h_approval_list),
     Route("GET", "audit", "audit", h_audit),
     Route("GET", "events", "events", h_events),

@@ -46,6 +46,15 @@ Same session, Host and Origin checks as every read route. No query parameters (a
   "queue": [
     {"slug": "payroll-export", "title": "Export payroll as CSV", "position": 1,
      "reason": "the project limit of 2 running tasks is reached"}
+  ],
+  "factory_paused": false,
+  "who": {
+    "triage": {"role": "triage", "runner": "agy", "model": "gemini-3.8-flash"},
+    "spec": {"role": "specifier", "runner": "claude", "model": "sonnet"},
+    "build": {"role": "tdd_green", "runner": "claude", "model": null}
+  },
+  "activity": [
+    {"at": "2026-11-21T10:12:40.000000Z", "run": "leave-balance", "station": "build", "text": "Build agent started"}
   ]
 }
 ```
@@ -73,11 +82,24 @@ Same session, Host and Origin checks as every read route. No query parameters (a
   - `pending_notes`: notes from the owner that no agent task has received yet.
 - `queue`: runs that cannot start because a limit is reached: engine- or AI-tool-driven, not paused, not finished, with a queued CLI task and no task running. `position` is the start order, `reason` names the limit. Empty while no limit is reached.
 
+- `factory_paused`: true while the whole factory is paused (see "Whole-factory pause" below).
+- `who`: for the agent stations `triage`, `spec`, `gherkin`, `build` and `knowledge` (summaries), the role and the runner and model the project's routing gives them: `{"role", "runner", "model"}` (`model` may be null). It uses the same resolution the dispatcher uses to start tasks (`select_adapter` for the roles `triage`, `specifier`, `test_designer`, `tdd_green`; the `knowledge` route, then `coder`, for summaries). A station without a CLI runner is left out. Engine stations and gates have no entry.
+- `activity`: the latest happenings of the listed runs, newest first, at most 20: `{"at", "run", "station", "text"}`. Built from registry rows: task started or finished or failed, a gate waiting or decided, task created, run paused or resumed, note added, knowledge job done or failed.
+
+## Whole-factory pause
+
+`GET /api/v1/factory` answers `200 {"paused": false, "paused_at": null, "running_total": 0, "max_agents": 4}`. `max_agents` is the largest `factory.max_agents` over the available projects (default 4); `running_total` is the number of tasks RUNNING over all projects. No query parameters.
+
+`POST /api/v1/factory/pause` and `POST /api/v1/factory/resume` answer `200` with the same body. Body: optional `{"comment": "..."}`. Same session, Origin and CSRF rules as every mutating route. Both are idempotent: pausing a paused factory changes nothing.
+
+The switch lives in `~/.config/sentinel/factory.json` (`{"paused": true, "paused_at": "..."}`). While it is set the service starts no new agent task, engine step or orchestrator launch in any project; running tasks finish. Runs keep their own `paused` flag: resuming the factory does not unpause runs. Each change is audited as `factory_pause` or `factory_resume` (target `factory`, channel `dashboard` or `cli`) in every available project. The events stream sends `factory.paused` and `factory.resumed` to every stream that is not filtered to one run, with `project` and `run` null and no event id (do not use it for `Last-Event-ID`); it also reports a change made with `sentinel service pause`. CLI: `sentinel service pause`, `sentinel service resume` (a terminal is required); `sentinel service status` shows the state.
+
 ## Related routes
 
 | Route | Use |
 |---|---|
 | `POST /tasks/{slug}/pause`, `/unpause` | body `{comment?}` |
+| `GET /factory`, `POST /factory/pause`, `/factory/resume` | whole-factory pause, body `{comment?}` |
 | `POST /tasks/{slug}/note` | body `{text}` |
 | `POST /tasks/{slug}/control` | cancel, resume, retry (unchanged) |
 | `GET /tasks/{slug}` | run detail with `driver` and `paused` |

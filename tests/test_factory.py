@@ -366,6 +366,57 @@ class CliControls(Base):
         self.assertEqual(self.run_row()["paused"], 0)
 
 
+class ServiceFactoryPause(unittest.TestCase):
+    """`sentinel service pause|resume|status`: the same switch as the dashboard button."""
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.cfg = Path(self._tmp.name)
+
+    def test_set_and_read_the_state_is_idempotent(self):
+        self.assertEqual(factory.pause_state(self.cfg), {"paused": False, "paused_at": None})
+        first = factory.set_paused(self.cfg, True, "dev", "cli")
+        self.assertTrue(first["paused"] and first["paused_at"])
+        self.assertEqual(factory.set_paused(self.cfg, True, "dev", "cli"), first)
+        self.assertEqual(factory.pause_state(self.cfg), first)
+        self.assertEqual(factory.set_paused(self.cfg, False, "dev", "cli"), {"paused": False, "paused_at": None})
+        (self.cfg / "factory.json").write_text("not json")
+        self.assertEqual(factory.pause_state(self.cfg)["paused"], False)
+
+    def test_status_shows_paused(self):
+        import io
+        from contextlib import redirect_stdout
+        import service
+        factory.set_paused(self.cfg, True, "dev", "cli")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            service.service_status(cfgdir=self.cfg)
+            service.service_status(as_json=True, cfgdir=self.cfg)
+        self.assertIn("Factory: paused", out.getvalue())
+        self.assertIn('"factory_paused": true', out.getvalue())
+
+
+class ServiceFactoryPauseCli(SV):
+    def test_pause_and_resume_need_a_terminal_and_are_audited_on_one(self):
+        self.add_project()
+        from pb_helpers import run_plain
+        for cmd in ("pause", "resume"):
+            code, out = run_plain(["--dir", str(self.ws), "service", cmd])
+            self.assertNotEqual(code, 0)
+            self.assertIn("E_NOT_TTY", out)
+        self.assertFalse((self.cfgdir / "factory.json").exists())
+        code, out = self.run_tty(["service", "pause", "-m", "deploy"])
+        self.assertEqual(code, 0, out)
+        self.assertIn("factory paused", out)
+        self.assertTrue(factory.pause_state(self.cfgdir)["paused"])
+        code, out = self.run_tty(["service", "resume"])
+        self.assertEqual(code, 0, out)
+        rows = [(a["action"], a["channel"], a["reason"]) for a in self.audit_rows() if a["action"].startswith("factory_")]
+        self.assertEqual(rows, [("factory_pause", "cli", "deploy"), ("factory_resume", "cli", None)])
+
+
 class VerifyInProcess(unittest.TestCase):
     """The verify step calls the engine function, not the CLI."""
 
@@ -545,7 +596,9 @@ class Served(SV):
         r = self.http.get("/api/v1/projects/digital-hr/factory")
         self.assertEqual(r.status, 200, r.text)
         snap = r.json
-        self.assertEqual(set(snap), {"project", "generated_at", "stations", "limits", "runs", "queue"})
+        self.assertEqual(set(snap), {"project", "generated_at", "stations", "limits", "runs", "queue", "factory_paused", "who",
+                                     "activity"})
+        self.assertIs(snap["factory_paused"], False)
         self.assertEqual(snap["stations"], list(factory.STATIONS))
         self.assertEqual(snap["limits"], {"driver": "engine", "max_tasks_per_project": 2, "max_agents": 4,
                                           "running_in_project": 0, "running_total": 0})
@@ -563,6 +616,110 @@ class Served(SV):
         self.assertEqual((early["station"], early["stations"]["triage"], early["stations"]["spec"], early["title"]),
                          ("triage", "queued", "next", REQUEST))
         self.assertEqual(snap["queue"], [])
+
+    def test_snapshot_who_comes_from_the_routing_the_dispatcher_uses(self):
+        self.use_config(single_model=False, runners={"fake": {"command": "x"}, "agy": {"command": "y"}},
+                        agents={"triage": {"runner": "fake"}, "specifier": {"runner": "agy", "model": "gemini-3.8-flash"},
+                                "tdd_green": {"runner": "fake", "model": "m1"}},
+                        routing={"knowledge": {"runner": "agy", "model": "k1"}})
+        self.serve()
+        who = self.http.get("/api/v1/projects/digital-hr/factory").json["who"]
+        self.assertEqual(who, {"triage": {"role": "triage", "runner": "fake", "model": None},
+                               "spec": {"role": "specifier", "runner": "agy", "model": "gemini-3.8-flash"},
+                               "build": {"role": "tdd_green", "runner": "fake", "model": "m1"},
+                               "knowledge": {"role": "knowledge", "runner": "agy", "model": "k1"}})  # gherkin has no route: left out
+        from tasks import select_adapter
+        self.assertEqual(select_adapter(self.config, "specifier")[1:], ("agy", "gemini-3.8-flash"))
+
+    def test_snapshot_activity_newest_first_from_registry_rows(self):
+        self.make_run()
+        rid = self.eng.reg.get_run(SLUG)["id"]
+        reg = self.eng.reg
+        reg.add_event(rid, "task.started", "engine", {"role": "triage", "state": "RUNNING"}, task_id="t-1")
+        reg.add_event(rid, "task.finished", "engine", {"role": "triage", "state": "COMPLETED"}, task_id="t-1")
+        reg.add_event(rid, "task.finished", "engine", {"role": "tdd_green", "state": "FAILED"}, task_id="t-2")
+        reg.add_event(rid, "approval.requested", "engine", {"gate": "specification"})
+        reg.add_event(rid, "run.state_changed", "engine", {"to": "X"})   # not an activity type
+        reg.add_event(rid, "run.paused", "human", {"reason": "lunch"})
+        self.serve()
+        act = self.http.get("/api/v1/projects/digital-hr/factory").json["activity"]
+        self.assertEqual([(a["run"], a["station"], a["text"]) for a in act],
+                         [(SLUG, "intake", "Run paused"), (SLUG, "gate_spec", "Specification is waiting for you"),
+                          (SLUG, "build", "Build agent failed"), (SLUG, "triage", "Triage agent finished"),
+                          (SLUG, "triage", "Triage agent started"), (SLUG, "intake", "Task created")])
+        self.assertTrue(all(set(a) == {"at", "run", "station", "text"} for a in act))
+
+    def test_snapshot_activity_is_capped_and_scrubbed(self):
+        self.make_run()
+        rid = self.eng.reg.get_run(SLUG)["id"]
+        for _ in range(30):
+            self.eng.reg.add_event(rid, "run.note_added", "human", {"note": "n"})
+        self.serve()
+        act = self.http.get("/api/v1/projects/digital-hr/factory").json["activity"]
+        self.assertEqual(len(act), 20)
+        self.assertEqual(act, sorted(act, key=lambda a: a["at"], reverse=True))
+
+    def test_factory_pause_routes_state_audit_and_csrf(self):
+        self.make_run()
+        self.serve()
+        g = self.http.get("/api/v1/factory")
+        self.assertEqual((g.status, g.json), (200, {"paused": False, "paused_at": None, "running_total": 0, "max_agents": 4}))
+        self.assertEqual(self.http.get("/api/v1/factory?x=1").code, "E_VALIDATION")
+        self.assertEqual(self.http.req("POST", "/api/v1/factory/pause", {}, csrf="wrong").code, "E_CSRF")
+        self.assertEqual(self.http.post("/api/v1/factory/pause", {"extra": 1}).code, "E_VALIDATION")
+        r = self.http.post("/api/v1/factory/pause", {"comment": "lunch"})
+        self.assertEqual(r.status, 200, r.text)
+        self.assertEqual((r.json["paused"], set(r.json)), (True, {"paused", "paused_at", "running_total", "max_agents"}))
+        self.assertTrue(r.json["paused_at"])
+        self.assertEqual(json.loads((self.cfgdir / "factory.json").read_text())["paused"], True)
+        again = self.http.post("/api/v1/factory/pause", {})   # idempotent: same state, no second audit row
+        self.assertEqual((again.status, again.json["paused_at"]), (200, r.json["paused_at"]))
+        self.assertIs(self.http.get("/api/v1/projects/digital-hr/factory").json["factory_paused"], True)
+        r = self.http.post("/api/v1/factory/resume", {})
+        self.assertEqual((r.status, r.json["paused"], r.json["paused_at"]), (200, False, None))
+        self.assertEqual(self.http.post("/api/v1/factory/resume", {}).status, 200)
+        rows = [(a["action"], a["channel"], a["actor"], a["target"], a["reason"]) for a in self.audit_rows()
+                if a["action"].startswith("factory_")]
+        self.assertEqual(rows, [("factory_pause", "dashboard", "dev", "factory", "lunch"),
+                                ("factory_resume", "dashboard", "dev", "factory", None)])
+
+    def test_factory_max_agents_is_the_largest_over_projects(self):
+        self.use_config(factory={"max_agents": 6})
+        self.serve()
+        self.assertEqual(self.http.get("/api/v1/factory").json["max_agents"], 6)
+
+    def test_factory_pause_and_resume_events_reach_the_stream(self):
+        self.serve()
+        s = self.stream("/api/v1/events")
+        self.http.post("/api/v1/factory/pause", {})
+        msgs = s.messages(1)
+        self.http.post("/api/v1/factory/resume", {})
+        msgs += s.messages(1)
+        self.assertEqual([m["event"] for m in msgs], ["factory.paused", "factory.resumed"])
+        body = json.loads(msgs[0]["data"])
+        self.assertEqual((body["type"], body["project"], body["run"], body["payload"]["paused"]),
+                         ("factory.paused", None, None, True))
+
+    def test_a_paused_factory_starts_no_task_and_resuming_starts_again(self):
+        self.make_run()
+        self.serve(dispatch=True, dispatch_interval=3600)
+        self.http.post("/api/v1/factory/pause", {})
+        for _ in range(3):
+            self.pump()
+        self.assertEqual(self.tasks(), [])
+        self.http.post("/api/v1/factory/resume", {})
+        self.pump()
+        self.assertTrue(self.tasks())
+
+    def test_resuming_the_factory_does_not_unpause_runs(self):
+        self.make_run()
+        self.serve(dispatch=True, dispatch_interval=3600)
+        self.http.post(f"/api/v1/tasks/{SLUG}/pause", {})
+        self.http.post("/api/v1/factory/pause", {})
+        self.http.post("/api/v1/factory/resume", {})
+        self.pump()
+        self.assertEqual(self.tasks(), [])
+        self.assertEqual(self.http.get(f"/api/v1/tasks/{SLUG}").json["paused"], True)
 
     def test_snapshot_working_agent_lanes_and_pause(self):
         self.executing(tier=3, cycles=True)

@@ -273,7 +273,7 @@ def cmd_sync_adapters(args):
 
 
 _HUMAN_SUBCOMMANDS = ["approve", "accept", "resolve", "run export", "run import", "dashboard", "notifications read", "backup restore",
-                      "audit export", "pause", "unpause", "note"]
+                      "audit export", "pause", "unpause", "note", "service pause", "service resume"]
 HUMAN_ONLY_COMMANDS = (
     [f"Bash(sentinel {c}:*)" for c in _HUMAN_SUBCOMMANDS]
     # the global --dir option in front of the command, as `--dir X` and as `--dir=X` (an abbreviation such as `--di X` cannot be
@@ -1131,7 +1131,7 @@ def cmd_dashboard(args):
 
 
 def cmd_service(args):
-    """sentinel service start|stop|status|run|autostart"""
+    """sentinel service start|stop|status|run|autostart|pause|resume"""
     if os.environ.get("SENTINEL_TASK_ID"):
         raise SentinelError("E_ACTOR", "a task process may not run `sentinel service`",
                             {"task": os.environ["SENTINEL_TASK_ID"], "command": f"service {args.service_cmd}"})
@@ -1162,6 +1162,12 @@ def cmd_service(args):
         sys.exit(service.service_status(as_json=getattr(args, "json", False)))
     elif args.service_cmd == "autostart":
         sys.exit(service.service_autostart(args.action))
+    elif args.service_cmd in ("pause", "resume"):
+        err = gate_error(f"service {args.service_cmd}")
+        if err:
+            raise err
+        user, _ = human_identity()
+        sys.exit(service.factory_pause(args.service_cmd == "pause", user, args.comment))
 
 
 def cmd_stop(args):
@@ -1723,6 +1729,12 @@ def main():
     svc_status = service_sub.add_parser("status", help="check Sentinel service status")
     svc_status.add_argument("--json", action="store_true", help="output JSON")
     svc_status.set_defaults(func=cmd_service)
+
+    for name, text in (("pause", "pause the whole factory: no new agent task starts in any project; running tasks finish"),
+                       ("resume", "resume the whole factory (runs keep their own pause)")):
+        svc_flow = service_sub.add_parser(name, help=text)
+        svc_flow.add_argument("-m", "--comment", help="why (kept in the audit log)")
+        svc_flow.set_defaults(func=cmd_service)
 
     svc_run = service_sub.add_parser("run", help="run the Sentinel server in the foreground")
     svc_run.add_argument("provider", nargs="?", metavar="provider", help=argparse.SUPPRESS)
