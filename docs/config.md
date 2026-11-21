@@ -150,7 +150,7 @@ routing:
   cleaner: { runner: gemini, model: gemini-2.5-flash }
 ```
 
-- A key is a stage name (`repro`, `specifier`, `coder`, `cleaner`, `hardener`, `reviewer`, `qa`, `promotion`, `docs`, `rollout`, `retrospective`) or `<repo id>-<stage>`, which wins over the stage key for that repo. Repro uses the `coder` key unless it has its own.
+- A key is a stage or role name (`triage`, `planner`, `repro`, `specifier`, `coder`, `cleaner`, `hardener`, `reviewer`, `qa`, `promotion`, `docs`, `rollout`, `retrospective`) or `<repo id>-<stage>`, which wins over the stage key for that repo. Repro uses the `coder` key unless it has its own.
 - `runner` is `claude`, `codex`, `gemini`, `agy` or one you define under `runners`. `model` is passed to the tool's model flag, so use the names that tool accepts: `claude --model`, `agy --model` (`agy models` lists them), `gemini -m`, `codex -m`.
 - A stage with no entry runs in the current session. The reviewer and QA never run inline, so give them a runner if your tool has no subagents.
 - `single_model` (default `true`): one model, one tool. `routing` is ignored completely: every stage runs in the AI tool you opened (Claude Code, Antigravity, Codex, Cursor) with that tool's current model, as a subagent where it has them. Set `single_model: false` to turn `routing` on, so each stage uses its own runner and `model`. `--runner` and `--model` on `sentinel stage run` always work.
@@ -237,7 +237,7 @@ agents:
   reviewer: { runner: claude, model: opus }
 ```
 
-A key is a task role: `specifier`, `test_designer`, `tdd_red`, `qa_red` (reads the `tdd_red` retry cap), `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `docs`, `knowledge` (summarizes knowledge base records and module snapshots), or a repo role such as `backend-coder`. `runner` and `model` resolve exactly like [routing](#routing-a-model-or-provider-per-stage-optional); `max_retries` overrides the retry limit of that role (the TDD roles `tdd_red`, `tdd_green` and `tdd_refactor` read `tdd` instead). Role `knowledge` falls back to the runner configured for `coder`, then to the default runner; summarization can be turned off with `knowledge.summarize: false` or environment variable `SENTINEL_KB_NO_AGENT=1`. Write scope is not set here: read-only roles (`specifier`, `test_designer`, `reviewer`, `qa`, `retrospective`) always get an empty write scope, a coder role gets its repo, and `repos[].write_scope` narrows a repo further. A task that writes outside its scope fails with `E_SCOPE` and parks the run for a human.
+A key is a task role: `triage` (returns the seven factors as JSON), `planner` (writes `decisions.md` in its write scope), `specifier`, `test_designer`, `tdd_red`, `qa_red` (reads the `tdd_red` retry cap), `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `docs`, `knowledge` (summarizes knowledge base records and module snapshots), or a repo role such as `backend-coder`. `runner` and `model` resolve exactly like [routing](#routing-a-model-or-provider-per-stage-optional); `max_retries` overrides the retry limit of that role (the TDD roles `tdd_red`, `tdd_green` and `tdd_refactor` read `tdd` instead). Role `knowledge` falls back to the runner configured for `coder`, then to the default runner; summarization can be turned off with `knowledge.summarize: false` or environment variable `SENTINEL_KB_NO_AGENT=1`. Write scope is not set here: read-only roles (`triage`, `specifier`, `test_designer`, `reviewer`, `qa`, `retrospective`) always get an empty write scope, `planner` gets `specs/<slug>/decisions.md`, a coder role gets its repo, and `repos[].write_scope` narrows a repo further. A task that writes outside its scope fails with `E_SCOPE` and parks the run for a human.
 
 ## tdd
 
@@ -312,6 +312,22 @@ knowledge:
 - `max_summaries`: the most agent calls one command or one worker job makes for summaries (default 300). After that, records and summaries keep only their deterministic part; `0` turns agent calls off.
 
 Summarization routes through role `knowledge` under `agents` (fallback: `coder`, then default runner; see [agents](#agents)).
+
+## factory
+
+Controls who drives a run and how much runs at once (Sentinel 2.0).
+
+```yaml
+factory:
+  driver: engine                # default engine; engine | ai-tool, for runs created at the dashboard
+  max_tasks_per_project: 2      # default 2; agent tasks running at once in this project
+  max_agents: 4                 # default 4; agent tasks running at once over every project of the service
+```
+
+- `driver`: `engine` means the Sentinel service runs the run itself: triage and the decisions file are agent tasks (roles `triage` and `planner`), verification is called in the service, and the AI tool is used for the work only. `ai-tool` keeps the earlier behavior: an AI tool runs the `/sentinel` skill loop around `sentinel next`. A run created with `sentinel run new` is driven by you (`cli`) unless you pass `--driver engine --request "<text>"`. One driver owns a run: `sentinel next` on an engine-driven run answers `wait` with `driven_by: engine`.
+- An engine-driven run starts only when every role it may use routes to a CLI runner: set `agents.<role>.runner` (or `routing`) for `triage`, `planner`, `specifier`, `test_designer`, `tdd_red`, `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `hardener` and `docs`. The native adapter needs an AI tool session and is refused. Otherwise the run is BLOCKED with the roles named; fix the config and run `sentinel resolve <slug> --refresh-config -m "..."`.
+- `max_tasks_per_project` and `max_agents`: the dispatcher starts no further task while either limit is reached; the run waits in the queue the factory view shows. Running tasks are never stopped by a limit.
+- `sentinel pause <slug>` and `sentinel unpause <slug>` stop and resume starting tasks for one run; `sentinel note <slug> "<text>"` adds a note that the next agent task of the run receives in its prompt (section "Note from the owner"), once.
 
 ## limits
 

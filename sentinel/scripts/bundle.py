@@ -379,6 +379,7 @@ class BundleOps:
                                                     comment=f"imported with run {slug}")
                 run["config_snapshot_id"] = cid
             run["origin"] = "import"
+            run["driver"], run["paused"] = "cli", 0  # an imported run is driven by hand until its owner chooses otherwise
             self._insert_raw("runs", run)
             for table in TABLES[1:]:
                 for row in doc.get(table, []):

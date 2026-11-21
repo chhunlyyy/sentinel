@@ -1,6 +1,6 @@
 # Migrating from 0.1.0b7 to 1.1.0
 
-1.1.0 adds a second kind of run (version 2: two human approvals, TDD cycles, independent verification), a local dashboard and a registry. Everything 0.1.0b7 did still works for the runs it started. This page lists what you do to upgrade, what changes, what stays untouched, and how to go back.
+1.1.0 adds a second kind of run (version 2: two human approvals, TDD cycles, independent verification), a local dashboard and a registry. Everything 0.1.0b7 did still works for the runs it started. This page lists what you do to upgrade, what changes, what stays untouched, and how to go back. (For upgrading from 1.x to Sentinel 2.0, see [Migrating to 2.0](migration-2.0.md).)
 
 ## Upgrade
 
@@ -11,8 +11,8 @@
    sentinel --version
    ```
 
-   (pipx: `pipx install --force sentinel-pipeline`.) If you installed 0.1.0b7 from git, the tool is registered as `sentinel`; remove it first, because `uv tool install sentinel-pipeline` would otherwise leave two installs that both provide the `sentinel` command: `uv tool uninstall sentinel && uv tool install sentinel-pipeline` (pipx: `pipx uninstall sentinel && pipx install sentinel-pipeline`). The PyPI wheel (`sentinel_pipeline-1.1.0-py3-none-any.whl`) includes the dashboard. A git install (`git+https://github.com/chhunlyyy/sentinel@v1.3.0`) has the CLI but not the dashboard UI (see [installation](installation.md#the-dashboard-ui)). Requirements are unchanged: Python 3.10 or newer, `pyyaml` and `jsonschema`.
-2. Update the skills (`npx skills@latest update`, or pin with `npx skills@latest add chhunlyyy/sentinel@v1.3.0 --skill '*' -a <agent>`) so `/sentinel` drives version 2 runs.
+   (pipx: `pipx install --force sentinel-pipeline`.) If you installed 0.1.0b7 from git, the tool is registered as `sentinel`; remove it first, because `uv tool install sentinel-pipeline` would otherwise leave two installs that both provide the `sentinel` command: `uv tool uninstall sentinel && uv tool install sentinel-pipeline` (pipx: `pipx uninstall sentinel && pipx install sentinel-pipeline`). The PyPI wheel (`sentinel_pipeline-1.1.0-py3-none-any.whl`) includes the dashboard. A git install (`git+https://github.com/chhunlyyy/sentinel@v2.0.0`) has the CLI but not the dashboard UI (see [installation](installation.md#the-dashboard-ui)). Requirements are unchanged: Python 3.10 or newer, `pyyaml` and `jsonschema`.
+2. Update the skills (`npx skills@latest update`, or pin with `npx skills@latest add chhunlyyy/sentinel@v2.0.0 --skill '*' -a <agent>`) so `/sentinel` drives version 2 runs.
 3. In each workspace run `sentinel doctor`. It exits 0 for a 0.1.0b7 config and lists the optional new settings the config does not have (`policies`, `providers`, `agents`, `tdd`, `verification`, `notifications`). None is required; see [config](config.md).
 4. If you use Claude Code, run `sentinel sync-adapters` again to get the new deny rules (below).
 

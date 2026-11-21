@@ -55,7 +55,7 @@ test.describe('health checks', () => {
 
   test('AC-INS-03b a failed required check means not ready, whatever else passed', async ({ page, api }) => {
     await api.set(['health', 'checks', 'id=registry_writable'], check('registry_writable', 'failed', 'check the permissions of .sentinel/'));
-    await open(page, '/');
+    await open(page, '/overview');
     const summary = page.getByTestId('installation-summary');
     await expect(summary).toContainText('Not ready: 1 required check failed');
     await expect(summary).not.toHaveText(/^\s*Ready/);
@@ -172,7 +172,7 @@ test.describe('first-run guide', () => {
 
   test('AC-DSH-02b the guide follows what the API reports', async ({ page, api }) => {
     await api.reset('fresh-install');
-    await open(page, '/');
+    await open(page, '/overview');
     await expect(step(page, 'Create project')).not.toContainText('Done');
     await api.preset('fresh-with-project');
     await api.event('resync', { project: 'digital-hr', reason: 'project available' });

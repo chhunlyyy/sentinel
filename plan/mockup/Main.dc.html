@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Welcome to Sentinel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0F1419}
+a{color:#4FD1C1}a:hover{color:#8AE5DA}
+@media (prefers-reduced-motion: no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #0F1419; color: #E6EAEE; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; display: flex; flex-direction: column">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 24px; border-bottom: 1px solid #26303A; background: #121820">
+<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#4FD1C1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="5" r="2.2"></circle><circle cx="12" cy="19" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle><path d="M7 11l3-4M7 13l3 4M14 6l3 4M14 18l3-4"></path></svg>
+<span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">Sentinel</span>
+<span style="flex: 1 1 auto"></span>
+<span style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid #26303A; border-radius: 10px; background: #171D24; font-size: 13px"><span class="pulse" style="width: 9px; height: 9px; border-radius: 50%; background: #4FD1C1"></span>Service running on 127.0.0.1:8765</span>
+</header>
+
+<main style="flex: 1 1 auto; width: 100%; max-width: 1080px; margin: 0 auto; box-sizing: border-box; padding: 48px 24px; display: flex; flex-direction: column; gap: 28px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA6B2">uv tool install sentinel-pipeline · sentinel dashboard</span>
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 1.1">Welcome to your software factory</h1>
+<p style="margin: 0; max-width: 680px; font-size: 17px; color: #C5CDD5">Sentinel runs your AI agents as one team: it sizes each task, writes the spec, builds with tests, checks the result itself and learns from every change. You decide at three gates. Everything else runs here, in the background.</p>
+</div>
+
+<section aria-label="Setup checklist" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px">
+<div style="padding: 18px; border-radius: 14px; border: 1px solid #2E8C81; background: #122A28; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12px; font-weight: 600; color: #7FE3D7">Done</span>
+<h2 style="margin: 0; font-size: 17px; font-family: 'Space Grotesk', sans-serif">Background service</h2>
+<p style="margin: 0; color: #C5CDD5; font-size: 13px">Keeps the factory running after you close this tab or the terminal. Stop it in Settings.</p>
+</div>
+<div style="padding: 18px; border-radius: 14px; border: 1px solid #2E8C81; background: #122A28; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12px; font-weight: 600; color: #7FE3D7">Found 3</span>
+<h2 style="margin: 0; font-size: 17px; font-family: 'Space Grotesk', sans-serif">AI providers on this machine</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 3px 8px; border-radius: 6px; background: #1F2730">claude</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 3px 8px; border-radius: 6px; background: #1F2730">agy</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; padding: 3px 8px; border-radius: 6px; background: #1F2730">codex</span>
+</div>
+</div>
+<div style="padding: 18px; border-radius: 14px; border: 1px solid #B8862F; background: #2A2212; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 12px; font-weight: 600; color: #F5C776">Next</span>
+<h2 style="margin: 0; font-size: 17px; font-family: 'Space Grotesk', sans-serif">Your first project</h2>
+<p style="margin: 0; color: #C5CDD5; font-size: 13px">Point Sentinel at your repositories. It detects the stack, commands and branches for you.</p>
+</div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px">
+<a href="NewProject.dc.html" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 12px; background: #4FD1C1; color: #062420; font-weight: 600; text-decoration: none; font-size: 15px">Create a project</a>
+<a href="Project.dc.html" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 12px; border: 1px solid #3A4654; color: #E6EAEE; font-weight: 600; text-decoration: none; font-size: 15px">Open an existing folder</a>
+</div>
+
+<section aria-label="How the factory works" style="padding: 22px; border-radius: 16px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">How a task moves through the factory</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px">
+<li style="padding: 12px; border-radius: 10px; background: #171D24"><strong style="display: block">1 · You write a task</strong><span style="font-size: 12px; color: #9AA6B2">a feature or a bug, in plain words</span></li>
+<li style="padding: 12px; border-radius: 10px; background: #171D24"><strong style="display: block">2 · Agents plan it</strong><span style="font-size: 12px; color: #9AA6B2">triage, spec, scenarios</span></li>
+<li style="padding: 12px; border-radius: 10px; background: #2A2212"><strong style="display: block; color: #F5C776">3 · You approve</strong><span style="font-size: 12px; color: #C5CDD5">the spec and the scenarios</span></li>
+<li style="padding: 12px; border-radius: 10px; background: #171D24"><strong style="display: block">4 · Agents build</strong><span style="font-size: 12px; color: #9AA6B2">test first, one lane per behavior</span></li>
+<li style="padding: 12px; border-radius: 10px; background: #171D24"><strong style="display: block">5 · Engine verifies</strong><span style="font-size: 12px; color: #9AA6B2">tests, lint, build, write scope</span></li>
+<li style="padding: 12px; border-radius: 10px; background: #2A2212"><strong style="display: block; color: #F5C776">6 · You accept</strong><span style="font-size: 12px; color: #C5CDD5">the report and evidence</span></li>
+<li style="padding: 12px; border-radius: 10px; background: #171D24"><strong style="display: block">7 · Team learns</strong><span style="font-size: 12px; color: #9AA6B2">knowledge base updates itself</span></li>
+</ol>
+</section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import re
 import subprocess
 
 import engine as engine_mod
+import factory
 from errors import SentinelError
 from paths import slug_problem
 from shared import Shared
@@ -97,7 +98,7 @@ def prepare_shared(shared):
 
 
 def create_run(eng, project, config, body, user):
-    """Engine.create_run for a run created at the dashboard: it queues for the AI tool and authorizes nothing."""
+    """Engine.create_run for a run created at the dashboard. Its driver is `factory.driver` (default engine); it authorizes nothing."""
     spec = parse_create(body, config)
     repo_paths = {r["id"]: project.path / r["path"] for r in config.get("repos") or [] if isinstance(r, dict) and r.get("id")}
     baseline = {}
@@ -117,7 +118,8 @@ def create_run(eng, project, config, body, user):
         raise SentinelError("E_LOCKED", str(e.code or f"slug {slug} is locked by another run"), {"slug": slug})
     try:
         eng.create_run(slug, HUMAN, type=spec["type"], baseline=baseline, request=spec["request"],
-                       priority=spec["priority"], requested_tier=spec["tier"], origin=CHANNEL)
+                       priority=spec["priority"], requested_tier=spec["tier"], origin=CHANNEL,
+                       driver=factory.factory_config(config)["driver"])
     except BaseException:
         if not eng.reg.get_run(slug):
             shared.release(slug)
@@ -214,3 +216,30 @@ def control(eng, slug, body, user):
     if action == "resume":
         return eng.resume_run(slug, comment, user=user, channel=CHANNEL)
     return eng.retry_task(slug, task_id, user=user, channel=CHANNEL)
+
+
+# ---- pause, unpause and notes (the factory controls)
+def parse_pause(body):
+    check_fields(body, ("comment",))
+    comment = text_field(body, "comment", required=False)
+    return comment.strip() if comment and comment.strip() else None
+
+
+def parse_note(body):
+    check_fields(body, ("text",), ("text",))
+    text = text_field(body, "text")
+    if not text.strip():
+        raise bad("a note needs text", "text")
+    return text
+
+
+def pause(eng, slug, body, user):
+    return eng.pause_run(slug, parse_pause(body), user=user, channel=CHANNEL)
+
+
+def unpause(eng, slug, body, user):
+    return eng.unpause_run(slug, parse_pause(body), user=user, channel=CHANNEL)
+
+
+def note(eng, slug, body, user):
+    return eng.add_note(slug, parse_note(body), user=user, channel=CHANNEL)

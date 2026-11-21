@@ -86,7 +86,14 @@ class Mapping(SV):
         from apiserver import routes
         table = {r.name: r for r in routes.ROUTES if r.method == "POST"}
         self.assertEqual(set(table), {"approvals", "acceptance", "control", "create_run", "notification_read",
-                                     "create_project", "register_project", "add_repository", "provider_test"})
+                                     "create_project", "register_project", "add_repository", "provider_test", "pause", "unpause",
+                                     "note", "detect", "shared_test", "config_preview", "config_save", "knowledge_ingest",
+                                     "knowledge_snapshot", "knowledge_backfill_estimate", "knowledge_backfill"})
+        for name in ("detect", "shared_test", "config_preview", "knowledge_backfill_estimate"):
+            self.assertEqual(table[name].calls, ())  # 2.0 setup: read or probe only, nothing changes
+        self.assertEqual(table["config_save"].calls, ("manage.write_config",))  # the same history-keeping save as the YAML editor
+        self.assertEqual((table["knowledge_ingest"].calls, table["knowledge_snapshot"].calls, table["knowledge_backfill"].calls),
+                         (("kb_worker.enqueue_ingest",), ("kb_worker.enqueue_snapshot",), ("kb_worker.enqueue_ingest",)))
         for name in ("create_project", "register_project", "add_repository", "provider_test"):
             self.assertEqual(table[name].calls, ())  # dashboard management: files and projects.json, not engine transitions
         self.assertEqual(table["notification_read"].calls, ())  # Phase H: writes only ~/.config/sentinel/user.db
@@ -95,6 +102,8 @@ class Mapping(SV):
         self.assertEqual(set(table["control"].calls),
                          {"Engine.cancel_run", "Engine.resume_run", "Engine.cancel_task_control", "Engine.retry_task"})
         self.assertEqual(table["create_run"].calls, ("Engine.create_run",))
+        self.assertEqual((table["pause"].calls, table["unpause"].calls, table["note"].calls),
+                         (("Engine.pause_run",), ("Engine.unpause_run",), ("Engine.add_note",)))
         for r in table.values():
             src = inspect.getsource(r.handler)
             for banned in (".reg.insert", ".reg.update", ".reg.add_", "write_text", "write_bytes", "open(", "os.remove", "unlink"):

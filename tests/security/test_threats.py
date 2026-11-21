@@ -223,7 +223,7 @@ class EnvironmentOtherPaths(SV):
         (self.ws / ".env").write_text("".join(f"{k}={v}\n" for k, v in CANARIES.items()))
         self.boot({"fake": (self.body(rec), {})}, {"docs": "fake"}, policies={"redact_env": ["AWS_SECRET_ACCESS_KEY"]})
         with self.eng.reg.transaction():
-            self.eng.reg.update_run(SLUG, origin="dashboard")  # only a dashboard run is started by the server
+            self.eng.reg.update_run(SLUG, origin="dashboard", driver="ai-tool")  # only a dashboard run is started by the server
         patch = mock.patch.dict(os.environ, {"AWS_SECRET_ACCESS_KEY": AWS, **CANARIES})
         patch.start()
         self.addCleanup(patch.stop)

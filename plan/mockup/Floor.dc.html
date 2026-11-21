@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factory floor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0B0F13}
+a{color:#4FD1C1}a:hover{color:#8AE5DA}
+button{font-family:inherit}
+.e{fill:none;vector-effect:non-scaling-stroke}
+.e-done{stroke:#3A6B66;stroke-width:2}
+.e-active{stroke:#4FD1C1;stroke-width:2.6;stroke-dasharray:7 9;filter:drop-shadow(0 0 4px #4FD1C1)}
+.e-wait{stroke:#F5B547;stroke-width:2.6;stroke-dasharray:7 9;filter:drop-shadow(0 0 4px #F5B547)}
+.e-pause{stroke:#8A93AB;stroke-width:2;stroke-dasharray:7 9}
+.e-todo{stroke:#26303A;stroke-width:1.5;stroke-dasharray:3 6}
+.e-feed{stroke:#7C93E6;stroke-width:1.2;stroke-dasharray:2 9;opacity:.45}
+.e-feed-on{stroke:#9DB4FF;stroke-width:1.8;stroke-dasharray:2 7;opacity:.95;filter:drop-shadow(0 0 3px #9DB4FF)}
+@media (prefers-reduced-motion: no-preference){
+.e-active{animation:flow .8s linear infinite}
+.e-wait{animation:flow 1.8s linear infinite}
+.e-feed,.e-feed-on{animation:flow 2.2s linear infinite}
+.breathe{animation:breathe 2s ease-in-out infinite}
+.spin{animation:spin 6s linear infinite}
+.pulse{animation:pulse 1.6s ease-in-out infinite}
+}
+@keyframes flow{to{stroke-dashoffset:-32}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: radial-gradient(ellipse at 50% 30%, #121B22 0%, #0B0F13 70%); color: #E6EAEE; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px; border-bottom: 1px solid #1F2730; background: #0F151B">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #E6EAEE"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4FD1C1" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="5" r="2.2"></circle><circle cx="12" cy="19" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle><path d="M7 11l3-4M7 13l3 4M14 6l3 4M14 18l3-4"></path></svg><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">Sentinel</span></a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 2px; margin-left: 8px">
+<a href="Floor.dc.html" aria-current="page" style="padding: 8px 12px; border-radius: 8px; background: #1C242D; color: #E6EAEE; text-decoration: none; font-weight: 600">Factory floor</a>
+<a href="NewTask.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">New task</a>
+<a href="Approve.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Approvals <span style="background: #F5B547; color: #1A1206; border-radius: 10px; padding: 0 7px; font-size: 12px; font-weight: 600">1</span></a>
+<a href="Project.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Projects</a>
+<a href="Knowledge.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Knowledge</a>
+<a href="Settings.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Settings</a>
+</nav>
+<span style="flex: 1 1 auto"></span>
+<span style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid #26303A; border-radius: 10px; background: #141A21; font-size: 13px"><span class="{{factoryDotClass}}" style="width: 9px; height: 9px; border-radius: 50%; background: {{factoryDot}}"></span>{{factoryLabel}}</span>
+<button type="button" onClick="{{toggleFactory}}" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #3A4654; background: #1C242D; color: #E6EAEE; font-weight: 600; cursor: pointer">{{factoryButton}}</button>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 18px; padding: 18px 24px 28px">
+<main style="flex: 999 1 760px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+
+<div role="group" aria-label="Tasks on the floor" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<sc-for list="{{tasks}}" as="t" hint-placeholder-count="3">
+<button type="button" onClick="{{t.pick}}" aria-pressed="{{t.pressed}}" style="display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 14px 6px 8px; border-radius: 12px; border: 1px solid {{t.border}}; background: {{t.bg}}; color: #E6EAEE; cursor: pointer">
+<span style="width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; background: {{t.color}}; color: #0B0F13">{{t.short}}</span>
+<span style="display: flex; flex-direction: column; align-items: flex-start"><span style="font-weight: 600">{{t.title}}</span><span style="font-size: 12px; color: {{t.stateColor}}">{{t.where}}</span></span>
+</button>
+</sc-for>
+<span style="font-size: 12px; color: #9AA6B2; margin-left: 6px">+ 2 queued · <a href="NewTask.dc.html">New task</a></span>
+</div>
+
+<section aria-label="Factory network" style="border-radius: 18px; border: 1px solid #1F2730; background: #0E1419; overflow-x: auto">
+<div style="position: relative; min-width: 900px; aspect-ratio: 1000 / 560">
+<svg aria-hidden="true" viewBox="0 0 1000 560" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%">
+<path class="e {{ec.f1}}" d="M470 480 C 300 480, 165 400, 165 170"></path>
+<path class="e {{ec.f2}}" d="M470 480 C 380 480, 270 420, 270 250"></path>
+<path class="e {{ec.f3}}" d="M470 480 C 470 400, 470 330, 470 250"></path>
+<path class="e {{ec.f4}}" d="M470 480 C 600 480, 640 250, 670 250"></path>
+<path class="e {{ec.f5}}" d="M470 480 C 580 480, 620 410, 670 410"></path>
+<path class="e {{ec.e1}}" d="M60 250 C 112 250, 112 170, 165 170"></path>
+<path class="e {{ec.e2}}" d="M165 170 C 218 170, 218 250, 270 250"></path>
+<path class="e {{ec.e3}}" d="M270 250 C 320 250, 320 170, 370 170"></path>
+<path class="e {{ec.e4}}" d="M370 170 C 420 170, 420 250, 470 250"></path>
+<path class="e {{ec.e5}}" d="M470 250 C 518 250, 518 170, 565 170"></path>
+<path class="e {{ec.e6}}" d="M565 170 C 618 170, 618 90, 670 90"></path>
+<path class="e {{ec.e7}}" d="M565 170 C 618 170, 618 250, 670 250"></path>
+<path class="e {{ec.e8}}" d="M565 170 C 618 170, 618 410, 670 410"></path>
+<path class="e {{ec.e9}}" d="M670 90 C 722 90, 722 250, 775 250"></path>
+<path class="e {{ec.e10}}" d="M670 250 C 722 250, 722 250, 775 250"></path>
+<path class="e {{ec.e11}}" d="M670 410 C 722 410, 722 250, 775 250"></path>
+<path class="e {{ec.e12}}" d="M775 250 C 820 250, 820 170, 865 170"></path>
+<path class="e {{ec.e13}}" d="M865 170 C 908 170, 908 250, 950 250"></path>
+<path class="e {{ec.e14}}" d="M950 250 C 950 420, 640 480, 470 480"></path>
+</svg>
+
+<sc-for list="{{nodes}}" as="n" hint-placeholder-count="13">
+<div style="position: absolute; left: {{n.left}}; top: {{n.top}}; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 6px; width: 120px">
+<div style="position: relative; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center">
+<sc-if value="{{n.live}}" hint-placeholder-val="{{ false }}">
+<span class="spin" aria-hidden="true" style="position: absolute; inset: -9px; border-radius: 50%; border: 1.5px dashed {{n.ring}}; opacity: .8"></span>
+</sc-if>
+<button type="button" onClick="{{n.pick}}" aria-label="{{n.aria}}" aria-pressed="{{n.pressed}}" class="{{n.anim}}" style="width: 56px; height: 56px; border-radius: {{n.radius}}; transform: {{n.rotate}}; border: 2px solid {{n.ring}}; background: {{n.fill}}; box-shadow: {{n.glow}}; color: {{n.ink}}; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; outline-offset: 4px">
+<span style="transform: {{n.unrotate}}; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px">{{n.glyph}}</span>
+</button>
+<div style="position: absolute; top: -6px; right: -14px; display: flex; gap: 2px">
+<sc-for list="{{n.here}}" as="h" hint-placeholder-count="1">
+<span title="{{h.title}}" style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid #0E1419; display: inline-flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 9px; background: {{h.color}}; color: #0B0F13">{{h.short}}</span>
+</sc-for>
+</div>
+</div>
+<span style="font-size: 12px; font-weight: 600; text-align: center; color: {{n.labelColor}}">{{n.name}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8995A2; text-align: center; margin-top: -4px">{{n.sub}}</span>
+</div>
+</sc-for>
+
+<div style="position: absolute; left: 14px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: #9AA6B2">
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 50%; border: 2px solid #4FD1C1"></span>agent</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 12px; height: 12px; border-radius: 3px; border: 2px solid #9AA6B2"></span>engine</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; transform: rotate(45deg); border: 2px solid #F5B547"></span>you decide</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 18px; border-top: 2px dashed #9DB4FF"></span>knowledge feeding agents</span>
+</div>
+</div>
+</section>
+
+<section aria-label="Factory activity" style="border-radius: 14px; border: 1px solid #1F2730; background: #0B0F13; padding: 12px 16px">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px">
+<h2 style="margin: 0; font-size: 12px; letter-spacing: .4px; text-transform: uppercase; color: #9AA6B2">Activity across the factory</h2>
+<span style="font-size: 12px; color: #9AA6B2">live</span>
+</div>
+<pre style="margin: 0; white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; line-height: 1.7; color: #B8C2CC">10:45:14  LB  build · green      engine checking write scope backend/src/main/**
+10:44:58  AL  triage             read knowledge/repos/frontend/summary.md
+10:44:55  LB  build · green      1 failing → 0 failing (./gradlew test)
+10:44:31  AL  triage             started · agy · gemini-3.8-flash
+10:24:52  PR  spec review        waiting for you · sha256 4f1c09ab…</pre>
+</section>
+</main>
+
+<aside aria-label="Selected station" style="flex: 1 1 300px; max-width: 380px; min-width: 260px; display: flex; flex-direction: column; gap: 12px">
+<section style="padding: 16px; border-radius: 16px; border: 1px solid {{p.border}}; background: #141A21; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9AA6B2">{{p.kind}}</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: {{p.badgeBg}}; color: {{p.badgeFg}}"><span class="{{p.dotClass}}" style="width: 6px; height: 6px; border-radius: 50%; background: {{p.badgeFg}}"></span>{{p.state}}</span>
+</div>
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 22px">{{p.name}}</h2>
+<p style="margin: 0; color: #C5CDD5; font-size: 13px">{{p.does}}</p>
+<dl style="margin: 0; display: grid; grid-template-columns: 92px 1fr; gap: 6px 10px; font-size: 13px">
+<dt style="color: #9AA6B2">Who</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 12px">{{p.who}}</dd>
+<dt style="color: #9AA6B2">This task</dt><dd style="margin: 0">{{p.task}}</dd>
+<dt style="color: #9AA6B2">Knowledge</dt><dd style="margin: 0">{{p.knows}}</dd>
+<dt style="color: #9AA6B2">Next</dt><dd style="margin: 0">{{p.next}}</dd>
+</dl>
+<sc-if value="{{p.isWaiting}}" hint-placeholder-val="{{ false }}">
+<a href="Approve.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 10px; background: #F5B547; color: #1A1206; font-weight: 600; text-decoration: none">Review specification</a>
+</sc-if>
+<sc-if value="{{p.isAccept}}" hint-placeholder-val="{{ false }}">
+<a href="Run.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 10px; border: 1px solid #3A4654; color: #E6EAEE; font-weight: 600; text-decoration: none">Preview the report page</a>
+</sc-if>
+</section>
+
+<section style="padding: 16px; border-radius: 16px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 12px; letter-spacing: .4px; text-transform: uppercase; color: #9AA6B2">Control {{selTitle}}</h2>
+<label for="note" style="font-size: 13px; color: #C5CDD5">Step in: a note for the next agent</label>
+<textarea id="note" rows="3" placeholder="e.g. reuse ExportService, do not add a new class" style="resize: vertical; padding: 10px; border-radius: 10px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; font-family: inherit; font-size: 13px"></textarea>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="flex: 1 1 110px; min-height: 44px; border-radius: 10px; border: 0; background: #4FD1C1; color: #062420; font-weight: 600; cursor: pointer">Send note</button>
+<button type="button" onClick="{{togglePause}}" style="flex: 1 1 90px; min-height: 44px; border-radius: 10px; border: 1px solid #3A4654; background: #1C242D; color: #E6EAEE; font-weight: 600; cursor: pointer">{{pauseLabel}}</button>
+<button type="button" style="flex: 1 1 90px; min-height: 44px; border-radius: 10px; border: 1px solid #5A2A2A; background: transparent; color: #F2A3A3; font-weight: 600; cursor: pointer">Cancel</button>
+</div>
+<a href="Run.dc.html" style="font-size: 13px">Open the full run: logs, diffs, evidence</a>
+</section>
+<p style="margin: 0; font-size: 12px; color: #9AA6B2">Click any neuron to see what happens there. Sample data.</p>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: 'A', node: 'b2', factoryOn: true, paused: {} };
+  }
+  renderVals() {
+    var self = this;
+    var NODES = [
+      { id: 'intake', name: 'Intake', glyph: 'In', kind: 'engine', x: 60, y: 250, st: 0, who: 'engine', does: 'Records the request, picks the repos and opens a run.' },
+      { id: 'triage', name: 'Triage', glyph: 'Tr', kind: 'agent', x: 165, y: 170, st: 1, who: 'triage · agy · gemini-3.8-flash', does: 'Sizes the task from seven risk factors and picks how much rigor it needs.' },
+      { id: 'spec', name: 'Specification', glyph: 'Sp', kind: 'agent', x: 270, y: 250, st: 2, who: 'specifier · claude · sonnet-4.6', does: 'Writes the spec: requirements, acceptance criteria, risks, QA steps.' },
+      { id: 'gate1', name: 'You approve spec', glyph: 'You', kind: 'gate', x: 370, y: 170, st: 3, who: 'you', does: 'Nothing is built until you approve the specification by its hash.' },
+      { id: 'gherkin', name: 'Scenarios', glyph: 'Gk', kind: 'agent', x: 470, y: 250, st: 4, who: 'gherkin · agy · gemini-3.8-flash-high', does: 'Turns the spec into Gherkin scenarios, one per behavior and edge case.' },
+      { id: 'gate2', name: 'You approve scenarios', glyph: 'You', kind: 'gate', x: 565, y: 170, st: 5, who: 'you', does: 'You confirm the scenarios that the tests will prove.' },
+      { id: 'b1', name: 'Export as CSV', glyph: 'B1', kind: 'agent', x: 670, y: 90, st: 6, lane: 'b1', who: 'coder · claude · sonnet-4.6', does: 'One behavior: Red (failing test), Green (make it pass), Refactor.' },
+      { id: 'b2', name: 'Filter by dept', glyph: 'B2', kind: 'agent', x: 670, y: 250, st: 6, lane: 'b2', who: 'coder · claude · sonnet-4.6', does: 'One behavior: Red (failing test), Green (make it pass), Refactor.' },
+      { id: 'b3', name: 'HR only', glyph: 'B3', kind: 'agent', x: 670, y: 410, st: 6, lane: 'b3', who: 'coder · claude · sonnet-4.6', does: 'One behavior: Red (failing test), Green (make it pass), Refactor.' },
+      { id: 'verify', name: 'Verify', glyph: 'Ve', kind: 'engine', x: 775, y: 250, st: 7, who: 'engine', does: 'Runs tests, lint, typecheck and build itself. An agent’s claim is never evidence.' },
+      { id: 'report', name: 'Report', glyph: 'Re', kind: 'engine', x: 865, y: 170, st: 8, who: 'engine', does: 'Writes the report: evidence, trace from requirement to code, findings.' },
+      { id: 'gate3', name: 'You accept', glyph: 'You', kind: 'gate', x: 950, y: 250, st: 9, who: 'you', does: 'You read the report and accept or reject the result.' },
+      { id: 'knowledge', name: 'Knowledge', glyph: 'Kb', kind: 'engine', x: 470, y: 480, st: 10, who: 'engine · summaries by agy · gemini-3.8-flash', does: 'Records the change in the shared knowledge base and feeds summaries, invariants and past changes to every agent.' }
+    ];
+    var TASKS = [
+      { id: 'A', short: 'LB', title: 'Leave balance export', color: '#4FD1C1', at: 6, state: 'working', where: 'Build · behavior 2 of 3', lanes: { b1: 'done', b2: 'working', b3: 'queued' }, now: 'b2',
+        task: { triage: 'Tier 3 · 2 repos · regression risk low', spec: 'v2 approved by you 09:12', gate1: 'Approved 09:12', gherkin: '9 scenarios', gate2: 'Approved 09:40', b1: 'Red ✓ Green ✓ Refactor ✓', b2: 'Red ✓ · Green running 4 min', b3: 'Queued: starts when B2 frees its write scope' } },
+      { id: 'B', short: 'PR', title: 'Fix payroll rounding', color: '#F5B547', at: 3, state: 'waiting', where: 'Waiting for you', now: 'gate1',
+        task: { triage: 'Tier 2 · 1 repo', spec: 'v1 ready (4 requirements)', gate1: 'Spec v1 waits for you for 18 min' } },
+      { id: 'C', short: 'AL', title: 'Audit log filter', color: '#9DB4FF', at: 1, state: 'working', where: 'Triage', now: 'triage',
+        task: { triage: 'Reading the request and frontend/src/screens/Audit.tsx' } }
+    ];
+    var paused = this.state.paused;
+    var sel = TASKS.find(function (t) { return t.id === self.state.picked; }) || TASKS[0];
+    var isPaused = !!paused[sel.id];
+    function stateOf(n) {
+      if (n.st < sel.at) return 'done';
+      if (n.st === sel.at) {
+        var s = n.lane ? sel.lanes[n.lane] : sel.state;
+        if (s === 'working' && isPaused) return 'paused';
+        return s;
+      }
+      if (n.st === sel.at + 1) return 'next';
+      return 'todo';
+    }
+    var LOOK = {
+      done:    { label: 'Done',      ring: '#3A6B66', fill: '#16302D', ink: '#9ED9D0', glow: 'none', label2: '#C5CDD5', badgeBg: '#1F2730', badgeFg: '#B8C2CC', edge: 'e-done', anim: '', live: false },
+      working: { label: 'Working',   ring: '#4FD1C1', fill: '#103B36', ink: '#E6FFFB', glow: '0 0 0 6px rgba(79,209,193,.14), 0 0 34px rgba(79,209,193,.65)', label2: '#E6EAEE', badgeBg: '#173D39', badgeFg: '#7FE3D7', edge: 'e-active', anim: 'breathe', live: true },
+      waiting: { label: 'Needs you', ring: '#F5B547', fill: '#3A2C10', ink: '#FFE7B8', glow: '0 0 0 6px rgba(245,181,71,.14), 0 0 34px rgba(245,181,71,.6)', label2: '#F5C776', badgeBg: '#3D3117', badgeFg: '#F5C776', edge: 'e-wait', anim: 'breathe', live: true },
+      paused:  { label: 'Paused',    ring: '#8A93AB', fill: '#20242F', ink: '#D6DBE8', glow: 'none', label2: '#C2C9DD', badgeBg: '#262B3A', badgeFg: '#C2C9DD', edge: 'e-pause', anim: '', live: false },
+      queued:  { label: 'Queued',    ring: '#3A4654', fill: '#141A21', ink: '#C5CDD5', glow: 'none', label2: '#C5CDD5', badgeBg: '#1F2730', badgeFg: '#C5CDD5', edge: 'e-todo', anim: '', live: false },
+      next:    { label: 'Next',      ring: '#3A4654', fill: '#141A21', ink: '#C5CDD5', glow: 'none', label2: '#C5CDD5', badgeBg: '#1F2730', badgeFg: '#C5CDD5', edge: 'e-todo', anim: '', live: false },
+      todo:    { label: 'Later',     ring: '#26303A', fill: '#11161C', ink: '#8995A2', glow: 'none', label2: '#9AA6B2', badgeBg: '#171D24', badgeFg: '#8995A2', edge: 'e-todo', anim: '', live: false }
+    };
+    var states = {};
+    NODES.forEach(function (n) { states[n.id] = stateOf(n); });
+    var nodeId = this.state.node;
+    var nodes = NODES.map(function (n) {
+      var k = states[n.id], L = LOOK[k];
+      var gate = n.kind === 'gate';
+      var here = TASKS.filter(function (t) { return t.now === n.id; }).map(function (t) { return { short: t.short, color: t.color, title: t.title }; });
+      var ring = gate && (k === 'todo' || k === 'next') ? '#6B5A33' : L.ring;
+      return {
+        left: (n.x / 10) + '%', top: (n.y / 5.6) + '%', name: n.name, glyph: n.glyph,
+        sub: n.kind === 'gate' ? 'you' : n.kind === 'engine' ? 'engine' : n.who.split(' · ').slice(1).join(' · '),
+        radius: n.kind === 'agent' ? '50%' : '12px', rotate: gate ? 'rotate(45deg) scale(.86)' : 'none', unrotate: gate ? 'rotate(-45deg)' : 'none',
+        ring: ring, fill: L.fill, ink: L.ink, glow: n.id === nodeId ? (L.glow === 'none' ? '0 0 0 3px #E6EAEE33' : L.glow + ', 0 0 0 3px #E6EAEE55') : L.glow,
+        anim: L.anim, live: L.live, labelColor: L.label2, here: here,
+        aria: n.name + ': ' + L.label, pressed: n.id === nodeId ? 'true' : 'false',
+        pick: function () { self.setState({ node: n.id }); }
+      };
+    });
+    function ecls(target) { return LOOK[states[target]].edge; }
+    function feed(target) { return states[target] === 'working' ? 'e-feed-on' : 'e-feed'; }
+    var ec = {
+      e1: ecls('triage'), e2: ecls('spec'), e3: ecls('gate1'), e4: ecls('gherkin'), e5: ecls('gate2'),
+      e6: ecls('b1'), e7: ecls('b2'), e8: ecls('b3'), e9: states.b1 === 'done' && states.verify !== 'todo' ? 'e-done' : 'e-todo',
+      e10: ecls('verify'), e11: ecls('verify'), e12: ecls('report'), e13: ecls('gate3'), e14: ecls('knowledge'),
+      f1: feed('triage'), f2: feed('spec'), f3: feed('gherkin'), f4: feed('b2'), f5: feed('b3')
+    };
+    var cur = NODES.find(function (n) { return n.id === nodeId; }) || NODES[0];
+    var ck = states[cur.id], CL = LOOK[ck];
+    var idx = NODES.indexOf(cur);
+    var nextNode = cur.id === 'knowledge' ? 'Feeds every future task' : (NODES.find(function (n) { return n.st > cur.st; }) || { name: 'Knowledge' }).name;
+    var KNOWS = { agent: 'Repo summary, module summaries for its write scope, invariants, 5 recent related changes', engine: '—', gate: 'The report shows which knowledge the agents used' };
+    var p = {
+      kind: (cur.kind === 'gate' ? 'human gate' : cur.kind) + ' · station ' + (idx + 1),
+      name: cur.name, does: cur.does, who: cur.who, state: CL.label, badgeBg: CL.badgeBg, badgeFg: CL.badgeFg,
+      dotClass: CL.live ? 'pulse' : '', border: CL.live ? CL.ring : '#26303A',
+      task: sel.task[cur.id] || (ck === 'todo' || ck === 'next' ? 'Not reached yet' : 'Done'),
+      knows: cur.id === 'knowledge' ? 'Writes the record; summaries by a cheap model' : KNOWS[cur.kind], next: nextNode,
+      isWaiting: ck === 'waiting', isAccept: cur.id === 'gate3'
+    };
+    var SC = { working: '#7FE3D7', waiting: '#F5C776' };
+    var tasks = TASKS.map(function (t) {
+      var on = t.id === sel.id, ps = !!paused[t.id];
+      return { short: t.short, title: t.title, color: t.color, where: ps ? 'Paused' : t.where, stateColor: ps ? '#C2C9DD' : SC[t.state],
+        border: on ? t.color : '#26303A', bg: on ? '#16222A' : '#141A21', pressed: on ? 'true' : 'false',
+        pick: function () { self.setState({ picked: t.id, node: t.now }); } };
+    });
+    var fon = this.state.factoryOn;
+    var busy = TASKS.filter(function (t) { return t.state === 'working' && !paused[t.id]; }).length;
+    return {
+      tasks: tasks, nodes: nodes, ec: ec, p: p, selTitle: sel.title,
+      pauseLabel: isPaused ? 'Resume' : 'Pause',
+      togglePause: function () { var q = Object.assign({}, paused); q[sel.id] = !q[sel.id]; self.setState({ paused: q }); },
+      factoryLabel: fon ? 'Factory running · ' + busy + ' of 4 agents busy' : 'Factory paused · nothing new starts',
+      factoryDot: fon ? '#4FD1C1' : '#C2C9DD', factoryDotClass: fon ? 'pulse' : '',
+      factoryButton: fon ? 'Pause factory' : 'Resume factory',
+      toggleFactory: function () { self.setState({ factoryOn: !fon }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

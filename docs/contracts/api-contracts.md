@@ -95,6 +95,36 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/approvals?state=` | approvals across projects (default `IN_REVIEW`) |
 | POST | `/projects/{pid}/tasks` | body `{slug, request, type, repos?, priority?, tier?, ticket?}`; the run is created for the AI tool (`origin = dashboard`) and authorizes nothing; `?project=<pid>` on `/tasks/{slug}` routes selects the project when a slug exists twice |
 
+### Added in 2.0 (factory)
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/tasks/{slug}/pause` | body `{comment?}`; the dispatcher starts nothing more for the run, running tasks finish. Audit row `pause`, event `run.paused`. A finished or already paused run is `E_TRANSITION` |
+| POST | `/tasks/{slug}/unpause` | body `{comment?}`; audit row `unpause`, event `run.unpaused` |
+| POST | `/tasks/{slug}/note` | body `{text}` (at most 4000 characters); answer 201 with the run detail and `note`. The next agent task of the run gets the text once. Audit row `note`, event `run.note_added` |
+| GET | `/projects/{pid}/factory` | the factory snapshot, see [factory-api.md](factory-api.md) |
+
+### Added in 2.0 (setup, configuration form, and knowledge base - W3 part A)
+
+| Method | Path | Engine / module | Notes |
+|---|---|---|---|
+| POST | `/detect` | `manage.detect_paths` | body `{paths: [...]}`; returns per path: `is_git`, `current_branch`, `default_branch`, `local_branches`, `profile`, `commands`, `tracked_branches` |
+| POST | `/shared/test` | `manage.test_shared` | body `{url}`; tests read access via `shared.verify_remote` and write access via push dry-run (`write`: true, false, or "unknown") |
+| GET | `/routing/suggest` | `manage.suggest_routing` | suggested deterministic role -> {runner, model} routing from installed CLI-capable providers (cheap/fast for triage, gherkin, planner, knowledge; strong for specifier, coder, reviewer) |
+| GET | `/projects/{pid}/config/form` | `manage.config_form` | returns editable config sections and fields generated from `config.schema.json` with type, enum, default, current value, help |
+| POST | `/projects/{pid}/config/preview` | `manage.config_preview` | body `{changes: [{path, value}, ...]}`; schema validated, returns YAML diff (refuses changes to `state.shared_repo` and repo `path`) |
+| POST | `/projects/{pid}/config/save` | `manage.config_save` | body `{changes: [{path, value}, ...], comment?}`; saves `sentinel.config.yaml`, writes config version history and audit row `config_changed` (refuses changes to `state.shared_repo` and repo `path`) |
+| GET | `/projects/{pid}/knowledge/status` | `readroutes.knowledge_status` | returns knowledge status (cursors, records, by_repo) and kb job summary from `kb_worker` |
+| GET | `/projects/{pid}/knowledge/records?filter=&q=&limit=&cursor=` | `readroutes.knowledge_records` | paginated change records from `index.json`, front matter only, scrubbed text; filter `all|verified|inferred` |
+| GET | `/projects/{pid}/knowledge/records/{key}` | `readroutes.knowledge_record` | single change record body and metadata by key; 404 if not found |
+| POST | `/projects/{pid}/knowledge/ingest` | `manage.knowledge_ingest` | queues an ingest job in `kb_jobs`, spawns worker in background, writes audit row `knowledge_ingest`; answers 202 without blocking |
+| POST | `/projects/{pid}/knowledge/snapshot` | `manage.knowledge_snapshot` | queues a snapshot job in `kb_jobs`, spawns worker in background, writes audit row `knowledge_snapshot`; answers 202 without blocking |
+| POST | `/projects/{pid}/knowledge/backfill/estimate` | `manage.knowledge_backfill_estimate` | body `{since?, repo?}`; computes backfill change estimate and returns an estimate token |
+| POST | `/projects/{pid}/knowledge/backfill` | `manage.knowledge_backfill` | body `{token}`; runs backfill ingest with estimate token, writes audit row `knowledge_backfill` |
+| GET | `/projects/{pid}/knowledge/ci-template?repo=<id>` | `readroutes.knowledge_ci_template` | CI template (`sentinel-knowledge-ingest.yml`) filled with `REPO_ID`, `REPO_PROFILE`, and `TRACKED_BRANCHES` from project configuration |
+
+Pause, unpause and note use the same session, CSRF and audit checks as `/tasks/{slug}/control`. Run detail and run list items carry `driver` (`engine`, `ai-tool`, `cli`) and `paused`.
+
 Only Phase F routes exist; every other route above answers `404 E_NOT_FOUND` until Phase G or H builds it. Check order: Host, Origin, session cookie, route, CSRF, body. HTTP-only codes (not engine codes): `E_AUTH` 401, `E_CSRF` 403, `E_HOST` 403, `E_ORIGIN` 403, `E_METHOD` 405, `E_BODY_TOO_LARGE` 413, `E_MEDIA_TYPE` 415, `E_INTERNAL` 500. Engine codes map to one status each (`apiserver/status.py`).
 
 ## 3. CLI contract (new and changed commands)

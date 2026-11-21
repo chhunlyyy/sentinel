@@ -441,11 +441,14 @@ class TtyProc:
 class Dash(TtyProc):
     """`sentinel dashboard` under a pseudo-terminal (or, with tty=False, with stdin from a pipe)."""
 
-    def __init__(self, test, args=("--no-open",), cwd=None, env=None, tty=True, workspace=None):
+    def __init__(self, test, args=("--no-open",), cwd=None, env=None, tty=True, workspace=None, foreground=True):
         e = {k: v for k, v in os.environ.items() if k not in ("XDG_CONFIG_HOME", "SENTINEL_TASK_ID", "SENTINEL_HOST", "HOST")}
         e.update({"PYTHONDONTWRITEBYTECODE": "1", "SENTINEL_ORCHESTRATOR": "none", **(env or {})})  # no provider prompt
         e = {k: v for k, v in e.items() if v is not None}  # a None value in `env` unsets the variable
-        cmd = [sys.executable, SENTINEL, *(["--dir", str(workspace)] if workspace else []), "dashboard", *args]
+        cmd_args = list(args)
+        if foreground and "--foreground" not in cmd_args and not any(a.startswith("--help") for a in cmd_args):
+            cmd_args.append("--foreground")
+        cmd = [sys.executable, SENTINEL, *(["--dir", str(workspace)] if workspace else []), "dashboard", *cmd_args]
         if tty:
             super().__init__(test, cmd, env=e, cwd=cwd)
         else:

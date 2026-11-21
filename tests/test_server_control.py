@@ -43,14 +43,16 @@ class Create(SV):
         self.assertTrue(all(len(s) == 40 for s in repos.values()))
         self.assertTrue(run["config_snapshot_id"])
         self.assertTrue((self.ws / ".sentinel" / "shared" / "locks" / NEW).exists())
-        self.assertEqual((run["priority"], run["origin"]), ("high", "dashboard"))
+        self.assertEqual((run["priority"], run["origin"], run["driver"]), ("high", "dashboard", "engine"))
         ev = self.events_rows(type="run.created")[0]
         self.assertEqual((ev["actor"], ev["actor_name"], ev["channel"]), ("human", "dev", "dashboard"))
         row = [a for a in self.audit_rows() if a["action"] == "run_created"][0]
         self.assertEqual((row["channel"], row["target"]), ("dashboard", NEW))
 
     def test_AC_TSK_03b_the_new_run_waits_for_the_ai_tool(self):
+        self.use_config(factory={"driver": "ai-tool"})
         self.assertEqual(self.create().status, 201)
+        self.assertEqual(self.row()["driver"], "ai-tool")
         r = self.http.get(f"/api/v1/tasks/{NEW}/next")
         self.assertEqual(r.status, 200, r.text)
         step = r.json
@@ -187,6 +189,7 @@ class Dispatch(SV):
 
     def test_AC_TSK_03d_a_native_task_of_a_dashboard_run_waits_for_the_ai_tool(self):
         self.serve_dispatch()
+        self.use_config(factory={"driver": "ai-tool"})
         self.dashboard_run()
         (tid, state), = self.states("specifier", NEW)
         time.sleep(1.0)
@@ -211,7 +214,7 @@ class Dispatch(SV):
     def boot_dashboard(self, body, n=3, write=None, policies=None, **kw):
         self.boot({"fake": (body, {})}, {"docs": "fake"}, policies=policies)
         with self.eng.reg.transaction():
-            self.eng.reg.update_run(SLUG, origin="dashboard")
+            self.eng.reg.update_run(SLUG, origin="dashboard", driver="ai-tool")
         ids = []
         for i in range(n):
             w = [write[i]] if write else [f"backend/docs{i}/**"]
@@ -261,7 +264,7 @@ class Dispatch(SV):
         self.use_config(single_model=False, runners={"fake": {"command": "/nonexistent/fake-runner"}}, agents={"docs": {"runner": "fake"}})
         self.executing(tier=3)
         with self.eng.reg.transaction():
-            self.eng.reg.update_run(SLUG, origin="dashboard")
+            self.eng.reg.update_run(SLUG, origin="dashboard", driver="ai-tool")
         tid = self.docs_task()
         self.serve_dispatch()
         self.assertTrue(wait_until(lambda: self.state() == "BLOCKED", 20), self.state())

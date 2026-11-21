@@ -7,8 +7,11 @@ disagree. Source: plan/v1.1/phaseF/README.md point 12.
 import machines
 from cycles import TDD_ROLES
 from errors import SentinelError
+from registry import _now
 
 RETRYABLE = ("FAILED", "CANCELLED")
+NOTE_MAX = 4000
+AUDIT_NOTE = 500
 
 
 class ControlOps:
@@ -90,3 +93,60 @@ class ControlOps:
             self._make_retry(run, task, verdict, task["attempt"] or 1)
             self.reg.add_audit(user, channel, "retry", f"{slug}/{task_id}")
         return self._finish_up(slug, run_before)
+
+    # ---- factory controls: pause, unpause, note (a run-level flag and a message; neither moves the run state)
+    def _open_run(self, slug):
+        run = self._get_v2(slug)
+        if run["state"] in machines.RUN_FINAL:
+            raise SentinelError("E_TRANSITION", f"run is {run['state']}; it cannot be paused or sent a note",
+                                {"state": run["state"]})
+        return run
+
+    def pause_run(self, slug, comment=None, *, user, channel="dashboard"):
+        """The factory starts nothing more for the run; running tasks finish. Audited."""
+        self._as_human(user, channel)
+        with self.reg.transaction():
+            run = self._open_run(slug)
+            if run["paused"]:
+                raise SentinelError("E_TRANSITION", f"run {slug} is already paused", {"paused": True})
+            self.reg.update_run(slug, paused=1)
+            self._event(run, "run.paused", machines.HUMAN, {"reason": comment})
+            self.reg.add_audit(user, channel, "pause", slug, reason=comment)
+        return self._finish_up(slug, run)
+
+    def unpause_run(self, slug, comment=None, *, user, channel="dashboard"):
+        self._as_human(user, channel)
+        with self.reg.transaction():
+            run = self._open_run(slug)
+            if not run["paused"]:
+                raise SentinelError("E_TRANSITION", f"run {slug} is not paused", {"paused": False})
+            self.reg.update_run(slug, paused=0)
+            self._event(run, "run.unpaused", machines.HUMAN, {"reason": comment})
+            self.reg.add_audit(user, channel, "unpause", slug, reason=comment)
+        return self._finish_up(slug, run)
+
+    def add_note(self, slug, text, *, user, channel="dashboard"):
+        """Store a note from the owner. The next agent task of the run gets it in its prompt, once."""
+        self._as_human(user, channel)
+        if not isinstance(text, str) or not text.strip():
+            raise SentinelError("E_VALIDATION", "a note needs text", {"field": "text"})
+        text = text.strip()
+        if len(text) > NOTE_MAX:
+            raise SentinelError("E_VALIDATION", f"a note holds at most {NOTE_MAX} characters", {"field": "text"})
+        with self.reg.transaction():
+            run = self._open_run(slug)
+            note = self.reg.insert_row("run_notes", {"run_id": run["id"], "text": text, "author": user, "channel": channel,
+                                                      "created_at": _now()})
+            self._event(run, "run.note_added", machines.HUMAN, {"note": note})
+            self.reg.add_audit(user, channel, "note", slug, reason=text[:AUDIT_NOTE])
+        self._finish_up(slug, run)
+        return note
+
+    def unread_notes(self, run):
+        return [n for n in self.reg.rows("run_notes", run_id=run["id"]) if not n["consumed_at"]]
+
+    def consume_notes(self, run, task_id):
+        """The notes the task's prompt carried are marked consumed by it (once; a re-render of the same task keeps them)."""
+        with self.reg.transaction():
+            for n in self.unread_notes(run):
+                self.reg.update_row("run_notes", n["id"], consumed_at=_now(), consumed_by=task_id)

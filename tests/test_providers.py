@@ -82,5 +82,5 @@ class ModelsAndRoles(unittest.TestCase):
     def test_roles_come_from_the_stage_prompts(self):
         import tasks
         roles = tasks.agent_roles()
-        self.assertEqual(roles[0], "specifier")
+        self.assertEqual(roles[:3], ["triage", "planner", "specifier"])
         self.assertEqual(set(roles), {f.stem for f in (tasks.ROOT / "core" / "stages").glob("*.md")})

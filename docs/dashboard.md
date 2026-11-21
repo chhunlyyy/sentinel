@@ -9,13 +9,23 @@ cd my-workspace
 sentinel dashboard
 ```
 
-`sentinel dashboard` needs an interactive terminal. It starts a server on `127.0.0.1` (a free port, or the one you fix with `--port`, for example `sentinel dashboard --port 8765`; a port must be from 1024 to 65535), registers the workspace you started it in, prints a one-time **session URL** and opens your browser on it (`--no-open` prints the URL and does not open a browser). The URL holds a start token; the server exchanges it for a session cookie and redirects, so the token does not stay in the address bar. A second `sentinel dashboard` in another workspace attaches to the running server and registers that workspace too. Stop the server with Ctrl+C in its terminal. When it stops, or the cookie is gone, the page shows "Session ended"; run `sentinel dashboard` again and open the new URL.
+`sentinel dashboard` needs an interactive terminal. It starts the Sentinel background service if it is not already running (listening on `127.0.0.1` on a free port, or the one you fix with `--port`, for example `sentinel dashboard --port 8765`; a port must be from 1024 to 65535), registers the workspace you started it in, prints a one-time **session URL** and opens your browser on it (`--no-open` prints the URL and does not open a browser). The URL holds a start token; the server exchanges it for a session cookie and redirects, so the token does not stay in the address bar. A second `sentinel dashboard` in another workspace attaches to the running server and registers that workspace too.
+
+Closing the terminal no longer stops the factory: the service continues running in the background. To stop the service, run `sentinel stop` (or `sentinel service stop`). To run the server in the foreground as in earlier versions (stopping on Ctrl+C), pass `--foreground`:
+
+```bash
+sentinel dashboard --foreground
+```
+
+Inside a container, `--bind 0.0.0.0` runs the server in the foreground as the container's primary process.
+
+When the server stops, or the session cookie is gone, the page shows "Session ended"; run `sentinel dashboard` again and open the new URL. You can also inspect or manage the service directly with `sentinel service start`, `sentinel service stop`, `sentinel service status`, `sentinel service run`, and `sentinel service autostart` (see [operations](operations.md#service-management)).
 
 The server listens on the loopback address only and accepts only requests for its own address. Read [the security notes](security.md#dashboard-token-and-residual-risk-r1) once: an agent that runs as your OS user can read the token file, which is residual risk R1.
 
 ## Docker
 
-The image `ghcr.io/chhunlyyy/sentinel` (tags `1.3.0` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
+The image `ghcr.io/chhunlyyy/sentinel` (tags `2.0.0` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
 
 ```bash
 docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
@@ -43,14 +53,16 @@ It prints `http://localhost:8765/auth?t=<token>`; open that URL in your browser.
 
 | Screen | What it shows |
 |---|---|
-| Overview | Setup readiness, runs that need you, recent runs of every registered project. |
-| Projects | Every registered workspace: repos, configuration (effective values and where each comes from, version history and diffs), runs, audit rows. |
-| Tasks | Runs of every project with filters, and **Create task**, which creates a version 2 run and queues it for the AI tool. Creating a task approves nothing. |
-| My Approvals | The specification and Gherkin reviews waiting for you, with the text, the diff to the earlier version and the hash to confirm. Approve, request changes or reject here, as with `sentinel approve`. |
-| Runs | One run: state and execution and acceptance status, the workflow graph, logs of each task, changes and diffs, TDD cycles with their evidence, verification and the trace from requirement to code. Cancel, resume and retry are engine transitions; `resolve` is CLI only (`sentinel resolve`). |
-| Quality | Verification and regression results across runs. |
-| Reports | Metrics from the registry: lead time, acceptance rate, approval wait, retries, provider failure rate, TDD cycles, verification pass rate, rework and the cost tasks reported. A value that cannot be computed shows "Not reported" with the reason. See [operations](operations.md#stats-and-analytics). |
-| Settings | Installation and health checks (the same checks as `sentinel doctor`). |
+| Factory floor | The primary landing screen when projects exist. Visual neural-network-style station path: Intake > Triage > Spec > Gate Spec > Gherkin > Gate Gherkin > Build > Verify > Report > Gate Accept > Knowledge. Shows active agents, behavior build lanes (Red, Green, Refactor), task selection chips, pause and step-in note controls, and the queue of runs waiting for concurrency limits. |
+| Overview | Landing screen at `/overview` when no projects exist yet: setup readiness, runs that need human attention, recent activity across projects. |
+| Projects | Registered workspaces: repositories, configuration (effective values, version history, YAML diff preview), runs, audit entries. Includes the 5-step "Create project" wizard (`/projects/new`) with automatic stack detection, command discovery, and shared repo access tests. |
+| Tasks | Runs across every project with status filters. "Create task" (`/tasks/new`) creates a version 2 run and sends it directly to the factory floor. Creating a task approves nothing. |
+| My Approvals | Specifications and Gherkin scenario reviews waiting for you, with document text, diff to earlier versions, and the typed hash confirmation input. Approve, request changes or reject here, as with `sentinel approve`. |
+| Runs | One run: state, driver, pause status, step-in notes, workflow graph, task execution logs, diffs, TDD cycles with evidence, verification, and the trace from requirement to code. Cancel, resume and retry are engine transitions; `resolve` is CLI only (`sentinel resolve`). |
+| Knowledge | Team knowledge base: tracked branch cursors, record counts (active, dropped), and background harvest job status. Actions: trigger ingest, trigger snapshot, backfill with change and agent cost estimate confirmation modal, browse change records with filters and search, and view the CI workflow template. |
+| Settings | Tabbed administration: Factory service management, Providers and agents (orchestrator, role routing per agent), Project settings (schema-generated config editor with validation and preview), Health checks (same checks as `sentinel doctor`), Sentinel installation, and Runtime connection. |
+| Quality | Verification and regression test results across runs. |
+| Reports | Metrics from the registry: lead time, acceptance rate, approval wait, retries, provider failure rate, TDD cycles, verification pass rate, rework, and cost reported by tasks. A value that cannot be computed shows "Not reported" with the reason. See [operations](operations.md#stats-and-analytics). |
 
 The bell in the header lists notifications. Opening one only takes you to the page; it never approves anything. "Enable desktop notifications" asks the browser for permission once; see [operations](operations.md#notifications).
 
@@ -58,27 +70,30 @@ Every screen works with the keyboard alone, labels every control, and meets WCAG
 
 ## Projects, providers and agents
 
-Since 1.2.0 you can set up most things in the dashboard. Settings > Providers lists the AI tools installed on this machine and picks the orchestrator; Settings > Agents routes each agent role to a provider and model. Projects has "Create project" (name, folder, one or more repositories, local or shared git) and "Register existing folder", and the Repositories tab adds and removes repositories.
+Settings > Providers lists the AI tools installed on this machine and picks the orchestrator; Settings > Agents routes each agent role to a provider and model. Projects has "Create project" (the 5-step wizard) and "Register existing folder", and the Repositories tab adds and removes repositories.
 
 | You want to | Do this |
 |---|---|
-| Create a project | "Create project" on the Projects screen, or `sentinel init` in the workspace, then `sentinel dashboard` there registers it |
-| Add or remove repos | Repositories tab of the project (a project keeps at least one repository), or edit `repos` in `sentinel.config.yaml` |
+| Create a project | "Create project" wizard on the Projects screen (`/projects/new`), or `sentinel init` in the workspace, then `sentinel dashboard` there registers it |
+| Add or remove repos | Wizard during setup, Repositories tab of the project, or edit `repos` in Settings > Project settings |
 | Delete a project | "Delete project" on the project page. It only removes the project from the dashboard; its folder, configuration and `.sentinel` state stay on disk. Refused while a run is active |
-| Pick the provider that drives runs | `sentinel dashboard claude` (a runner id), the list shown when you give none, or Settings > Providers |
+| Pick the provider that drives runs | Settings > Providers, or `sentinel dashboard claude` (a runner id) |
 | Route an agent to a provider and model | Settings > Agents (this project or a global default), or `agents` in `sentinel.config.yaml` |
-| Change other settings, policies or commands | Edit `sentinel.config.yaml`; `sentinel doctor` validates it (see [config](config.md)) |
-| Restore an earlier configuration | Copy the version from the history in the Projects screen into `sentinel.config.yaml` |
+| Change settings, policies or commands | Settings > Project settings (form with YAML preview and save), or edit `sentinel.config.yaml`; `sentinel doctor` validates it (see [config](config.md)) |
+| Restore an earlier configuration | Settings > Project settings (restore from history), or copy the version from history in the Projects screen into `sentinel.config.yaml` |
 | Import or export a project config | Copy the file |
 | Change the Sentinel installation | Reinstall, see [installation](installation.md) |
 | Generate agent configs and deny rules | `sentinel sync-adapters` |
 | Test a provider | The Test button in Settings > Providers, or `sentinel doctor --check-models` |
+| Ingest, backfill or snapshot knowledge | Knowledge screen (`/knowledge`), or `sentinel kb ingest`, `sentinel kb backfill`, `sentinel kb snapshot` |
+| Pause or unpause a run | Pause/Resume buttons on the Factory Floor or Run screen, or `sentinel pause` / `sentinel unpause` |
+| Send a note to the next task | Note input on the Factory Floor or Run screen, or `sentinel note` |
 | Publish specs and regression tests | `sentinel sync push` (version 2 runs never push by themselves) |
-| Pause a run or request intervention | Not available; you can cancel, resume and retry |
+| Resolve a parked run | `sentinel resolve` (`resolve` is CLI only) |
 
 A global default set under Settings > Agents is copied into the projects you create afterwards; the engine does not merge it at run time.
 
-Approving a specification or Gherkin set, accepting a run, cancelling, resuming, retrying and creating a task all work in the dashboard, and each is recorded in the audit with the channel `dashboard`.
+Approving a specification or Gherkin set, accepting a run, pausing, unpausing, sending notes, cancelling, resuming, retrying and creating a task all work in the dashboard, and each is recorded in the audit with the channel `dashboard`.
 
 ## The pictures in the README
 

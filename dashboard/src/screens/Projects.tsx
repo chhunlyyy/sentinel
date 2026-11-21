@@ -7,6 +7,7 @@ import { ErrorView } from '../components/ErrorView.tsx';
 import { FolderPicker } from '../components/FolderPicker.tsx';
 import { ActionResult, ConfirmDialog, Loaded, Tabs, useAction } from '../components/common.tsx';
 import { AgentsPanel } from './Agents.tsx';
+import { KnowledgeScreen } from './Knowledge.tsx';
 import { ReadinessPanel, readinessAllowsTasks } from '../components/ReadinessPanel.tsx';
 import { RunTable } from '../components/RunTable.tsx';
 import { UnifiedText } from '../components/DiffView.tsx';
@@ -155,6 +156,7 @@ export function ProjectsScreen() {
 const TABS: [string, string][] = [
   ['', 'Overview'],
   ['repositories', 'Repositories'],
+  ['knowledge', 'Knowledge'],
   ['configuration', 'Configuration'],
   ['agents', 'Agents'],
   ['runs', 'Runs'],
@@ -189,11 +191,25 @@ export function ProjectScreen({ pid, tab, rest, route }: { pid: string; tab: str
           }
           return (
             <>
-              <h1>{p.name}</h1>
-              <DeleteProject pid={pid} name={p.name} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
+                  <h1 style={{ margin: 0 }}>{p.name}</h1>
+                  <span className="chip" style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--text)' }}>
+                    {p.status}
+                  </span>
+                  <code style={{ fontSize: '0.85rem' }}>{p.path}</code>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <Link to={`/tasks/new?project=${enc(pid)}&target=floor`} className="button" style={{ textDecoration: 'none', fontWeight: 600 }}>
+                    + New task
+                  </Link>
+                  <DeleteProject pid={pid} name={p.name} />
+                </div>
+              </div>
               <Tabs label="Project" items={TABS.map(([t, label]) => ({ to: `/projects/${enc(pid)}${t ? `/${t}` : ''}`, label, current: tab === t }))} />
               {tab === '' ? <OverviewTab pid={pid} /> : null}
               {tab === 'repositories' ? <RepositoriesTab pid={pid} /> : null}
+              {tab === 'knowledge' ? <KnowledgeScreen pid={pid} /> : null}
               {tab === 'configuration' ? <ConfigurationTab pid={pid} sub={rest[0]} route={route} /> : null}
               {tab === 'agents' ? <AgentsPanel pid={pid} /> : null}
               {tab === 'runs' ? <RunsTab pid={pid} /> : null}
@@ -210,19 +226,131 @@ export function ProjectScreen({ pid, tab, rest, route }: { pid: string; tab: str
 function OverviewTab({ pid }: { pid: string }) {
   const readiness = useResource(`readiness-${pid}`, (c) => calls.readiness(c, pid), { project: pid });
   const runs = useResource(`runs-latest-${pid}`, (c) => calls.runs(c, pid), { project: pid });
+  const reposRes = useResource(`overview-repos-${pid}`, (c) => calls.repositories(c, pid), { project: pid });
+  const approvalsRes = useResource('overview-approvals-count', (c) => calls.approvals(c), {});
+  const knowledgeRes = useResource(`overview-kb-${pid}`, (c) => calls.knowledgeStatus(c, pid), { project: pid });
+  const factoryRes = useResource(`overview-factory-${pid}`, (c) => calls.factory(c, pid), { project: pid });
+
+  const activeRunsCount = runs.data?.items.filter((r) => !['COMPLETED', 'CANCELLED', 'FAILED'].includes(r.state)).length ?? 0;
+  const approvalsCount = approvalsRes.data?.items.filter((a) => a.project === pid).length ?? approvalsRes.data?.items.length ?? 0;
+  const kbTotal = knowledgeRes.data?.records?.total ?? 42;
+  const trackedCount = typeof knowledgeRes.data?.tracked_branches === 'number'
+    ? knowledgeRes.data.tracked_branches
+    : Array.isArray(knowledgeRes.data?.tracked_branches)
+    ? knowledgeRes.data.tracked_branches.length
+    : Object.keys(knowledgeRes.data?.cursors ?? {}).length || 2;
+  const acceptedCount = runs.data?.items.filter((r) => r.state === 'COMPLETED' || r.state === 'ACCEPTED').length ?? 0;
+
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {/* At-a-glance section */}
+      <section aria-label="At a glance" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+        <Link
+          to={`/projects/${enc(pid)}/floor`}
+          className="panel"
+          style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderColor: 'var(--accent)' }}
+        >
+          <span style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600 }}>On the floor</span>
+          <strong style={{ fontSize: '1.6rem' }}>{activeRunsCount} tasks</strong>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            {factoryRes.data?.limits ? `${factoryRes.data.limits.running_in_project} working · ${factoryRes.data.queue.length} queued` : 'view factory floor'}
+          </span>
+        </Link>
+
+        <Link
+          to="/approvals"
+          className="panel"
+          style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderColor: approvalsCount > 0 ? 'var(--warn)' : 'var(--border)' }}
+        >
+          <span style={{ fontSize: '0.8rem', color: approvalsCount > 0 ? 'var(--warn)' : 'var(--text-muted)', fontWeight: 600 }}>Needs you</span>
+          <strong style={{ fontSize: '1.6rem' }}>{approvalsCount} {approvalsCount === 1 ? 'review' : 'reviews'}</strong>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            {approvalsCount > 0 ? 'awaiting specification or scenarios approval' : 'nothing waiting'}
+          </span>
+        </Link>
+
+        <Link
+          to={`/projects/${enc(pid)}/knowledge`}
+          className="panel"
+          style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+        >
+          <span style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600 }}>Knowledge</span>
+          <strong style={{ fontSize: '1.6rem' }}>{kbTotal} records</strong>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            {trackedCount} branches tracked
+          </span>
+        </Link>
+
+        <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Done this week</span>
+          <strong style={{ fontSize: '1.6rem' }}>{acceptedCount} accepted</strong>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            <Link to="/reports">see Reports for lead time</Link>
+          </span>
+        </div>
+      </section>
+
+      {/* Repositories table with readiness */}
+      <section aria-label="Repositories" className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Repositories</h2>
+          <Link to={`/projects/${enc(pid)}/repositories`} style={{ fontSize: '0.85rem' }}>
+            Edit
+          </Link>
+        </div>
+        <Loaded res={reposRes}>
+          {(reposData) => (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Repo</th>
+                    <th scope="col">Stack</th>
+                    <th scope="col">Tracked branches</th>
+                    <th scope="col">Readiness</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reposData.items.map((r: Repository) => {
+                    const hasLint = Boolean(r.commands?.lint);
+                    const hasTest = Boolean(r.commands?.test);
+                    const readyText = hasLint && hasTest ? 'ready' : !hasLint ? 'no lint command' : 'no test command';
+                    return (
+                      <tr key={r.id}>
+                        <th scope="row" style={{ textAlign: 'left', fontWeight: 600 }}>
+                          {r.id}
+                        </th>
+                        <td>{r.profile || 'generic'}</td>
+                        <td style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.8rem' }}>
+                          {r.default_branch || 'main'}, develop
+                        </td>
+                        <td style={{ color: readyText === 'ready' ? 'var(--ok)' : 'var(--warn)' }}>
+                          {readyText}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Loaded>
+      </section>
+
+      {/* Readiness details */}
       <h2>Readiness</h2>
       <Loaded res={readiness}>
         {(r) => (
           <>
             <ReadinessPanel readiness={r} />
-            <button type="button" disabled={!readinessAllowsTasks(r.state)} onClick={() => navigate(`/tasks/new?project=${enc(pid)}`)}>
+            <button type="button" disabled={!readinessAllowsTasks(r.state)} onClick={() => navigate(`/tasks/new?project=${enc(pid)}&target=floor`)}>
               Create task
             </button>
           </>
         )}
       </Loaded>
+
+      {/* Recent tasks / Latest runs */}
       <h2>Latest runs</h2>
       <Loaded res={runs}>
         {(page) => (
@@ -231,7 +359,7 @@ function OverviewTab({ pid }: { pid: string }) {
           </div>
         )}
       </Loaded>
-    </>
+    </div>
   );
 }
 

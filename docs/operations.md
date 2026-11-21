@@ -109,6 +109,35 @@ The worker acquires a PID lock file at `.sentinel/kb-worker.lock` to ensure only
 
 The worker automatically retries transient errors up to 3 times with backoff (5s, 30s). When a job fails permanently (for example, if `scrub --check` detects a secret) or retries are exhausted, the job state becomes `failed` and triggers a `knowledge.failed` notification. The registry does not provide a separate retry command; after fixing the problem (e.g. updating scrub patterns or credentials), re-run `sentinel kb ingest` with `--publish` to ingest and publish current changes.
 
+## Service management
+
+Sentinel 2.0 runs as a background service:
+
+```bash
+sentinel service start                # start the service detached in the background
+sentinel service start --port 8765    # fix the port
+sentinel service stop                 # stop the running service (or: sentinel stop)
+sentinel service status               # status, PID, port, uptime, projects, log path
+sentinel service status --json        # machine-readable JSON status
+sentinel service run                  # run the server in the foreground
+```
+
+The service logs to `~/.config/sentinel/service.log`.
+
+On startup, the service automatically inspects registered projects for tasks left in `RUNNING` state by a previous server process and recovers them. Tasks that were interrupted are safely marked for retry.
+
+### Autostart
+
+On Linux, Sentinel can start automatically at login via a systemd user unit:
+
+```bash
+sentinel service autostart on         # write unit and enable via systemctl
+sentinel service autostart off        # disable and remove unit
+sentinel service autostart status     # check autostart status
+```
+
+The user unit file is installed at `~/.config/systemd/user/sentinel.service`. On non-Linux operating systems, autostart is Linux-only in 2.0.
+
 ## Release checklist
 
 For the maintainer who cuts a release. The gate never tags, publishes or pushes; those steps stay with you.
@@ -119,9 +148,9 @@ For the maintainer who cuts a release. The gate never tags, publishes or pushes;
 4. Run the gate: `python3 tools/release_gate.py`. It runs the dashboard scripts, the offline wheel install, the selftest, the unit and security suites and the acceptance-criteria check, and writes `release-evidence.json`. `--allow-dirty` runs everything on a dirty tree but can never report "release ready".
 5. The gate prints `release ready` only when every manual item in `tests/release/manual.json` has `status: done` with a date and a machine. Until then it prints `release candidate: N manual checks pending owner` and lists them.
 6. Do the manual checks on a machine that allows user namespaces and with a screen reader: the loopback-only namespace runs (AC-OPS-01i, AC-DSH-06g) and the screen-reader pass. Record each in `tests/release/manual.json` as `status: done`, with the date and the machine.
-7. The wheel to publish is `sentinel_pipeline-1.3.0-py3-none-any.whl` (distribution `sentinel-pipeline`, command `sentinel`), with the sdist. It includes the dashboard UI; a `uv tool install git+https://…` install has the CLI without it (see [installation](installation.md#the-dashboard-ui)).
-8. Tag and push: `git tag v1.3.0 && git push origin v1.3.0`. The tag must equal `v` plus the content of `sentinel/VERSION`. The release workflow (below) then reruns the gate, publishes the wheel and sdist to PyPI and pushes the image `ghcr.io/chhunlyyy/sentinel` with the tags `1.3.0` and `latest`. Nothing in this repository tags or publishes by itself.
-9. Check the result: `uv tool install sentinel-pipeline` in a clean environment prints `sentinel --version` 1.3.0, and the documented `docker run` command in the README shows the dashboard.
+7. The wheel to publish is `sentinel_pipeline-2.0.0-py3-none-any.whl` (distribution `sentinel-pipeline`, command `sentinel`), with the sdist. It includes the dashboard UI; a `uv tool install git+https://…` install has the CLI without it (see [installation](installation.md#the-dashboard-ui)).
+8. Tag and push: `git tag v2.0.0 && git push origin v2.0.0`. The tag must equal `v` plus the content of `sentinel/VERSION`. The release workflow (below) then reruns the gate, publishes the wheel and sdist to PyPI and pushes the image `ghcr.io/chhunlyyy/sentinel` with the tags `2.0.0` and `latest`. Nothing in this repository tags or publishes by itself.
+9. Check the result: `uv tool install sentinel-pipeline` in a clean environment prints `sentinel --version` 2.0.0, and the documented `docker run` command in the README shows the dashboard.
 
 ## Release workflow and repository settings
 

@@ -127,6 +127,8 @@ export interface WRun {
   priority: string | null;
   requested_tier: number | null;
   origin: string | null;
+  driver: string;
+  paused: boolean;
   created_at: string;
   updated_at: string;
   finished_at: string | null;
@@ -401,3 +403,195 @@ export interface WAnalytics {
   };
   rework: { spec_revisions: number; gherkin_revisions: number; changes_requested: number; findings_routed: number } | WNullMetric;
 }
+
+// ---- Factory (W4) ----
+
+/** Station states returned per run in GET /api/v1/projects/{pid}/factory */
+export type WStationState = 'done' | 'working' | 'waiting' | 'paused' | 'queued' | 'next' | 'todo';
+
+export interface WFactoryAgent {
+  task: string;
+  role: string;
+  runner: string;
+  model: string | null;
+  adapter: string;
+  started_at: string;
+}
+
+export interface WFactoryLane {
+  cycle: string;
+  name: string;
+  repo: string;
+  state: string;
+  red: WStationState;
+  green: WStationState;
+  refactor: WStationState;
+}
+
+export interface WFactoryRun {
+  slug: string;
+  title: string;
+  type: string;
+  driver: string;
+  paused: boolean;
+  state: string;
+  tier: number | null;
+  station: string;
+  stations: Record<string, WStationState>;
+  next_station: string | null;
+  agents: Record<string, WFactoryAgent[]>;
+  lanes: WFactoryLane[];
+  attention: { kind: 'needs_human' | 'blocked'; reason: string } | null;
+  pending_notes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WFactoryQueueItem {
+  slug: string;
+  title: string;
+  position: number;
+  reason: string;
+}
+
+export interface WFactoryLimits {
+  driver: string;
+  max_tasks_per_project: number;
+  max_agents: number;
+  running_in_project: number;
+  running_total: number;
+}
+
+export interface WFactory {
+  project: string;
+  generated_at: string;
+  stations: string[];
+  limits: WFactoryLimits;
+  runs: WFactoryRun[];
+  queue: WFactoryQueueItem[];
+}
+
+export interface WDetectItem {
+  path: string;
+  is_git: boolean;
+  current_branch: string | null;
+  default_branch: string | null;
+  local_branches: string[];
+  profile: string;
+  commands: Record<string, string>;
+  tracked_branches: string[];
+}
+
+export interface WDetect {
+  items: WDetectItem[];
+}
+
+export interface WSharedTest {
+  ok: boolean;
+  read: boolean;
+  write: boolean | 'unknown';
+  refs: number;
+  error?: string;
+}
+
+export interface WRoutingSuggest {
+  roles: Record<string, { runner: string; model: string | null }>;
+  items: { role: string; runner: string; model: string | null }[];
+}
+
+export interface WConfigFormField {
+  path: string;
+  type: string;
+  enum?: string[] | null;
+  default?: unknown;
+  value?: unknown;
+  help?: string;
+  editable?: boolean;
+}
+
+export interface WConfigFormSection {
+  id: string;
+  title: string;
+  fields: WConfigFormField[];
+}
+
+export interface WConfigForm {
+  project: string;
+  sha256: string;
+  sections: WConfigFormSection[];
+  fields: WConfigFormField[];
+}
+
+export interface WConfigPreview {
+  project: string;
+  valid: boolean;
+  diff: string;
+  changes: { path: string; value: unknown }[];
+}
+
+export interface WConfigSave {
+  ok: boolean;
+  project: string;
+  sha256: string;
+  diff: string;
+}
+
+export interface WKnowledgeStatus {
+  enabled: boolean;
+  records: { total: number; active: number; dropped: number };
+  cursors: Record<string, string>;
+  by_repo: Record<string, number>;
+  jobs?: { running: number; queued: number; failed: number; last_job?: string } | null;
+  module_summaries?: { total?: number; stale?: number } | number;
+  tracked_branches?: number | string[];
+}
+
+export interface WKnowledgeRecord {
+  key: string;
+  repo?: string;
+  provenance?: string;
+  path?: string;
+  title?: string;
+  summary?: string;
+  reached?: string;
+  files?: string[];
+  date?: string;
+  meta?: Record<string, unknown>;
+  body?: string;
+}
+
+export interface WKnowledgeRecords {
+  items: WKnowledgeRecord[];
+  next: string | null;
+  total: number;
+}
+
+export interface WKnowledgeCiTemplate {
+  repo: string;
+  profile: string;
+  branches: string[];
+  template: string;
+  filename: string;
+}
+
+export interface WKnowledgeJob {
+  ok: boolean;
+  job: string;
+  state: string;
+}
+
+export interface WKnowledgeBackfillEstimate {
+  token: string;
+  estimate: Record<string, Record<string, number>>;
+  total: number;
+  since?: string;
+  repo?: string;
+}
+
+export interface WKnowledgeBackfill {
+  ok: boolean;
+  job: string;
+  state: 'queued';
+  estimated: number | null;
+}
+

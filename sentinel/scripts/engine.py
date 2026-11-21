@@ -28,6 +28,8 @@ from accept import AcceptOps
 from bundle import BundleOps
 
 WORKFLOW_VERSION = "2"
+# who drives a run: the engine loop (`engine`), an AI tool running the /sentinel skill (`ai-tool`) or a person at the CLI (`cli`)
+DRIVERS = ("engine", "ai-tool", "cli")
 # the run types of a version 2 run: the one list the CLI, the API and the docs share
 RUN_TYPES = ("feature", "bug", "docs", "refactor", "migration", "security", "chore")
 TIER_STAGES = {
@@ -185,8 +187,11 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
 
     # ---- commands
     def create_run(self, slug, actor, type=None, baseline=None, request=None, adhoc=False,
-                   priority=None, requested_tier=None, origin=None):
+                   priority=None, requested_tier=None, origin=None, driver=None):
         baseline = baseline or {}
+        driver = driver or ("ai-tool" if origin == "dashboard" else "cli")
+        if driver not in DRIVERS:
+            raise SentinelError("E_VALIDATION", f"driver must be one of {', '.join(DRIVERS)}", {"allowed": list(DRIVERS)})
         config_text = json.dumps(self.config, sort_keys=True)
         cfg_file = self.workspace / "sentinel.config.yaml"
         if cfg_file.exists():
@@ -199,7 +204,7 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
                 "slug": slug, "request": request, "type": type, "tier": None, "initial_tier": None,
                 "state": "CREATED", "execution_status": "running", "acceptance_status": "pending",
                 "workflow_version": WORKFLOW_VERSION, "config_snapshot_id": snap, "adhoc": int(bool(adhoc)),
-                "priority": priority, "requested_tier": requested_tier, "origin": origin,
+                "priority": priority, "requested_tier": requested_tier, "origin": origin, "driver": driver,
                 "watched_baseline": json.dumps(self.watched_files(), sort_keys=True),
             })
             run = self.reg.get_run(slug)

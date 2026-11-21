@@ -1,4 +1,5 @@
 import type * as T from '../src/api/types.ts';
+import type * as W from '../src/api/wire.ts';
 import { analyticsSmall } from './reports.ts';
 import type { Db, ProjectData, RunData } from './db.ts';
 import { G1, H1, H2, REPORT } from './constants.ts';
@@ -292,6 +293,46 @@ const digitalHrData = (runs: T.RunSummary[]): ProjectData => ({
   runs,
 });
 
+export function digitalHrFactory(): W.WFactory {
+  return {
+    project: 'digital-hr',
+    generated_at: '2026-11-21T10:15:02.123456Z',
+    stations: ['intake', 'triage', 'spec', 'gate_spec', 'gherkin', 'gate_gherkin', 'build', 'verify', 'report', 'gate_accept', 'knowledge'],
+    limits: { driver: 'engine', max_tasks_per_project: 2, max_agents: 4, running_in_project: 2, running_total: 3 },
+    runs: [
+      {
+        slug: 'leave-balance',
+        title: 'Show the remaining leave days on the home page',
+        type: 'feature',
+        driver: 'engine',
+        paused: false,
+        state: 'EXECUTING',
+        tier: 3,
+        station: 'build',
+        stations: {
+          intake: 'done', triage: 'done', spec: 'done', gate_spec: 'done',
+          gherkin: 'done', gate_gherkin: 'done',
+          build: 'working', verify: 'next', report: 'todo', gate_accept: 'todo', knowledge: 'todo',
+        },
+        next_station: 'verify',
+        agents: {
+          build: [{ task: 't-0123456789ab', role: 'tdd_green', runner: 'claude', model: 'sonnet', adapter: 'cli', started_at: '2026-11-21T10:12:40.000000Z' }],
+        },
+        lanes: [
+          { cycle: 'c-0123456789ab', name: 'Remaining days show', repo: 'backend', state: 'GREEN_RUNNING', red: 'done', green: 'working', refactor: 'todo' },
+        ],
+        attention: null,
+        pending_notes: 0,
+        created_at: '2026-11-21T09:58:00.000000Z',
+        updated_at: '2026-11-21T10:12:40.000000Z',
+      },
+    ],
+    queue: [
+      { slug: 'payroll-export', title: 'Export payroll as CSV', position: 1, reason: 'the project limit of 2 running tasks is reached' },
+    ],
+  };
+}
+
 export function twoProjects(): Db {
   const lb = withPhaseNodes(leaveBalance());
   const lf = leaveForm();
@@ -316,6 +357,7 @@ export function twoProjects(): Db {
     runs: { 'digital-hr/leave-balance': lb, 'digital-hr/leave-form': lf, 'digital-hr/old-fix': of, 'payroll/tax-form': tf },
     notifications: [],
     analytics: { 'digital-hr': analyticsSmall(), payroll: analyticsSmall() },
+    factory: { 'digital-hr': digitalHrFactory() },
   };
 }
 

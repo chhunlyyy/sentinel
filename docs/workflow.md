@@ -2,32 +2,107 @@
 
 A run created with `sentinel run new <slug>` is a **version 2 run**. A run created with `--legacy`, `--tier` or `--adhoc` is a **0.1 run**. This page describes the version 2 flow first, then the 0.1 flow, which is unchanged.
 
+## Who drives a run
+
+A version 2 run has one driver that controls its execution:
+
+- **`engine`** (the default for dashboard-created runs): The Sentinel background service runs the factory loop directly. It dispatches agent tasks through CLI provider adapters, runs in-process verification, enforces concurrency limits, and handles pauses and notes. AI is used only for the work, never for bookkeeping. From the CLI, create an engine-driven run with `sentinel run new <slug> --driver engine --request "<text>"`.
+- **`ai-tool`**: An AI tool drives the run using the `/sentinel` skill loop around `sentinel next`. Dashboard runs use this driver if `factory.driver: ai-tool` is set in `sentinel.config.yaml`.
+- **`cli`** (the default for `sentinel run new <slug>`): You drive the run using CLI commands, or your agent runs steps as directed.
+
+A run is claimed by one driver so they never race: `sentinel next` on an engine-driven run returns a `wait` step with `driven_by: engine` for task, orchestrator and wait work. Human approval gates and acceptance remain with you regardless of driver.
+
 ## The version 2 flow
 
-You describe the work; the engine decides the order. The agent that drives the run (the `/sentinel` skill) asks `sentinel next <slug> --json` what is allowed, does that one thing, and asks again. Steps that need you stop with exit code 6 and name the exact command to run in your own terminal. The agent never approves, accepts, retries, reorders or edits run state.
+You describe the work; the engine decides the order:
 
 ```
 run new > triage > specification > [approve] > Gherkin > [approve] > TDD cycles > verify > report > [accept]
 ```
 
-Steps in square brackets are yours, in an interactive terminal (or in the dashboard, for the two approvals).
+Steps in square brackets are yours, in an interactive terminal or in the dashboard.
 
-1. **`sentinel run new <slug> --type feature`** creates the run (type is one of feature, bug, docs, refactor, migration, security, chore; `--repos a,b` limits the repos). It records the baseline commit of every repo and a snapshot of the config. Creating a run authorizes nothing.
-2. **Triage.** `sentinel triage <slug> --factors repos=2,files=8,auth=1,...` submits the seven factors. The engine takes the highest tier among them and may raise the tier later (a review blocker raises tier 2 or 3); it never lowers it. A tier 3 or 4 run also needs recorded decisions from the interview before it is planned.
-3. **Specification.** A specifier task writes `specs/<slug>.md` in the shared folder. The engine checks the sections the tier needs and the requirement ids; a bad specification goes back to the specifier with the errors.
-4. **Spec review and approve.** `sentinel review <slug> spec` shows the specification (and the diff to the earlier version). `sentinel approve <slug> spec` asks you to type the first 8 characters of its hash. `--request-changes -m "..."` sends it back; `--reject` cancels the run. Any byte change after approval invalidates it and both gates must be passed again.
-5. **Gherkin.** A test designer task writes the `.feature` files. The engine validates the subset, the tags that link scenarios to requirements and the 15 coverage categories.
-6. **Gherkin review and approve.** `sentinel review <slug> gherkin`, then `sentinel approve <slug> gherkin`, the same way. A docs-only run skips this gate. Execution starts only when both approvals are valid.
-7. **TDD cycles.** The engine groups scenarios into behaviors and plans one cycle per behavior: a Red task writes failing tests and the engine runs them and classifies the failure; a Green task makes them pass without touching approved tests; a Refactor task cleans up and the engine re-runs the tests. Every phase is checked by the engine, within the task's write scope, and recorded as evidence. A phase that keeps failing stops at its retry cap and asks a human (`sentinel resolve <slug>`).
-8. **Verify.** `sentinel verify <slug>` (or the agent, when `next` says so) runs the independent checks: targeted and full tests against the baseline, build, lint, typecheck, hygiene, secrets, dependencies, migrations, mutation at tier 4, scope. Agent claims are never evidence. Findings are routed back to a new cycle.
-9. **Report.** `sentinel report <slug>` writes `report.json` and `report.md`: acceptance rules, evidence, trace from requirements to scenarios, tests and code.
-10. **Accept.** `sentinel accept <slug>` shows the result and asks for the hash prefix (`--reject -m "..."` rejects). Execution status (completed, failed, cancelled) and acceptance status (pending, accepted, rejected) are separate; a rejected run never becomes accepted.
+### 1. Run creation and routing preflight
+
+`sentinel run new <slug> --type feature` creates the run (type is one of `feature`, `bug`, `docs`, `refactor`, `migration`, `security`, `chore`; `--repos a,b` limits the repos). It records the baseline commit of every repo and a snapshot of the config. Creating a run authorizes nothing.
+
+For engine-driven runs (`--driver engine` or created in the dashboard), the engine runs a **routing preflight** before starting:
+- Every role the run may use (`triage`, `planner`, `specifier`, `test_designer`, `tdd_red`, `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `hardener`, `docs`, and `qa_red` if QA scenarios are enabled) must route to a CLI runner (`claude`, `codex`, `gemini`, `agy`, or one defined under `runners`).
+- The native adapter requires an interactive AI tool session and is refused.
+- If any role is unrouted or missing a CLI runner, the run enters `BLOCKED` with `routing preflight failed: an engine-driven run needs a CLI runner for every role: ...`.
+- **How to fix a blocked run**: Set `agents.<role>.runner` (or `routing`) in `sentinel.config.yaml`, then run:
+
+  ```bash
+  sentinel resolve <slug> --refresh-config -m "configured CLI runners"
+  ```
+
+  The engine re-snapshots the configuration and resumes the run.
+
+### 2. Triage
+
+In engine-driven mode, the engine plans an agent task with role `triage` containing the request brief. The triage agent inspects the request and touched codebase and returns the seven factors as JSON (`repos`, `files`, `schema`, `auth`, `security`, `regression`, `complexity`). The engine validates the factors and applies the triage transition (`Engine.triage`) in-process, computing the tier. In CLI mode, `sentinel triage <slug> --factors repos=2,files=8,auth=1,...` submits the factors.
+
+For tier 3 and 4 engine-driven runs, the engine then plans an agent task with role `planner` to write `specs/<slug>/decisions.md` in the shared specs folder. The engine verifies the file was written and is not empty, copies it into the run directory, and calls `bookkeep` to advance to specification.
+
+### 3. Specification
+
+A specifier task writes `specs/<slug>.md` in the shared folder. The engine checks the sections the tier needs and the requirement ids; a bad specification goes back to the specifier with the errors.
+
+### 4. Specification review and approval
+
+`sentinel review <slug> spec` shows the specification (and the diff to the earlier version). `sentinel approve <slug> spec` asks you to type the first 8 characters of its hash. `--request-changes -m "..."` sends it back; `--reject` cancels the run. Any byte change after approval invalidates it and both gates must be passed again. Approvals can also be decided in the dashboard under My Approvals.
+
+### 5. Gherkin scenarios
+
+A test designer task writes the `.feature` files. The engine validates the subset, the tags that link scenarios to requirements and the 15 coverage categories.
+
+### 6. Gherkin review and approval
+
+`sentinel review <slug> gherkin`, then `sentinel approve <slug> gherkin`, the same way (or in the dashboard). A docs-only run skips this gate. Execution starts only when both approvals are valid.
+
+### 7. TDD cycles
+
+The engine groups scenarios into behaviors and plans one cycle per behavior:
+- **Red**: writes failing tests; the engine runs them and classifies the failure.
+- **Green**: makes them pass without touching approved tests.
+- **Refactor**: cleans up; the engine re-runs the tests.
+
+Every phase is checked by the engine, within the task's write scope, and recorded as evidence. A phase that keeps failing stops at its retry cap and asks a human (`sentinel resolve <slug>`).
+
+### 8. Verification
+
+In engine-driven mode, the engine executes `sentinel verify` in-process; in CLI mode, run `sentinel verify <slug>`. It runs independent checks: targeted and full tests against the baseline, build, lint, typecheck, hygiene, secrets, dependencies, migrations, mutation at tier 4, and scope. Agent claims are never evidence. Findings are routed back to a new cycle.
+
+### 9. Report
+
+`sentinel report <slug>` writes `report.json` and `report.md`: acceptance rules, evidence, trace from requirements to scenarios, tests and code.
+
+### 10. Acceptance
+
+`sentinel accept <slug>` shows the result and asks for the hash prefix (`--reject -m "..."` rejects; or in the dashboard). Execution status (completed, failed, cancelled) and acceptance status (pending, accepted, rejected) are separate; a rejected run never becomes accepted.
+
+### 11. Knowledge harvest
 
 Once accepted, Sentinel automatically harvests the run's changes into the team [knowledge base](knowledge.md) in the background. A detached worker records the verified run record, ingests recent commits from tracked branches, updates module summaries, verifies scrub rules, and auto-pushes `knowledge/` and `proposals/knowledge-*` to the shared repository. In addition, before starting a run, `sentinel sync pull` performs a catch-up ingest from tracked branches so team knowledge stays current.
 
 A version 2 run **never pushes to the shared repo by itself**, whatever `state.auto_sync_push` says. Publishing is a separate, explicit `sentinel sync push`.
 
-Everything above is also visible in the [dashboard](dashboard.md), including the two approvals and acceptance. The terminal always works.
+## Concurrency limits
+
+The factory dispatcher bounds concurrent agent execution across projects:
+
+- `factory.max_tasks_per_project` (default 2): maximum agent tasks running simultaneously in a single project.
+- `factory.max_agents` (default 4): maximum agent tasks running simultaneously across all registered projects in the service.
+
+When a limit is reached, new tasks wait in the queue shown on the Factory Floor until an active task completes. Running tasks are never killed or interrupted by concurrency limits.
+
+## Pause, unpause and notes
+
+You can pause and guide runs without stopping the background service:
+
+- **Pause**: `sentinel pause <slug> -m "<comment>"` (or the Pause button in the dashboard) pauses task dispatch for that run. Currently running tasks run to completion, but no new tasks are started.
+- **Unpause**: `sentinel unpause <slug> -m "<comment>"` (or Resume in the dashboard) lets a paused run continue.
+- **Step in with a note**: `sentinel note <slug> "<text>"` leaves a note for the run. The next agent task prompt includes a `## Note from the owner` section with your message.
 
 Useful commands during a run: `sentinel next <slug>` (what is allowed now), `sentinel resolve <slug>` (a human decision on a parked run), `sentinel task run <task-id>` and `sentinel task complete <task-id>` (run a queued task, or finish a native one), `sentinel run export <slug>` and `sentinel run import <bundle>` (move a run between machines), `sentinel run finish <slug>` (close it; version 2 runs need a terminal). `sentinel stage run` and `sentinel resume` are for 0.1 runs only.
 

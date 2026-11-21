@@ -1,16 +1,23 @@
 """Provider, agent, project-creation and repository routes: the dashboard side of `sentinel init` and the config."""
+import copy
+import difflib
 import hashlib
 import json
 import os
 import re
+import secrets
+import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import yaml
 
 import initws
+import kb_worker
 import providers
 import run_stage
+import shared
 import tasks
 from errors import SentinelError
 from paths import ROOT
@@ -548,3 +555,395 @@ def register_project(ctx, body):
     userdir.ensure_dir(ctx.api.cfgdir)
     entry, created = userdir.register_workspace(ctx.api.cfgdir, ws)
     return created, ctx.projects.get(entry["id"])
+
+
+# ---- W3 Setup and Detection
+def _git_run(directory, *args, timeout=10):
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
+    return subprocess.run(["git", "-C", str(directory), *args], capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def detect_paths(body):
+    if not isinstance(body, dict):
+        raise bad("body must be an object", "paths")
+    check_fields(body, ("paths",), ("paths",))
+    paths = body.get("paths")
+    if not isinstance(paths, list):
+        raise bad("paths must be a list of directory paths", "paths")
+    items = []
+    for raw in paths:
+        if not isinstance(raw, str) or not raw.strip():
+            raise bad("each path must be a non-empty string", "paths")
+        if "\0" in raw:
+            raise bad("path must not contain NUL", "paths")
+        if not os.path.isabs(raw):
+            raise bad(f"path must be absolute: {raw}", "paths")
+        real = Path(os.path.realpath(raw))
+        if not real.is_dir():
+            raise bad(f"path is not an existing directory: {raw}", "paths")
+
+        res = _git_run(real, "rev-parse", "--is-inside-work-tree")
+        is_git = (res.returncode == 0) and ((real / ".git").exists() or (real / ".git").is_file() or (real / ".git").is_dir())
+
+        current_branch = None
+        default_branch = None
+        local_branches = []
+        tracked_branches = []
+
+        if is_git:
+            res_curr = _git_run(real, "symbolic-ref", "-q", "--short", "HEAD")
+            if res_curr.returncode == 0 and res_curr.stdout.strip():
+                current_branch = res_curr.stdout.strip()
+            else:
+                res_det = _git_run(real, "rev-parse", "--abbrev-ref", "HEAD")
+                if res_det.returncode == 0 and res_det.stdout.strip() != "HEAD":
+                    current_branch = res_det.stdout.strip()
+
+            res_def = _git_run(real, "symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD")
+            if res_def.returncode == 0 and res_def.stdout.strip():
+                orig = res_def.stdout.strip()
+                default_branch = orig.split("/", 1)[1] if "/" in orig else orig
+
+            res_branches = _git_run(real, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+            if res_branches.returncode == 0:
+                local_branches = [b.strip() for b in res_branches.stdout.splitlines() if b.strip()]
+
+            if not default_branch:
+                if "main" in local_branches or _git_run(real, "rev-parse", "--verify", "-q", "refs/heads/main").returncode == 0:
+                    default_branch = "main"
+                elif "master" in local_branches or _git_run(real, "rev-parse", "--verify", "-q", "refs/heads/master").returncode == 0:
+                    default_branch = "master"
+                else:
+                    default_branch = current_branch
+
+            if "develop" in local_branches or _git_run(real, "rev-parse", "--verify", "-q", "refs/heads/develop").returncode == 0:
+                tracked_branches.append("develop")
+            if default_branch and default_branch not in tracked_branches:
+                tracked_branches.append(default_branch)
+            if not tracked_branches and current_branch:
+                tracked_branches.append(current_branch)
+
+        profile = initws.detect_profile(real)
+        from .readroutes import COMMAND_KEYS, _profile
+        commands = dict.fromkeys(COMMAND_KEYS, "")
+        p_data = _profile(profile)
+        if p_data:
+            commands.update({k: v for k, v in (p_data.get("commands") or {}).items() if k in COMMAND_KEYS})
+
+        items.append({
+            "path": str(raw),
+            "is_git": is_git,
+            "current_branch": current_branch,
+            "default_branch": default_branch,
+            "local_branches": local_branches,
+            "profile": profile,
+            "commands": commands,
+            "tracked_branches": tracked_branches,
+        })
+    return {"items": items}
+
+
+def test_shared(body):
+    if not isinstance(body, dict):
+        raise bad("body must be an object", "url")
+    check_fields(body, ("url",), ("url",))
+    url = body.get("url")
+    if not isinstance(url, str) or not url.strip():
+        raise bad("url must be a non-empty string", "url")
+    if "\0" in url:
+        raise bad("url must not contain NUL", "url")
+    url = url.strip()
+    # never let a request choose git options (e.g. --upload-pack=<command>): only a git URL or a path
+    if url.startswith("-") or not shared.looks_like_git_url(url):
+        raise bad("url must be a git URL (https://, ssh://, git://, file://, git@host:...) or a path", "url")
+
+    ok, detail, count = shared.verify_remote(url, timeout=25)
+    if not ok:
+        return {"ok": False, "read": False, "write": False, "refs": 0, "error": detail}
+
+    write = "unknown"
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        try:
+            subprocess.run(["git", "init", str(td_path)], capture_output=True, timeout=5)
+            subprocess.run(["git", "-C", str(td_path), "config", "user.name", "sentinel"], capture_output=True, timeout=5)
+            subprocess.run(["git", "-C", str(td_path), "config", "user.email", "sentinel@localhost"], capture_output=True, timeout=5)
+            subprocess.run(["git", "-C", str(td_path), "commit", "--allow-empty", "-m", "probe"], capture_output=True, timeout=5)
+            env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+            res = subprocess.run(["git", "-C", str(td_path), "push", "--dry-run", url, "HEAD:refs/sentinel/test-probe"],
+                                 capture_output=True, text=True, timeout=25, env=env)
+            if res.returncode == 0:
+                write = True
+            else:
+                err = (res.stderr or "").lower()
+                if any(t in err for t in ("permission denied", "access denied", "forbidden", "unauthorized", "auth", "403")):
+                    write = False
+                else:
+                    write = "unknown"
+        except Exception:
+            write = "unknown"
+
+    return {"ok": True, "read": True, "write": write, "refs": count, "error": ""}
+
+
+def suggest_routing():
+    all_roles = [
+        "triage", "planner", "specifier", "test_designer", "gherkin", "coder",
+        "tdd_red", "qa_red", "tdd_green", "tdd_refactor", "reviewer", "qa",
+        "hardener", "docs", "retrospective", "cleaner", "repro", "knowledge",
+    ]
+    strong_roles = {
+        "specifier", "coder", "reviewer", "tdd_red", "qa_red", "tdd_green",
+        "tdd_refactor", "hardener", "cleaner", "repro",
+    }
+    installed = [p for p in providers.detect() if p["installed"]]
+    installed_ids = {p["id"] for p in installed}
+
+    if "claude" in installed_ids:
+        strong_runner, strong_model = "claude", "claude-sonnet-5-5"
+        fast_runner, fast_model = "claude", "claude-haiku-5-5"
+    elif "gemini" in installed_ids:
+        strong_runner, strong_model = "gemini", "gemini-2.5-pro"
+        fast_runner, fast_model = "gemini", "gemini-2.5-flash"
+    elif "agy" in installed_ids:
+        strong_runner, strong_model = "agy", None
+        fast_runner, fast_model = "agy", None
+    elif "codex" in installed_ids:
+        strong_runner, strong_model = "codex", None
+        fast_runner, fast_model = "codex", None
+    else:
+        strong_runner, strong_model = "claude", "claude-sonnet-5-5"
+        fast_runner, fast_model = "claude", "claude-haiku-5-5"
+
+    role_map = {}
+    for role in all_roles:
+        if role in strong_roles:
+            role_map[role] = {"runner": strong_runner, "model": strong_model}
+        else:
+            role_map[role] = {"runner": fast_runner, "model": fast_model}
+
+    return {
+        "roles": role_map,
+        "items": [{"role": r, "runner": m["runner"], "model": m["model"]} for r, m in role_map.items()],
+    }
+
+
+def config_form(projects, project):
+    raw, config = read_project_config(project)
+    schema = json.loads((ROOT / "core" / "schema" / "config.schema.json").read_text(encoding="utf-8"))
+    props = schema.get("properties") or {}
+
+    sections = []
+    flat_fields = []
+
+    section_keys = ("factory", "knowledge", "policies", "limits", "verification", "rules", "qa", "routing", "state")
+    for sec_name in section_keys:
+        sec_schema = props.get(sec_name)
+        if not isinstance(sec_schema, dict):
+            continue
+        sec_title = sec_schema.get("title") or sec_name.replace("_", " ").title()
+        sec_fields = []
+        for field_name, field_schema in (sec_schema.get("properties") or {}).items():
+            if not isinstance(field_schema, dict):
+                continue
+            field_path = f"{sec_name}.{field_name}"
+            field_type = field_schema.get("type", "string")
+            enum_vals = field_schema.get("enum")
+            default_val = field_schema.get("default")
+            help_text = field_schema.get("description", "")
+            current_val = (config.get(sec_name) or {}).get(field_name) if isinstance(config.get(sec_name), dict) else None
+            if current_val is None and default_val is not None:
+                current_val = default_val
+            editable = not (sec_name == "state" and field_name == "shared_repo")
+            item = {
+                "path": field_path,
+                "type": field_type,
+                "enum": enum_vals,
+                "default": default_val,
+                "value": current_val,
+                "help": help_text,
+                "editable": editable,
+            }
+            sec_fields.append(item)
+            flat_fields.append(item)
+        sections.append({"id": sec_name, "title": sec_title, "fields": sec_fields})
+
+    if "single_model" in props:
+        field_schema = props["single_model"]
+        item = {
+            "path": "single_model",
+            "type": field_schema.get("type", "boolean"),
+            "enum": field_schema.get("enum"),
+            "default": field_schema.get("default", True),
+            "value": config.get("single_model", True),
+            "help": field_schema.get("description", ""),
+            "editable": True,
+        }
+        flat_fields.append(item)
+        sections.append({"id": "general", "title": "General", "fields": [item]})
+
+    repos = config.get("repos") or []
+    if repos:
+        repo_fields = []
+        for idx, r in enumerate(repos):
+            if not isinstance(r, dict):
+                continue
+            repo_fields.append({
+                "path": f"repos.{idx}.path",
+                "type": "string",
+                "enum": None,
+                "default": None,
+                "value": r.get("path"),
+                "help": "Repository directory path",
+                "editable": False,
+            })
+            for k, h in (("role", "Repository role"), ("profile", "Repository profile")):
+                repo_fields.append({
+                    "path": f"repos.{idx}.{k}",
+                    "type": "string",
+                    "enum": None,
+                    "default": None,
+                    "value": r.get(k),
+                    "help": h,
+                    "editable": True,
+                })
+            for cmd in ("build", "test", "lint", "typecheck", "mutate"):
+                repo_fields.append({
+                    "path": f"repos.{idx}.commands.{cmd}",
+                    "type": "string",
+                    "enum": None,
+                    "default": "",
+                    "value": (r.get("commands") or {}).get(cmd, ""),
+                    "help": f"{cmd.title()} command",
+                    "editable": True,
+                })
+        flat_fields.extend(repo_fields)
+        sections.append({"id": "repos", "title": "Repositories", "fields": repo_fields})
+
+    return {
+        "project": project.id,
+        "sha256": sha_of(raw),
+        "sections": sections,
+        "fields": flat_fields,
+    }
+
+
+def _set_path(target, path, value):
+    parts = path.split(".")
+    cur = target
+    for i, p in enumerate(parts[:-1]):
+        nxt = parts[i + 1]
+        if isinstance(cur, list):
+            idx = int(p)
+            cur = cur[idx]
+        elif isinstance(cur, dict):
+            if nxt.isdigit():
+                cur = cur.setdefault(p, [])
+            else:
+                cur = cur.setdefault(p, {})
+    last = parts[-1]
+    if isinstance(cur, list):
+        cur[int(last)] = value
+    elif isinstance(cur, dict):
+        if value is None:
+            cur.pop(last, None)
+        else:
+            cur[last] = value
+
+
+def _apply_changes_checked(projects, project, body):
+    raw, config = read_project_config(project)
+    changes = body if isinstance(body, list) else body.get("changes") if isinstance(body, dict) else None
+    if changes is None or not isinstance(changes, list):
+        raise bad("changes must be a list of {path, value} objects", "changes")
+    new_config = copy.deepcopy(config)
+    for ch in changes:
+        if not isinstance(ch, dict) or "path" not in ch:
+            raise bad("each change must be an object with path and value", "changes")
+        p = str(ch["path"])
+        if p == "state.shared_repo" or p.startswith("state.shared_repo."):
+            raise bad("state.shared_repo cannot be modified via config form", "state.shared_repo")
+        if re.search(r"^repos(\.\d+|\[\d+\])?\.path$", p) or (p.startswith("repos") and p.endswith(".path")):
+            raise bad("repository path cannot be modified via config form", p)
+        _set_path(new_config, p, ch.get("value"))
+
+    schema_check(projects, new_config)
+    old_lines = raw.splitlines(keepends=True)
+    new_text = dump(new_config)
+    new_lines = new_text.splitlines(keepends=True)
+    diff = "".join(difflib.unified_diff(old_lines, new_lines, fromfile="sentinel.config.yaml", tofile="sentinel.config.yaml (preview)"))
+    return raw, new_config, new_text, diff, changes
+
+
+def config_preview(ctx, project, body):
+    _, _, _, diff, changes = _apply_changes_checked(ctx.projects, project, body)
+    return {"project": project.id, "valid": True, "diff": diff, "changes": changes}
+
+
+def config_save(ctx, project, body):
+    with ctx.projects.engine(project, ctx.user, "dashboard") as eng:
+        _, _, new_text, diff, _ = _apply_changes_checked(ctx.projects, project, body)
+        comment = body.get("comment") if isinstance(body, dict) else None
+        write_config(eng, project, new_text, ctx.user, comment=comment or "Config updated via dashboard form")
+        return {"ok": True, "project": project.id, "sha256": sha_of(new_text), "diff": diff}
+
+
+_BACKFILL_TOKENS = {}
+
+
+def knowledge_ingest(ctx, pid):
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    ctx.projects.require(project)
+    with ctx.projects.engine(project, ctx.user, "dashboard") as eng:
+        job_id = kb_worker.enqueue_ingest(eng.reg)
+        kb_worker.spawn_worker(project.path)
+        eng.reg.add_audit(ctx.user, "dashboard", "knowledge_ingest", project.id, reason=f"job={job_id}")
+        return {"ok": True, "job": job_id, "state": "queued"}
+
+
+def knowledge_snapshot(ctx, pid):
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    ctx.projects.require(project)
+    with ctx.projects.engine(project, ctx.user, "dashboard") as eng:
+        job_id = kb_worker.enqueue_snapshot(eng.reg)
+        kb_worker.spawn_worker(project.path)
+        eng.reg.add_audit(ctx.user, "dashboard", "knowledge_snapshot", project.id, reason=f"job={job_id}")
+        return {"ok": True, "job": job_id, "state": "queued"}
+
+
+def knowledge_backfill_estimate(ctx, pid, body):
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    config = ctx.projects.require(project)
+    import knowledge
+    shared_dir = str(shared.Shared(project.path, config).dir)
+    since = body.get("since") if isinstance(body, dict) else None
+    repo = body.get("repo") if isinstance(body, dict) else None
+    estimate = knowledge.estimate_backfill(shared_dir, str(project.path), config, since=since, only_repo=repo)
+    total = sum(c for r in estimate.values() for c in r.values())
+    token = secrets.token_hex(16)
+    _BACKFILL_TOKENS[token] = {"pid": pid, "estimate": estimate, "total": total, "since": since, "repo": repo, "at": time.time()}
+    return {"token": token, "estimate": estimate, "total": total, "since": since, "repo": repo}
+
+
+def knowledge_backfill(ctx, pid, body):
+    project = ctx.projects.get(pid)
+    ctx.project = project
+    config = ctx.projects.require(project)
+    token = body.get("token") if isinstance(body, dict) else None
+    if not token or not isinstance(token, str):
+        raise bad("estimate token is required", "token")
+    info = _BACKFILL_TOKENS.get(token)
+    if not info or info.get("pid") != pid:
+        raise bad("invalid or expired estimate token", "token")
+    _BACKFILL_TOKENS.pop(token, None)
+    # The backfill is an ingest job for the background worker: it can take many agent calls, so it never runs in
+    # the request or under the engine lock.
+    with ctx.projects.engine(project, ctx.user, "dashboard") as eng:
+        job_id = kb_worker.enqueue_ingest(eng.reg)
+        kb_worker.spawn_worker(project.path)
+        eng.reg.add_audit(ctx.user, "dashboard", "knowledge_backfill", project.id,
+                          reason=f"job={job_id}; estimated={info.get('total')}")
+        return {"ok": True, "job": job_id, "state": "queued", "estimated": info.get("total")}
