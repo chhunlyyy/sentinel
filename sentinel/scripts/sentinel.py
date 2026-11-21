@@ -1121,7 +1121,8 @@ def cmd_dashboard(args):
             raise SentinelError("E_VALIDATION", f"SENTINEL_ORCHESTRATOR={orchestrator!r} is not an installed provider; installed: {', '.join(installed) or 'none'}")
     elif installed:
         orchestrator = pick_orchestrator(installed)
-    if getattr(args, "foreground", False):
+    # --bind is the container mode: the server is the container's main process, so it stays in the foreground
+    if getattr(args, "foreground", False) or args.bind:
         from apiserver.lifecycle import run_dashboard
         sys.exit(run_dashboard(workspace, args.port, args.no_open, args.bind, args.public_host, args.allow_peer, orchestrator))
     else:

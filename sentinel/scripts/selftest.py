@@ -682,7 +682,7 @@ def phase_f_checks(tmp):
                 break
         return out.decode(errors="replace").replace("\r\n", "\n")
 
-    proc, fd = tty_proc(["--dir", str(w), "dashboard", "--no-open"])
+    proc, fd = tty_proc(["--dir", str(w), "dashboard", "--no-open", "--foreground"])
     try:
         out = read_until(proc, fd, r"auth\?t=[0-9a-f]{64}")
         m = re.search(r"http://127\.0\.0\.1:(\d+)/auth\?t=([0-9a-f]{64})", out)
@@ -729,7 +729,7 @@ def phase_f_checks(tmp):
         status, _, payload = call("POST", "/api/v1/tasks/api-run/control", {"action": "cancel", "comment": "selftest"}, cookie=cookie, csrf=csrf)
         row = db_row(w, "api-run")
         check("AC-MON-02a a dashboard cancel moves the run to CANCELLED and is audited with channel dashboard", status == 200 and row["state"] == "CANCELLED" and db_all(w, "SELECT 1 FROM audit WHERE channel='dashboard' AND action='cancel' AND target='api-run'"), payload[:200])
-        proc2, fd2 = tty_proc(["--dir", str(w), "dashboard", "--no-open"])
+        proc2, fd2 = tty_proc(["--dir", str(w), "dashboard", "--no-open", "--foreground"])
         out2 = read_until(proc2, fd2, r"auth\?t=[0-9a-f]{64}")
         proc2.wait(timeout=20)
         os.close(fd2)
