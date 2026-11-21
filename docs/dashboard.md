@@ -9,7 +9,15 @@ cd my-workspace
 sentinel dashboard
 ```
 
-`sentinel dashboard` needs an interactive terminal. It starts a server on `127.0.0.1` (a free port, or the one you fix with `--port`, for example `sentinel dashboard --port 8765`; a port must be from 1024 to 65535), registers the workspace you started it in, prints a one-time **session URL** and opens your browser on it (`--no-open` prints the URL and does not open a browser). The URL holds a start token; the server exchanges it for a session cookie and redirects, so the token does not stay in the address bar. A second `sentinel dashboard` in another workspace attaches to the running server and registers that workspace too. Stop the server with Ctrl+C in its terminal. When it stops, or the cookie is gone, the page shows "Session ended"; run `sentinel dashboard` again and open the new URL.
+`sentinel dashboard` needs an interactive terminal. It starts the Sentinel background service if it is not already running (listening on `127.0.0.1` on a free port, or the one you fix with `--port`, for example `sentinel dashboard --port 8765`; a port must be from 1024 to 65535), registers the workspace you started it in, prints a one-time **session URL** and opens your browser on it (`--no-open` prints the URL and does not open a browser). The URL holds a start token; the server exchanges it for a session cookie and redirects, so the token does not stay in the address bar. A second `sentinel dashboard` in another workspace attaches to the running server and registers that workspace too.
+
+Closing the terminal no longer stops the factory: the service continues running in the background. To stop the service, run `sentinel stop` (or `sentinel service stop`). To run the server in the foreground as in earlier versions (stopping on Ctrl+C), pass `--foreground`:
+
+```bash
+sentinel dashboard --foreground
+```
+
+When the server stops, or the session cookie is gone, the page shows "Session ended"; run `sentinel dashboard` again and open the new URL. You can also inspect or manage the service directly with `sentinel service start|stop|status|run|autostart` (see [operations](operations.md#service-management)).
 
 The server listens on the loopback address only and accepts only requests for its own address. Read [the security notes](security.md#dashboard-token-and-residual-risk-r1) once: an agent that runs as your OS user can read the token file, which is residual risk R1.
 

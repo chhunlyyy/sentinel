@@ -109,6 +109,33 @@ The worker acquires a PID lock file at `.sentinel/kb-worker.lock` to ensure only
 
 The worker automatically retries transient errors up to 3 times with backoff (5s, 30s). When a job fails permanently (for example, if `scrub --check` detects a secret) or retries are exhausted, the job state becomes `failed` and triggers a `knowledge.failed` notification. The registry does not provide a separate retry command; after fixing the problem (e.g. updating scrub patterns or credentials), re-run `sentinel kb ingest` with `--publish` to ingest and publish current changes.
 
+## Service management
+
+Sentinel 2.0 runs as a background service:
+
+```bash
+sentinel service start                # start the service detached in the background
+sentinel service start --port 8765    # fix the port
+sentinel service stop                 # stop the running service (or: sentinel stop)
+sentinel service status               # status, PID, port, uptime, projects, log path
+sentinel service status --json        # machine-readable JSON status
+sentinel service run                  # run the server in the foreground
+```
+
+The service logs to `~/.config/sentinel/service.log`.
+
+### Autostart
+
+On Linux, Sentinel can start automatically at login via a systemd user unit:
+
+```bash
+sentinel service autostart on         # write unit and enable via systemctl
+sentinel service autostart off        # disable and remove unit
+sentinel service autostart status     # check autostart status
+```
+
+The user unit file is installed at `~/.config/systemd/user/sentinel.service`. On non-Linux operating systems, autostart is Linux-only in 2.0.
+
 ## Release checklist
 
 For the maintainer who cuts a release. The gate never tags, publishes or pushes; those steps stay with you.

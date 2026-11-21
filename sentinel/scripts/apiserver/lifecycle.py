@@ -8,6 +8,7 @@ import threading
 import time
 from pathlib import Path
 
+import adapters
 from paths import ROOT
 
 from . import userdir
@@ -107,6 +108,11 @@ def _serve(cfgdir, lock, workspace, port, no_open, bind=None, public_host=None, 
         path.unlink()
         _say("a stale server.json was replaced")
     _register(cfgdir, workspace)
+    try:
+        from service import recover_lost_tasks
+        recover_lost_tasks(cfgdir)
+    except Exception:
+        pass
     server = ApiServer(cfgdir, port=port or 0, dispatch=True, bind=bind, public_host=public_host, allow_peers=allow_peers, log_sink=lambda line: _say(line, err=True))
     server.orchestrator = orchestrator
     try:

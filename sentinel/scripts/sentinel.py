@@ -1093,7 +1093,55 @@ def cmd_dashboard(args):
             raise SentinelError("E_VALIDATION", f"SENTINEL_ORCHESTRATOR={orchestrator!r} is not an installed provider; installed: {', '.join(installed) or 'none'}")
     elif installed:
         orchestrator = pick_orchestrator(installed)
-    sys.exit(run_dashboard(workspace, args.port, args.no_open, args.bind, args.public_host, args.allow_peer, orchestrator))
+    if getattr(args, "foreground", False):
+        from apiserver.lifecycle import run_dashboard
+        sys.exit(run_dashboard(workspace, args.port, args.no_open, args.bind, args.public_host, args.allow_peer, orchestrator))
+    else:
+        from service import dashboard_ensure_and_open
+        sys.exit(dashboard_ensure_and_open(workspace, args.port, args.no_open, args.bind, args.public_host, args.allow_peer, orchestrator))
+
+
+def cmd_service(args):
+    """sentinel service start|stop|status|run|autostart"""
+    if os.environ.get("SENTINEL_TASK_ID"):
+        raise SentinelError("E_ACTOR", "a task process may not run `sentinel service`",
+                            {"task": os.environ["SENTINEL_TASK_ID"], "command": f"service {args.service_cmd}"})
+    import service
+    workspace = next((f for f in [Path(args.dir).resolve(), *Path(args.dir).resolve().parents]
+                      if (f / CONFIG_NAME).exists()), None)
+    if args.service_cmd == "run":
+        orchestrator = getattr(args, "provider", None)
+        sys.exit(service.service_run(
+            workspace=workspace,
+            port=getattr(args, "port", None),
+            bind=getattr(args, "bind", None),
+            public_host=getattr(args, "public_host", None),
+            allow_peers=getattr(args, "allow_peer", ()),
+            orchestrator=orchestrator,
+        ))
+    elif args.service_cmd == "start":
+        sys.exit(service.service_start(
+            workspace=workspace,
+            port=getattr(args, "port", None),
+            bind=getattr(args, "bind", None),
+            public_host=getattr(args, "public_host", None),
+            allow_peers=getattr(args, "allow_peer", ()),
+        ))
+    elif args.service_cmd == "stop":
+        sys.exit(service.service_stop())
+    elif args.service_cmd == "status":
+        sys.exit(service.service_status(as_json=getattr(args, "json", False)))
+    elif args.service_cmd == "autostart":
+        sys.exit(service.service_autostart(args.action))
+
+
+def cmd_stop(args):
+    """sentinel stop: alias of service stop"""
+    if os.environ.get("SENTINEL_TASK_ID"):
+        raise SentinelError("E_ACTOR", "a task process may not run `sentinel stop`",
+                            {"task": os.environ["SENTINEL_TASK_ID"], "command": "stop"})
+    import service
+    sys.exit(service.service_stop())
 
 
 def cmd_task(args):
@@ -1614,6 +1662,7 @@ def main():
     dashboard.add_argument("provider", nargs="?", metavar="provider", help="runner id of the AI tool that orchestrates dashboard runs (claude, codex, gemini, agy, or one from config runners); asked in the terminal when omitted")
     dashboard.add_argument("--port", type=port_arg, help="port to listen on, 1024 to 65535 (default: a free port)")
     dashboard.add_argument("--no-open", action="store_true", help="do not open a browser")
+    dashboard.add_argument("--foreground", action="store_true", help="run server in foreground; closing terminal stops server")
     dashboard.add_argument("--bind", type=bind_arg, metavar="0.0.0.0",
                            help="container image only (needs SENTINEL_CONTAINER=1): listen on all interfaces of the container; "
                                 "publish the port on the host as 127.0.0.1:PORT only, never on another address")
@@ -1624,6 +1673,38 @@ def main():
                            help="with --bind: also answer this peer address (repeatable); loopback and the container's default gateway are always "
                                 "answered, any other address is refused. For rootless Docker or Docker Desktop, where the published port arrives from another address")
     dashboard.set_defaults(func=cmd_dashboard)
+
+    service_parser = sub.add_parser("service", help="manage the Sentinel background service")
+    service_sub = service_parser.add_subparsers(dest="service_cmd", required=True)
+
+    svc_start = service_sub.add_parser("start", help="start the Sentinel service detached in the background")
+    svc_start.add_argument("--port", type=port_arg, help="port to listen on, 1024 to 65535 (default: a free port)")
+    svc_start.add_argument("--bind", type=bind_arg, metavar="0.0.0.0", help=argparse.SUPPRESS)
+    svc_start.add_argument("--public-host", type=public_host_arg, metavar="HOST:PORT", help=argparse.SUPPRESS)
+    svc_start.add_argument("--allow-peer", type=peer_arg, action="append", default=[], metavar="IP", help=argparse.SUPPRESS)
+    svc_start.set_defaults(func=cmd_service)
+
+    svc_stop = service_sub.add_parser("stop", help="stop the running Sentinel service")
+    svc_stop.set_defaults(func=cmd_service)
+
+    svc_status = service_sub.add_parser("status", help="check Sentinel service status")
+    svc_status.add_argument("--json", action="store_true", help="output JSON")
+    svc_status.set_defaults(func=cmd_service)
+
+    svc_run = service_sub.add_parser("run", help="run the Sentinel server in the foreground")
+    svc_run.add_argument("provider", nargs="?", metavar="provider", help=argparse.SUPPRESS)
+    svc_run.add_argument("--port", type=port_arg, help="port to listen on, 1024 to 65535 (default: a free port)")
+    svc_run.add_argument("--bind", type=bind_arg, metavar="0.0.0.0", help=argparse.SUPPRESS)
+    svc_run.add_argument("--public-host", type=public_host_arg, metavar="HOST:PORT", help=argparse.SUPPRESS)
+    svc_run.add_argument("--allow-peer", type=peer_arg, action="append", default=[], metavar="IP", help=argparse.SUPPRESS)
+    svc_run.set_defaults(func=cmd_service)
+
+    svc_auto = service_sub.add_parser("autostart", help="manage systemd autostart (Linux)")
+    svc_auto.add_argument("action", choices=["on", "off", "status"], help="enable (on), disable (off) or check (status) autostart")
+    svc_auto.set_defaults(func=cmd_service)
+
+    stop_parser = sub.add_parser("stop", help="stop the running Sentinel service (alias of service stop)")
+    stop_parser.set_defaults(func=cmd_stop)
 
     triage = sub.add_parser("triage", help="submit triage factors for a version 2 run; the engine sets the tier")
     triage.add_argument("slug")
@@ -1757,7 +1838,7 @@ def main():
     if extra and not getattr(args, "passthrough", False):
         parser.error("unrecognized arguments: " + " ".join(extra))
     args.extra = extra
-    if args.cmd == "dashboard" and args.public_host and args.port != int(args.public_host.rpartition(":")[2]):
+    if getattr(args, "public_host", None) and getattr(args, "port", None) != int(args.public_host.rpartition(":")[2]):
         from apiserver import netguard
         if not netguard.container_ok():
             parser.error("--public-host outside the Sentinel container must name the server's own port: give --port with the same port")
