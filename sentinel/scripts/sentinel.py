@@ -1341,6 +1341,11 @@ def cmd_kb_ingest(args):
         for branch, count in branches.items():
             print(f"{repo_id}@{branch}: {count} change(s)")
     print(f"total: {total} change(s) ingested")
+    if getattr(args, "publish", False):
+        import kb_worker
+        msg = f"sentinel: knowledge ingest for {args.repo}" if args.repo else "sentinel: knowledge ingest"
+        outcome = kb_worker.publish_under_lock(config_path.parent, config, scrubber, msg)
+        print(f"published: {outcome}")
 
 
 def cmd_kb_snapshot(args):
@@ -1726,6 +1731,7 @@ def main():
     kb_ingest.add_argument("--repo", help="only this repo id")
     kb_ingest.add_argument("--branch", help="only this branch")
     kb_ingest.add_argument("--no-summarize", action="store_true", help="skip agent summarization (deterministic only)")
+    kb_ingest.add_argument("--publish", action="store_true", help="publish changes under the knowledge lock after ingest")
     kb_ingest.set_defaults(func=cmd_kb_ingest)
 
     kb_snapshot = kb_sub.add_parser("snapshot", help="build snapshot summaries from branch tip")
