@@ -43,4 +43,6 @@ export interface Db {
   notifications: W.WNotification[];
   /** analytics as served by GET /reports/analytics, by project id */
   analytics: Record<string, W.WAnalytics>;
+  /** factory snapshots as served by GET /projects/{pid}/factory, by project id */
+  factory?: Record<string, W.WFactory>;
 }

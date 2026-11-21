@@ -10,6 +10,7 @@ import { ApprovalsScreen } from './screens/Approvals.tsx';
 import { RunScreen } from './screens/Run.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { ReportsScreen } from './screens/Reports.tsx';
+import { FloorScreen } from './screens/Floor.tsx';
 import { NotificationBell } from './components/Notifications.tsx';
 import { onOrchestratorChanged } from './state/orchestrator.ts';
 
@@ -34,13 +35,27 @@ function SessionEnded() {
   );
 }
 
+function DefaultLanding() {
+  const projects = useResource('landing-projects', (c) => calls.projects(c), {});
+  if (projects.loading && !projects.data) {
+    return <FloorScreen />;
+  }
+  const hasProjects = (projects.data?.items.filter((p) => p.status === 'available').length ?? 0) > 0;
+  return hasProjects ? <FloorScreen /> : <Overview />;
+}
+
 function screenFor(route: Route): ReactNode {
   const s = segments(route.path);
-  if (s.length === 0) return <Overview />;
+  if (s.length === 0) return <DefaultLanding />;
   switch (s[0]) {
+    case 'overview':
+      return <Overview />;
+    case 'floor':
+      return <FloorScreen />;
     case 'projects':
       if (s.length === 1) return <ProjectsScreen />;
       if (s[1] === 'new' && s.length === 2) return <NewProjectScreen />;
+      if (s[2] === 'floor') return <FloorScreen pid={s[1]} />;
       if (s[2] === 'runs' && s[3]) return <RunScreen pid={s[1]} slug={s[3]} rest={s.slice(4)} route={route} />;
       return <ProjectScreen pid={s[1]} tab={s[2] ?? ''} rest={s.slice(3)} route={route} />;
     case 'tasks':
@@ -88,13 +103,14 @@ export class ScreenBoundary extends Component<{ children: ReactNode; resetKey: s
 }
 
 const TITLES: Record<string, string> = {
-  projects: 'Projects', tasks: 'Tasks', approvals: 'My Approvals', runs: 'Runs', quality: 'Quality', reports: 'Reports', settings: 'Settings',
+  floor: 'Factory floor', overview: 'Overview', projects: 'Projects', tasks: 'Tasks', approvals: 'My Approvals', runs: 'Runs', quality: 'Quality', reports: 'Reports', settings: 'Settings',
 };
 
 export function titleFor(path: string): string {
   const s = segments(path);
-  if (s.length === 0) return 'Overview';
+  if (s.length === 0) return 'Factory floor';
   if (s[0] === 'projects' && s[1] === 'new') return 'Create project';
+  if (s[0] === 'projects' && s[2] === 'floor') return `${s[1]} floor`;
   if (s[0] === 'projects' && s[2] === 'runs' && s[3]) return `${s[3]}${s[4] ? ` ${s[4]}` : ''}`;
   if (s[0] === 'projects' && s[1]) return `${s[1]}${s[2] ? ` ${s[2]}` : ''}`;
   if (s[0] === 'tasks' && s[1] === 'new') return 'New task';
@@ -106,9 +122,11 @@ function Nav({ path }: { path: string }) {
   const count = approvals.data?.items.length ?? 0;
   const projects = useResource('nav-projects', (c) => calls.projects(c), {});
   const unavailable = projects.data?.items.filter((p) => p.status === 'unavailable') ?? [];
+  const hasProjects = (projects.data?.items.filter((p) => p.status === 'available').length ?? 0) > 0;
   const items: { to: string; label: string; icon: string; match: (p: string) => boolean }[] = [
-    { to: '/', label: 'Overview', icon: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', match: (p) => p === '/' },
-    { to: '/projects', label: 'Projects', icon: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z', match: (p) => p.startsWith('/projects') },
+    { to: '/floor', label: 'Factory floor', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5', match: (p) => p === '/floor' || p.endsWith('/floor') || (p === '/' && hasProjects) },
+    { to: '/overview', label: 'Overview', icon: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', match: (p) => p === '/overview' || (p === '/' && !hasProjects) },
+    { to: '/projects', label: 'Projects', icon: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z', match: (p) => p.startsWith('/projects') && !p.endsWith('/floor') },
     { to: '/tasks', label: 'Tasks', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2', match: (p) => p.startsWith('/tasks') },
     { to: '/approvals', label: 'My Approvals', icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM8.5 12l2.5 2.5 4.5-5', match: (p) => p.startsWith('/approvals') },
     { to: '/runs', label: 'Runs', icon: 'M6 4l14 8-14 8z', match: (p) => p === '/runs' },
