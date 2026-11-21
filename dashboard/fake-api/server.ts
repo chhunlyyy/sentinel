@@ -320,6 +320,9 @@ route('GET', `${V}/projects/{pid}/factory`, (c) => {
   const pid = decodeURIComponent(c.params[0]);
   const snap = db.factory?.[pid] ?? {
     project: pid,
+    factory_paused: false,
+    who: {},
+    activity: [],
     generated_at: '2026-11-21T10:15:02.123456Z',
     stations: ['intake', 'triage', 'spec', 'gate_spec', 'gherkin', 'gate_gherkin', 'build', 'verify', 'report', 'gate_accept', 'knowledge'],
     limits: { driver: 'engine', max_tasks_per_project: 2, max_agents: 4, running_in_project: 0, running_total: 0 },

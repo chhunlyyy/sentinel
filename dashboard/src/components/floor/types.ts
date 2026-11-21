@@ -34,6 +34,8 @@ export interface RunView {
   station: string;
   state: string;
   stateLabel: string;
+  /** where the task is, for the task chip: `Build · behavior 2 of 3`, `Waiting for you`, `Triage` */
+  whereLabel: string;
   stationLabel: string;
   stations: Record<string, StationState>;
   nextStation: string | null;
@@ -58,8 +60,25 @@ export interface FactoryLimits {
   runningTotal: number;
 }
 
+export interface WhoView {
+  role: string;
+  runner: string;
+  model: string | null;
+}
+
+export interface ActivityView {
+  at: string;
+  run: string;
+  /** station id (triage, gate_spec, build ...) */
+  station: string;
+  text: string;
+}
+
 export interface FloorSnapshot {
   project: string;
+  factoryPaused: boolean;
+  who: Record<string, WhoView>;
+  activity: ActivityView[];
   generatedAt: string;
   stations: string[];
   limits: FactoryLimits;

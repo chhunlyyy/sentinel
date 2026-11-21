@@ -4,7 +4,7 @@ import { useApp } from '../../state/app.tsx';
 import { useAction, ActionResult, ConfirmDialog, useControlsEnabled } from '../common.tsx';
 import { calls } from '../../api/calls.ts';
 import { Link, enc } from '../../router.tsx';
-import type { RunView, StationDef, StationState } from './types.ts';
+import type { RunView, StationDef, StationState, WhoView } from './types.ts';
 import { stateLook } from './look.ts';
 import { stationById } from './layout.ts';
 
@@ -12,13 +12,15 @@ interface SidePanelProps {
   station: StationDef | null;
   state: StationState;
   run: RunView | null;
+  /** routing per agent station from the snapshot, used when no agent is running there */
+  who?: Record<string, WhoView>;
   pid: string;
   onChanged: () => void;
 }
 
 type DialogKind = 'cancel';
 
-export function SidePanel({ station, state, run, pid, onChanged }: SidePanelProps) {
+export function SidePanel({ station, state, run, who, pid, onChanged }: SidePanelProps) {
   const app = useApp();
   const enabled = useControlsEnabled();
   const action = useAction();
@@ -50,9 +52,12 @@ export function SidePanel({ station, state, run, pid, onChanged }: SidePanelProp
 
   const kindLabel = station.kind === 'gate' ? 'human gate' : station.kind;
   const agents = run.agents[baseStationId] ?? [];
+  const routed = who?.[baseStationId];
   const whoText = agents.length > 0
     ? agents.map((a) => [a.role, a.runner, a.model].filter(Boolean).join(' · ')).join('; ')
-    : station.kind === 'gate' ? 'you' : station.kind === 'engine' ? 'engine' : '—';
+    : station.kind === 'gate' ? 'you'
+    : station.kind === 'engine' ? (baseStationId === 'knowledge' && routed ? `engine · summaries by ${[routed.runner, routed.model].filter(Boolean).join(' · ')}` : 'engine')
+    : routed ? [routed.role, routed.runner, routed.model].filter(Boolean).join(' · ') : '—';
 
   const isWaiting = state === 'waiting';
   const isAccept = station.id === 'gate_accept';
@@ -182,15 +187,15 @@ export function SidePanel({ station, state, run, pid, onChanged }: SidePanelProp
         {/* action links */}
         {isWaiting && !isAccept && (
           <Link
-            to={`${runBase}/specification`}
+            to={`${runBase}/${station.id === 'gate_gherkin' ? 'gherkin' : 'specification'}`}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               minHeight: 44, borderRadius: 10,
-              background: 'var(--floor-waiting-ring)', color: 'var(--floor-waiting-fill)',
+              background: 'var(--floor-waiting-ring)', color: '#1A1206',
               fontWeight: 600, textDecoration: 'none',
             }}
           >
-            Review specification
+            {station.id === 'gate_gherkin' ? 'Review scenarios' : 'Review specification'}
           </Link>
         )}
         {isAccept && (
@@ -199,11 +204,13 @@ export function SidePanel({ station, state, run, pid, onChanged }: SidePanelProp
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               minHeight: 44, borderRadius: 10,
-              border: '1px solid var(--border-strong)', color: 'var(--text)',
+              ...(isWaiting
+                ? { background: 'var(--floor-waiting-ring)', color: '#1A1206' }
+                : { border: '1px solid var(--border-strong)', color: 'var(--text)' }),
               fontWeight: 600, textDecoration: 'none',
             }}
           >
-            Preview the report page
+            Open the report
           </Link>
         )}
         <Link to={runBase} style={{ fontSize: 13, marginTop: 2 }}>
@@ -244,7 +251,7 @@ export function SidePanel({ station, state, run, pid, onChanged }: SidePanelProp
             onClick={() => void sendNote()}
             style={{
               flex: '1 1 110px', minHeight: 44, borderRadius: 10,
-              border: 0, background: 'var(--floor-working-ring)', color: 'var(--floor-working-fill)',
+              border: 0, background: 'var(--floor-working-ring)', color: '#062420',
               fontWeight: 600, cursor: 'pointer',
             }}
           >

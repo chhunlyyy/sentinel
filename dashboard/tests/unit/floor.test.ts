@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { floorSnapshot } from '../../src/components/floor/adapt.ts';
+import { floorSnapshot, laneState } from '../../src/components/floor/adapt.ts';
 import { buildLanePositions, stationById, STATIONS, MAX_LANES } from '../../src/components/floor/layout.ts';
 import { stateLook, feedEdgeCls } from '../../src/components/floor/look.ts';
 import { stationsOf } from '../../src/screens/Floor.tsx';
@@ -7,6 +7,9 @@ import type * as W from '../../src/api/wire.ts';
 
 const SAMPLE_WIRE_FACTORY: W.WFactory = {
   project: 'digital-hr',
+  factory_paused: false,
+  who: { triage: { role: 'triage', runner: 'agy', model: 'gemini-3.8-flash' }, build: { role: 'coder', runner: 'claude', model: null } },
+  activity: [{ at: '2026-11-21T10:45:14.000000Z', run: 'leave-balance', station: 'build', text: 'green' }],
   generated_at: '2026-11-21T10:15:02.123456Z',
   stations: [
     'intake', 'triage', 'spec', 'gate_spec', 'gherkin', 'gate_gherkin',
@@ -238,5 +241,44 @@ describe('station metadata', () => {
     expect(stationById('spec')?.name).toBe('Specification');
     expect(stationById('gate_spec')?.kind).toBe('gate');
     expect(stationById('unknown')).toBeUndefined();
+  });
+});
+
+describe('floor snapshot additions and lanes', () => {
+  test('adapts factory_paused, who and activity', () => {
+    const snap = floorSnapshot({ ...SAMPLE_WIRE_FACTORY, factory_paused: true });
+    expect(snap.factoryPaused).toBe(true);
+    expect(snap.who.triage).toEqual({ role: 'triage', runner: 'agy', model: 'gemini-3.8-flash' });
+    expect(snap.who.build.model).toBeNull();
+    expect(snap.activity[0]).toEqual({ at: '2026-11-21T10:45:14.000000Z', run: 'leave-balance', station: 'build', text: 'green' });
+  });
+
+  test('missing who and activity fall back to empty', () => {
+    const w = { ...SAMPLE_WIRE_FACTORY } as Partial<W.WFactory>;
+    delete w.who;
+    delete w.activity;
+    delete w.factory_paused;
+    const snap = floorSnapshot(w as W.WFactory);
+    expect(snap.who).toEqual({});
+    expect(snap.activity).toEqual([]);
+    expect(snap.factoryPaused).toBe(false);
+  });
+
+  test('laneState: done, working, queued', () => {
+    expect(laneState({ red: 'done', green: 'done', refactor: 'done' }, false)).toBe('done');
+    expect(laneState({ red: 'done', green: 'working', refactor: 'todo' }, false)).toBe('working');
+    expect(laneState({ red: 'done', green: 'working', refactor: 'todo' }, true)).toBe('paused');
+    expect(laneState({ red: 'todo', green: 'todo', refactor: 'todo' }, false)).toBe('queued');
+  });
+
+  test('whereLabel names the behavior when build fans out', () => {
+    const w = structuredClone(SAMPLE_WIRE_FACTORY);
+    const base = w.runs[0].lanes[0];
+    w.runs[0].lanes = [
+      { ...base, red: 'done', green: 'done', refactor: 'done' },
+      { ...base, red: 'done', green: 'working', refactor: 'todo' },
+      { ...base, red: 'todo', green: 'todo', refactor: 'todo' },
+    ];
+    expect(floorSnapshot(w).runs[0].whereLabel).toBe('Build \u00b7 behavior 2 of 3');
   });
 });

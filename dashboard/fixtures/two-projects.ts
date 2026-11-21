@@ -294,15 +294,34 @@ const digitalHrData = (runs: T.RunSummary[]): ProjectData => ({
 });
 
 export function digitalHrFactory(): W.WFactory {
+  const lane = (cycle: string, name: string, state: string, red: W.WStationState, green: W.WStationState, refactor: W.WStationState): W.WFactoryLane => (
+    { cycle, name, repo: 'backend', state, red, green, refactor }
+  );
   return {
     project: 'digital-hr',
-    generated_at: '2026-11-21T10:15:02.123456Z',
+    factory_paused: false,
+    who: {
+      triage: { role: 'triage', runner: 'agy', model: 'gemini-3.8-flash' },
+      spec: { role: 'specifier', runner: 'claude', model: 'sonnet-4.6' },
+      gherkin: { role: 'gherkin', runner: 'agy', model: 'gemini-3.8-flash-high' },
+      build: { role: 'coder', runner: 'claude', model: 'sonnet-4.6' },
+      knowledge: { role: 'knowledge', runner: 'agy', model: 'gemini-3.8-flash' },
+    },
+    activity: [
+      { at: '2026-11-21T10:45:14.000000Z', run: 'leave-balance', station: 'build', text: 'build \u00b7 green: engine checking write scope backend/src/main/**' },
+      { at: '2026-11-21T10:44:58.000000Z', run: 'audit-log-filter', station: 'triage', text: 'read knowledge/repos/frontend/summary.md' },
+      { at: '2026-11-21T10:44:55.000000Z', run: 'leave-balance', station: 'build', text: '1 failing -> 0 failing (./gradlew test)' },
+      { at: '2026-11-21T10:44:31.000000Z', run: 'audit-log-filter', station: 'triage', text: 'started \u00b7 agy \u00b7 gemini-3.8-flash' },
+      { at: '2026-11-21T10:41:07.000000Z', run: 'leave-balance', station: 'build', text: 'B1 Export as CSV: refactor done' },
+      { at: '2026-11-21T10:24:52.000000Z', run: 'payroll-rounding', station: 'gate_spec', text: 'waiting for you \u00b7 sha256 4f1c09ab...' },
+    ],
+    generated_at: '2026-11-21T10:45:20.123456Z',
     stations: ['intake', 'triage', 'spec', 'gate_spec', 'gherkin', 'gate_gherkin', 'build', 'verify', 'report', 'gate_accept', 'knowledge'],
-    limits: { driver: 'engine', max_tasks_per_project: 2, max_agents: 4, running_in_project: 2, running_total: 3 },
+    limits: { driver: 'engine', max_tasks_per_project: 3, max_agents: 4, running_in_project: 2, running_total: 3 },
     runs: [
       {
         slug: 'leave-balance',
-        title: 'Show the remaining leave days on the home page',
+        title: 'Leave balance export',
         type: 'feature',
         driver: 'engine',
         paused: false,
@@ -316,19 +335,68 @@ export function digitalHrFactory(): W.WFactory {
         },
         next_station: 'verify',
         agents: {
-          build: [{ task: 't-0123456789ab', role: 'tdd_green', runner: 'claude', model: 'sonnet', adapter: 'cli', started_at: '2026-11-21T10:12:40.000000Z' }],
+          build: [{ task: 't-0123456789ab', role: 'tdd_green', runner: 'claude', model: 'sonnet-4.6', adapter: 'cli', started_at: '2026-11-21T10:41:40.000000Z' }],
         },
         lanes: [
-          { cycle: 'c-0123456789ab', name: 'Remaining days show', repo: 'backend', state: 'GREEN_RUNNING', red: 'done', green: 'working', refactor: 'todo' },
+          lane('c-0123456789aa', 'Export as CSV', 'DONE', 'done', 'done', 'done'),
+          lane('c-0123456789ab', 'Filter by dept', 'GREEN_RUNNING', 'done', 'working', 'todo'),
+          lane('c-0123456789ac', 'HR only', 'QUEUED', 'todo', 'todo', 'todo'),
         ],
         attention: null,
         pending_notes: 0,
         created_at: '2026-11-21T09:58:00.000000Z',
-        updated_at: '2026-11-21T10:12:40.000000Z',
+        updated_at: '2026-11-21T10:45:14.000000Z',
+      },
+      {
+        slug: 'payroll-rounding',
+        title: 'Fix payroll rounding',
+        type: 'bugfix',
+        driver: 'engine',
+        paused: false,
+        state: 'WAITING_FOR_SPEC_APPROVAL',
+        tier: 2,
+        station: 'gate_spec',
+        stations: {
+          intake: 'done', triage: 'done', spec: 'done', gate_spec: 'waiting',
+          gherkin: 'next', gate_gherkin: 'todo',
+          build: 'todo', verify: 'todo', report: 'todo', gate_accept: 'todo', knowledge: 'todo',
+        },
+        next_station: 'gherkin',
+        agents: {},
+        lanes: [],
+        attention: { kind: 'needs_human', reason: 'Spec v1 waits for your approval' },
+        pending_notes: 0,
+        created_at: '2026-11-21T10:10:00.000000Z',
+        updated_at: '2026-11-21T10:24:52.000000Z',
+      },
+      {
+        slug: 'audit-log-filter',
+        title: 'Audit log filter',
+        type: 'feature',
+        driver: 'engine',
+        paused: false,
+        state: 'TRIAGE',
+        tier: null,
+        station: 'triage',
+        stations: {
+          intake: 'done', triage: 'working', spec: 'next', gate_spec: 'todo',
+          gherkin: 'todo', gate_gherkin: 'todo',
+          build: 'todo', verify: 'todo', report: 'todo', gate_accept: 'todo', knowledge: 'todo',
+        },
+        next_station: 'spec',
+        agents: {
+          triage: [{ task: 't-0123456789ad', role: 'triage', runner: 'agy', model: 'gemini-3.8-flash', adapter: 'cli', started_at: '2026-11-21T10:44:31.000000Z' }],
+        },
+        lanes: [],
+        attention: null,
+        pending_notes: 0,
+        created_at: '2026-11-21T10:44:20.000000Z',
+        updated_at: '2026-11-21T10:44:58.000000Z',
       },
     ],
     queue: [
-      { slug: 'payroll-export', title: 'Export payroll as CSV', position: 1, reason: 'the project limit of 2 running tasks is reached' },
+      { slug: 'payroll-export', title: 'Export payroll as CSV', position: 1, reason: 'the project limit of 3 running tasks is reached' },
+      { slug: 'holiday-calendar', title: 'Holiday calendar sync', position: 2, reason: 'the project limit of 3 running tasks is reached' },
     ],
   };
 }
