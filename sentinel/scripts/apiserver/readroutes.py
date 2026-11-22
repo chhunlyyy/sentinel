@@ -586,6 +586,24 @@ def knowledge_status(projects, project):
     return info
 
 
+def knowledge_related(projects, project, query):
+    config = projects.require(project)
+    shared_dir = _kb_shared_path(project, config)
+    knowledge.ensure_layout(shared_dir)
+    q = (query.get("q") or "").strip()
+    raw_limit = query.get("limit")
+    if raw_limit is not None:
+        try:
+            limit = int(raw_limit)
+            if limit <= 0:
+                raise ValueError()
+        except ValueError:
+            raise validation("limit must be a positive integer", "limit")
+    else:
+        limit = 5
+    return knowledge.search_related_knowledge(shared_dir, q=q, limit=limit)
+
+
 def knowledge_records(projects, project, query):
     config = projects.require(project)
     shared_dir = _kb_shared_path(project, config)

@@ -295,8 +295,11 @@ def _gate_extra(eng, slug, gate):
                          "comment": rec["comment"] if rec else None})
     ap = _latest(approvals)
     art = arts.get(ap["artifact_id"]) if ap else None
+    version = ap["version"] if ap else (sorted(arts.keys())[-1] if arts else 1)
+    k_used = eng.knowledge_for_gate(slug, gate, version)
     return {"versions": versions, "decision": _decision_record(ap),
-            "requested_at": art["created_at"] if art else None}
+            "requested_at": art["created_at"] if art else None,
+            "knowledge_used": k_used}
 
 
 def specification(eng, slug):

@@ -1,6 +1,8 @@
 // View models of the screens. The answers of the real server are typed in wire.ts (recorded from the
 // Phase F and G server by tests/test_dashboard_fixtures.py); adapt.ts converts them to these types.
 
+import type { WKnowledgeUsed } from './wire.ts';
+
 export interface ErrorEnvelope {
   error: { code: string; message: string; details?: Record<string, unknown> };
 }
@@ -251,6 +253,7 @@ export interface SpecificationAnswer {
   versions: VersionRow[];
   decision: DecisionRecord | null;
   requested_at: string | null;
+  knowledge_used?: WKnowledgeUsed;
 }
 
 export interface GherkinScenario {
@@ -285,6 +288,7 @@ export interface GherkinAnswer {
   versions: VersionRow[];
   decision: DecisionRecord | null;
   requested_at: string | null;
+  knowledge_used?: WKnowledgeUsed;
 }
 
 export interface ApprovalListItem {
@@ -424,5 +428,9 @@ export type {
   WKnowledgeJob as KnowledgeJobResult,
   WKnowledgeBackfillEstimate as KnowledgeBackfillEstimateResult,
   WKnowledgeBackfill as KnowledgeBackfillResult,
+  WKnowledgeUsed as KnowledgeUsed,
+  WKnowledgeRelatedRecord as KnowledgeRelatedRecord,
+  WKnowledgeRelatedInvariant as KnowledgeRelatedInvariant,
+  WKnowledgeRelated as KnowledgeRelatedResult,
 } from './wire.ts';
 

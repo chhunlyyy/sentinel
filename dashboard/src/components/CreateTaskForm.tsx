@@ -15,8 +15,10 @@ export interface CreateTaskBody {
 
 export interface CreateTaskFormProps {
   repos: string[];
+  pid?: string;
   onSubmit: (body: CreateTaskBody) => void | Promise<void>;
   onTypeChange?: (type: string) => void;
+  onRequestChange?: (request: string) => void;
   /** server refusals by field name */
   fieldErrors?: Record<string, string>;
   pending?: boolean;
@@ -28,8 +30,10 @@ export interface CreateTaskFormProps {
 
 export function CreateTaskForm({
   repos,
+  pid,
   onSubmit,
   onTypeChange,
+  onRequestChange,
   fieldErrors = {},
   pending = false,
   blocked = false,
@@ -45,7 +49,37 @@ export function CreateTaskForm({
   const [ticket, setTicket] = useState('');
   const [chosen, setChosen] = useState<string[]>(repos);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [draftSaved, setDraftSaved] = useState(false);
   const busy = useRef(false);
+
+  const draftKey = pid ? `sentinel_task_draft_${pid}` : null;
+
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.slug) setSlug(parsed.slug);
+          if (parsed.request) {
+            setRequest(parsed.request);
+            onRequestChange?.(parsed.request);
+          }
+          if (parsed.type) {
+            setType(parsed.type);
+            onTypeChange?.(parsed.type);
+          }
+          if (parsed.priority) setPriority(parsed.priority);
+          if (parsed.tier !== undefined && parsed.tier !== null) setTier(String(parsed.tier));
+          if (parsed.ticket) setTicket(parsed.ticket);
+          if (Array.isArray(parsed.repos) && parsed.repos.length) setChosen(parsed.repos);
+        }
+      }
+    } catch {
+      // storage errors must not crash
+    }
+  }, [draftKey]);
 
   useEffect(() => setChosen(repos), [repos.join('|')]);
 
@@ -69,6 +103,26 @@ export function CreateTaskForm({
     onTypeChange?.(selectedType);
   };
 
+  const saveDraft = () => {
+    if (!draftKey) return;
+    const draftData: CreateTaskBody = {
+      slug,
+      request,
+      type,
+      priority,
+      ...(tier ? { tier: Number(tier) } : {}),
+      ...(ticket.trim() ? { ticket: ticket.trim() } : {}),
+      ...(chosen.length ? { repos: chosen } : {}),
+    };
+    try {
+      window.localStorage.setItem(draftKey, JSON.stringify(draftData));
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 3000);
+    } catch {
+      // storage errors must not crash
+    }
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (invalid || blocked || pending || busy.current) return;
@@ -79,6 +133,13 @@ export function CreateTaskForm({
     if (ticket.trim()) body.ticket = ticket.trim();
     try {
       await onSubmit(body);
+      if (draftKey) {
+        try {
+          window.localStorage.removeItem(draftKey);
+        } catch {
+          // ignore
+        }
+      }
     } finally {
       busy.current = false;
     }
@@ -151,8 +212,10 @@ export function CreateTaskForm({
           placeholder="Describe what should be built in plain words…"
           value={request}
           onChange={(e) => {
-            setRequest(e.target.value);
+            const val = e.target.value;
+            setRequest(val);
             touch('request');
+            onRequestChange?.(val);
           }}
           {...aria('request')}
         />
@@ -247,10 +310,21 @@ export function CreateTaskForm({
 
       {children}
 
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="submit" disabled={invalid || blocked || pending}>
           {pending ? 'Sending…' : submitLabel}
         </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={saveDraft}
+          style={{ cursor: 'pointer' }}
+        >
+          Save as draft
+        </button>
+        {draftSaved ? (
+          <span style={{ fontSize: '0.85rem', color: '#4FD1C1' }}>Draft saved</span>
+        ) : null}
       </div>
     </form>
   );

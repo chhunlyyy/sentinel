@@ -63,6 +63,17 @@ test.describe('reviewing the specification', () => {
     await expect(page.getByRole('radio')).toHaveCount(0);
     expect((await api.gets(/specification\/versions\/1/)).length).toBeGreaterThan(0);
   });
+
+  test('AC-SPA-04f knowledge used tab shows records and summaries read by agents', async ({ page }) => {
+    await open(page, SPEC_URL);
+    await page.getByRole('tab', { name: 'Knowledge used' }).click();
+    const knowledgePanel = page.getByTestId('knowledge-used');
+    await expect(knowledgePanel).toBeVisible();
+    await expect(knowledgePanel.getByRole('heading', { name: 'Change records' })).toBeVisible();
+    await expect(knowledgePanel.getByText('pr-212')).toBeVisible();
+    await expect(knowledgePanel.getByRole('heading', { name: 'Invariants' })).toBeVisible();
+    await expect(knowledgePanel.getByText('HR data only for role HR')).toBeVisible();
+  });
 });
 
 test.describe('reviewing the Gherkin set', () => {

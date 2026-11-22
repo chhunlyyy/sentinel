@@ -34,6 +34,8 @@ Open **Tasks** and click **Create task** (or use **New task** in the menu).
 - **Request**: what you want, in plain words. Be concrete about who may do what and what must not change.
 - **Priority**, **Tier** and **Ticket** are optional. Leave the tier on "Decided at triage" unless you want more rigor; a tier can only raise the triage result.
 
+As you type the request text, the **Knowledge found** side panel updates (debounced) with related past change records and project invariants from the knowledge base, linking directly to the project's knowledge screen. A slots note ("Slots: N of M busy, position K in the queue") shows current factory floor occupancy from the factory snapshot. You can click **Save as draft** to store your work in progress in the browser (persisted per project across page reloads); drafts are automatically cleared once the task is created.
+
 Click **Create task**. The run joins the factory: it starts at once when a slot is free (two tasks per project and four agents in total by default), otherwise it waits in the queue.
 
 ## Pause the whole factory
@@ -76,7 +78,7 @@ Under **Control** in the side panel:
 
 When a task reaches a gate, its station turns amber and **My Approvals** shows a badge. Open the review:
 
-1. Read the specification (or the Gherkin scenarios). The diff shows what changed since the previous version.
+1. Read the specification (or the Gherkin scenarios). The diff shows what changed since the previous version. The **Knowledge used** tab lists the change records, project invariants, and repository/module summaries that the agents read when creating the document.
 2. Choose **Approve**, **Request changes** or **Reject**, and add a comment for the agent if you like.
 3. Type the first 8 characters of the document's hash, shown on the page, and confirm.
 

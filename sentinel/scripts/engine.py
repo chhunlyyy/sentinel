@@ -359,7 +359,7 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         A.verify_stored(self.state_dir, run["slug"], "spec", ap["version"], ap["sha256"])
         return self._stored_text(run["slug"], ap["version"]), ap["version"]
 
-    def _store_version(self, run, kind):
+    def _store_version(self, run, kind, task_id=None):
         """Inside a transaction: copy the shared file(s), add the artifact row, an IN_REVIEW approval and the events."""
         slug = run["slug"]
         gate = "specification" if kind == "spec" else "gherkin"
@@ -381,7 +381,62 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         self.reg.insert_row("approvals", {"run_id": run["id"], "gate": gate, "artifact_id": art["id"],
                                           "version": version, "sha256": sha, "state": "IN_REVIEW"})
         self._event(run, "approval.requested", machines.ENGINE, {"gate": gate, "version": version, "sha256": sha})
+
+        dest_k = self.run_dir(slug) / "artifacts" / f"{kind}-v{version}.knowledge.json"
+        k_copied = False
+        if task_id:
+            k_file = self.run_dir(slug) / "tasks" / task_id / "knowledge.json"
+            if k_file.is_file():
+                try:
+                    shutil.copyfile(k_file, dest_k)
+                    k_copied = True
+                except Exception:
+                    pass
+        if not k_copied:
+            role = "specifier" if kind == "spec" else "test_designer"
+            for t in reversed(self.reg.rows("tasks", run_id=run["id"], role=role)):
+                t_k = self.run_dir(slug) / "tasks" / t["id"] / "knowledge.json"
+                if t_k.is_file():
+                    try:
+                        shutil.copyfile(t_k, dest_k)
+                        break
+                    except Exception:
+                        pass
         return version, sha
+
+    def knowledge_for_gate(self, slug, gate, version=None):
+        kind = "spec" if gate in ("specification", "spec") else "gherkin"
+        run = self._get_v2(slug)
+        if version is None:
+            latest = self._latest_artifact(run, kind)
+            version = latest["version"] if latest else 1
+        art_k = self.run_dir(slug) / "artifacts" / f"{kind}-v{version}.knowledge.json"
+        if art_k.is_file():
+            try:
+                return json.loads(art_k.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        role = "specifier" if kind == "spec" else "test_designer"
+        for t in reversed(self.reg.rows("tasks", run_id=run["id"], role=role)):
+            t_k = self.run_dir(slug) / "tasks" / t["id"] / "knowledge.json"
+            if t_k.is_file():
+                try:
+                    return json.loads(t_k.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+        try:
+            import kb_context
+            cfg = self._run_config(run)
+            repos = run.get("repos") or [r.get("id") for r in cfg.get("repos") or [] if isinstance(r, dict)]
+            return kb_context.collect_project_knowledge(
+                workspace=self.workspace,
+                config=cfg,
+                repos=repos,
+                write_scope=[],
+                shared_dir=self.state_dir / "shared",
+            )
+        except Exception:
+            return {"invariants": [], "records": [], "summaries": []}
 
     def _invalidate(self, run, approval, reason):
         machines.check_approval(approval["state"], "INVALIDATED", machines.ENGINE)
@@ -522,7 +577,7 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
                     what = "specification" if role == "specifier" else "Gherkin"
                     self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=f"{what} invalid after {cap} retries")
             else:
-                self._store_version(run, GATE_KIND[gate])
+                self._store_version(run, GATE_KIND[gate], task_id=task_id)
                 if role == "specifier":
                     self._set_spec_links(run)
                     self._move(run, "SPECIFICATION_REVIEW", machines.ENGINE, reason="specification submitted")

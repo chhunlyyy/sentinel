@@ -305,6 +305,11 @@ def h_config_save(ctx, pid):
 
 # ---- Knowledge
 @_project_read
+def h_knowledge_related(ctx, project):
+    return readroutes.knowledge_related(ctx.projects, project, ctx.query)
+
+
+@_project_read
 def h_knowledge_status(ctx, project):
     return readroutes.knowledge_status(ctx.projects, project)
 
@@ -554,6 +559,7 @@ ROUTES = [
     Route("GET", "config_form", "projects/{pid}/config/form", h_config_form),
     Route("POST", "config_preview", "projects/{pid}/config/preview", h_config_preview),
     Route("POST", "config_save", "projects/{pid}/config/save", h_config_save, ("manage.write_config",)),
+    Route("GET", "knowledge_related", "projects/{pid}/knowledge/related", h_knowledge_related),
     Route("GET", "knowledge_status", "projects/{pid}/knowledge/status", h_knowledge_status),
     Route("GET", "knowledge_records", "projects/{pid}/knowledge/records", h_knowledge_records),
     Route("GET", "knowledge_record", "projects/{pid}/knowledge/records/{key}", h_knowledge_record),
