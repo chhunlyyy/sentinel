@@ -106,7 +106,7 @@ const decision = (r: T.DecisionRecord | null): W.WDecision | null =>
   r ? { decision: r.decision, approver: r.approver, channel: r.channel, comment: r.comment, decided_at: r.at } : null;
 
 const versions = (list: T.VersionRow[], at: string): W.WVersion[] =>
-  list.map((v) => ({ version: v.version, sha256: v.sha256, created_at: at, decision: v.decision, approver: v.reviewer, channel: v.channel, decided_at: v.at, comment: v.comment }));
+  list.map((v) => ({ version: v.version, sha256: v.sha256, created_at: at, decision: v.decision, approver: v.reviewer, channel: v.channel, decided_at: v.at, comment: v.comment, provenance: v.provenance }));
 
 const validation = (v: { findings: T.Finding[] }) => ({
   errors: v.findings.filter((f) => f.severity === 'error').map((f) => f.message),
@@ -117,9 +117,10 @@ export const specification = (s: T.SpecificationAnswer, list: T.VersionRow[], ru
   version: s.version, sha256: s.sha256, approval_state: s.state, run_state: runState, text: s.text, validation: validation(s.validation), diff: s.diff_to_previous,
   previous_version: s.previous_version, versions: versions(list, s.requested_at ?? ''), decision: decision(s.decision), requested_at: s.requested_at,
   knowledge_used: s.knowledge_used ?? sampleKnowledgeUsed(),
+  provenance: s.provenance,
 });
 
-export const specVersion = (s: T.SpecificationAnswer): W.WSpecVersion => ({ version: s.version, sha256: s.sha256, text: s.text });
+export const specVersion = (s: T.SpecificationAnswer): W.WSpecVersion => ({ version: s.version, sha256: s.sha256, text: s.text, provenance: s.provenance ?? null });
 
 export function gherkin(g: T.GherkinAnswer, runState: string): W.WGherkin {
   const files = g.features.map((f) => ({

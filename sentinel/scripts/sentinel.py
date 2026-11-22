@@ -410,9 +410,34 @@ def open_registry(config_path, config):
     return Engine(state_dir_of(config_path, config), config_path.parent, config)
 
 
+def _read_cli_file(path_str, label, scrubber, config):
+    import scrub
+    if path_str == "-":
+        try:
+            raw = sys.stdin.read()
+        except Exception as e:
+            raise SentinelError("E_VALIDATION", f"failed to read {label} from stdin: {e}")
+        if len(raw.encode("utf-8")) > scrub.MAX_BYTES:
+            raise SentinelError("E_VALIDATION", f"{label} is larger than {scrub.MAX_BYTES} bytes")
+    else:
+        p = Path(path_str)
+        if not p.is_file():
+            raise SentinelError("E_VALIDATION", f"{label} file not found: {path_str}")
+        if p.stat().st_size > scrub.MAX_BYTES:
+            raise SentinelError("E_VALIDATION", f"{label} file is larger than {scrub.MAX_BYTES} bytes")
+        try:
+            raw = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raise SentinelError("E_VALIDATION", f"{label} file is not valid UTF-8 text")
+    clean = scrub.clean_text(scrubber, raw, config)
+    return clean.strip() or None if label == "request" else clean
+
+
 def cmd_run_new(args):
     config_path, config = load_config(args.dir)
     legacy = args.legacy or bool(args.tier) or args.adhoc
+    if legacy and (getattr(args, "request_file", None) or getattr(args, "spec_file", None)):
+        raise SentinelError("E_VALIDATION", "--request-file and --spec-file are for version 2 runs")
     directory = claim_run(config_path, config, args.slug, args.adhoc) if legacy else None
     if not legacy:
         return new_v2_run(args, config_path, config)
@@ -446,7 +471,30 @@ def new_v2_run(args, config_path, config):
     unknown = [r for r in only if r not in {c["id"] for c in config["repos"]}]
     if unknown:
         raise SentinelError("E_VALIDATION", f"unknown repo(s): {', '.join(unknown)}")
-    driver, request = getattr(args, "driver", "cli"), (getattr(args, "request", None) or "").strip() or None
+    req_flag = getattr(args, "request", None)
+    req_file_flag = getattr(args, "request_file", None)
+    if req_flag and req_file_flag:
+        raise SentinelError("E_VALIDATION", "choose one of --request, --request-file")
+    spec_file_flag = getattr(args, "spec_file", None)
+    if req_file_flag == "-" and spec_file_flag == "-":
+        raise SentinelError("E_VALIDATION", "cannot read both request and spec from stdin")
+
+    import scrub
+    scrubber = scrub.Scrubber(config_path.parent, scrub.env_values(config_path.parent))
+    request = None
+    if req_file_flag:
+        request = _read_cli_file(req_file_flag, "request", scrubber, config)
+    elif req_flag:
+        request = scrub.clean_text(scrubber, req_flag.strip(), config)
+        if len(request.encode("utf-8")) > scrub.MAX_BYTES:
+            raise SentinelError("E_VALIDATION", f"request is larger than {scrub.MAX_BYTES} bytes")
+        request = request or None
+
+    spec = None
+    if spec_file_flag:
+        spec = _read_cli_file(spec_file_flag, "spec", scrubber, config)
+
+    driver = getattr(args, "driver", "cli")
     if driver == "engine" and not request:
         raise SentinelError("E_VALIDATION", "--driver engine needs --request: the engine's triage agent reads the request text")
     engine = open_registry(config_path, config)
@@ -456,7 +504,7 @@ def new_v2_run(args, config_path, config):
         claim_run(config_path, config, args.slug, False)
         try:
             engine.create_run(args.slug, "orchestrator", type=args.type, baseline=baseline_of(config_path, config, only),
-                              request=request, driver=driver)
+                              request=request, driver=driver, spec=spec)
         except BaseException:
             if not engine.reg.get_run(args.slug):  # row not committed: nothing owns the lock
                 from shared import Shared
@@ -641,6 +689,8 @@ def cmd_run_finish(args):
 def print_review(info, slug):
     print(f"{info['gate']} of {slug}: version {info['version']}, approval {info['approval_state']}, run {info['run_state']}")
     print(f"sha256: {info['sha256']}")
+    if info.get("provenance"):
+        print(f"provenance: {info['provenance']}")
     print()
     if info["gate"] == "specification":
         print(info["text"].rstrip("\n"))
@@ -1683,6 +1733,8 @@ def main():
                      help="who drives a version 2 run: cli (you, or an AI tool with the /sentinel skill; default) or engine "
                           "(the Sentinel service runs it; needs --request and a CLI runner for every role)")
     new.add_argument("--request", help="the request text of a version 2 run (needed by --driver engine)")
+    new.add_argument("--request-file", help="read the request text from a file (- for stdin)")
+    new.add_argument("--spec-file", help="read an imported specification draft v1 from a file (- for stdin)")
     new.set_defaults(func=cmd_run_new)
     update = run_sub.add_parser("update")
     update.add_argument("slug")

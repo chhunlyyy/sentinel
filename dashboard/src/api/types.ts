@@ -240,6 +240,7 @@ export interface VersionRow {
   channel: string | null;
   at: string | null;
   comment: string | null;
+  provenance?: string;
 }
 
 export interface SpecificationAnswer {
@@ -254,6 +255,7 @@ export interface SpecificationAnswer {
   decision: DecisionRecord | null;
   requested_at: string | null;
   knowledge_used?: WKnowledgeUsed;
+  provenance?: string;
 }
 
 export interface GherkinScenario {

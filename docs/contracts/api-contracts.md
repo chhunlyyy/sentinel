@@ -58,10 +58,10 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 
 | Method | Path | Engine function |
 |---|---|---|
-| GET/POST | `/projects/{pid}/tasks` | `runs.list / create(request, repos, type, priority, ...)` |
+| GET/POST | `/projects/{pid}/tasks` | `runs.list / create(request, repos, type, priority, spec, ...)` |
 | GET | `/tasks/{slug}` | `runs.get` (state, statuses, graph summary) |
 | GET | `/tasks/{slug}/next` | `engine.next` (same as `sentinel next --json`) |
-| GET | `/tasks/{slug}/specification` | current version, hash, validation, diff to previous, `knowledge_used` (records, invariants, summaries read by agents) |
+| GET | `/tasks/{slug}/specification` | current version, hash, validation, diff to previous, `provenance`, `knowledge_used` (records, invariants, summaries read by agents) |
 | GET | `/tasks/{slug}/specification/versions/{v}` | that version |
 | GET | `/tasks/{slug}/gherkin` | features, scenarios, tags, coverage table, hash, `knowledge_used` |
 | POST | `/tasks/{slug}/approvals` | body `{gate, sha256, confirmation, decision, comment}` -> `approvals.decide` (human only). `sha256` is the full hash, `confirmation` its first 8 characters as typed |
@@ -135,7 +135,7 @@ Only Phase F routes exist; every other route above answers `404 E_NOT_FOUND` unt
 
 | Command | Actor | Purpose |
 |---|---|---|
-| `sentinel run new <slug> --type T [--repos a,b] [--legacy]` | O, H | create run (version 2 by default) |
+| `sentinel run new <slug> --type T [--repos a,b] [--request-file F] [--spec-file S] [--legacy]` | O, H | create run (version 2 by default) |
 | `sentinel triage <slug> --factors k=v,...` | O | submit factors; engine sets tier |
 | `sentinel next <slug> [--json]` | O, H | what is allowed now: task to run, human action, or done |
 | `sentinel task run <task-id>` | O | dispatch through the adapter |

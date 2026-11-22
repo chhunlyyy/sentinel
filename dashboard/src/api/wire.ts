@@ -156,6 +156,7 @@ export interface WVersion {
   channel: string | null;
   decided_at: string | null;
   comment: string | null;
+  provenance?: string | null;
 }
 
 export interface WKnowledgeUsed {
@@ -176,6 +177,7 @@ interface WReview {
   decision: WDecision | null;
   requested_at: string | null;
   knowledge_used?: WKnowledgeUsed;
+  provenance?: string | null;
 }
 
 export interface WSpecification extends WReview {
@@ -186,6 +188,7 @@ export interface WSpecVersion {
   version: number;
   sha256: string;
   text: string;
+  provenance?: string | null;
 }
 
 export interface WGherkin extends WReview {

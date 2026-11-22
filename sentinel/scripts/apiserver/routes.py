@@ -94,7 +94,7 @@ def h_create_run(ctx, pid):
     ctx.project = project
     config = ctx.projects.require(project)
     with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
-        slug = ops.create_run(eng, project, config, ctx.body, ctx.user)
+        slug = ops.create_run(eng, project, config, ctx.body, ctx.user, scrubber=ctx.projects.scrubber(project))
         return 201, ctx.clean(project, views.run_detail(eng, project, slug))
 
 

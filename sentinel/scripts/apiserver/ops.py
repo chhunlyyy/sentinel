@@ -6,6 +6,7 @@ import subprocess
 
 import engine as engine_mod
 import factory
+import scrub
 from errors import SentinelError
 from paths import slug_problem
 from shared import Shared
@@ -51,8 +52,8 @@ def git_head(path):
     return r.stdout.strip() or None
 
 
-def parse_create(body, config):
-    check_fields(body, ("slug", "request", "type", "repos", "priority", "tier", "ticket"), ("slug", "request", "type"))
+def parse_create(body, config, scrubber=None):
+    check_fields(body, ("slug", "request", "type", "repos", "priority", "tier", "ticket", "spec"), ("slug", "request", "type"))
     slug = text_field(body, "slug")
     problem = slug_problem(slug)
     if problem:
@@ -60,6 +61,20 @@ def parse_create(body, config):
     request = text_field(body, "request")
     if not request.strip():
         raise bad("request must not be empty", "request")
+    if len(request.encode("utf-8")) > scrub.MAX_BYTES:
+        raise bad(f"request is larger than {scrub.MAX_BYTES} bytes", "request")
+    if scrubber is not None:
+        request = scrub.clean_text(scrubber, request, config)
+
+    spec = text_field(body, "spec", required=False)
+    if spec is not None:
+        if len(spec.encode("utf-8")) > scrub.MAX_BYTES:
+            raise bad(f"spec is larger than {scrub.MAX_BYTES} bytes", "spec")
+        if scrubber is not None:
+            spec = scrub.clean_text(scrubber, spec, config)
+        if not spec.strip():
+            spec = None
+
     typ = text_field(body, "type")
     if typ not in RUN_TYPES:
         raise bad(f"type must be one of {', '.join(RUN_TYPES)}", "type", allowed=list(RUN_TYPES))
@@ -82,7 +97,7 @@ def parse_create(body, config):
     if ticket and ticket.strip():
         request = f"{request}\n\nTicket: {ticket.strip()}"
     return {"slug": slug, "request": request, "type": typ, "repos": list(dict.fromkeys(repos)),
-            "priority": priority, "tier": tier}
+            "priority": priority, "tier": tier, "spec": spec}
 
 
 def prepare_shared(shared):
@@ -97,9 +112,9 @@ def prepare_shared(shared):
         raise SentinelError("E_PRECONDITION", f"the shared repo ({shared.url}) is not cloned; run `sentinel sync pull`")
 
 
-def create_run(eng, project, config, body, user):
+def create_run(eng, project, config, body, user, scrubber=None):
     """Engine.create_run for a run created at the dashboard. Its driver is `factory.driver` (default engine); it authorizes nothing."""
-    spec = parse_create(body, config)
+    spec = parse_create(body, config, scrubber=scrubber)
     repo_paths = {r["id"]: project.path / r["path"] for r in config.get("repos") or [] if isinstance(r, dict) and r.get("id")}
     baseline = {}
     for repo in spec["repos"]:
@@ -119,7 +134,7 @@ def create_run(eng, project, config, body, user):
     try:
         eng.create_run(slug, HUMAN, type=spec["type"], baseline=baseline, request=spec["request"],
                        priority=spec["priority"], requested_tier=spec["tier"], origin=CHANNEL,
-                       driver=factory.factory_config(config)["driver"])
+                       driver=factory.factory_config(config)["driver"], spec=spec.get("spec"))
     except BaseException:
         if not eng.reg.get_run(slug):
             shared.release(slug)

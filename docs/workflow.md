@@ -24,7 +24,7 @@ Steps in square brackets are yours, in an interactive terminal or in the dashboa
 
 ### 1. Run creation and routing preflight
 
-`sentinel run new <slug> --type feature` creates the run (type is one of `feature`, `bug`, `docs`, `refactor`, `migration`, `security`, `chore`; `--repos a,b` limits the repos). It records the baseline commit of every repo and a snapshot of the config. Creating a run authorizes nothing.
+`sentinel run new <slug> --type feature` creates the run (type is one of `feature`, `bug`, `docs`, `refactor`, `migration`, `security`, `chore`; `--repos a,b` limits the repos). You can supply the request text via `--request "<text>"` or `--request-file <path>` (use `-` for standard input). If you already have a specification drafted in an AI session, pass `--spec-file <path>`: it is stored as draft v1 and the factory skips the specifier stage, moving directly to human review once triage completes. It records the baseline commit of every repo and a snapshot of the config. Creating a run authorizes nothing.
 
 For engine-driven runs (`--driver engine` or created in the dashboard), the engine runs a **routing preflight** before starting:
 - Every role the run may use (`triage`, `planner`, `specifier`, `test_designer`, `tdd_red`, `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `hardener`, `docs`, and `qa_red` if QA scenarios are enabled) must route to a CLI runner (`claude`, `codex`, `gemini`, `agy`, or one defined under `runners`).
