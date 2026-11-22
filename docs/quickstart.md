@@ -18,7 +18,7 @@ No `uv`? `pipx install sentinel-pipeline` works the same way. Upgrade with `uv t
 Optional AI tool skills (what your agent sees as `/sentinel`) can be installed into your AI coding tool:
 
 ```bash
-npx skills@latest add chhunlyyy/sentinel@v2.0.0 --skill '*' -a claude-code
+npx skills@latest add chhunlyyy/sentinel@v2.1.0 --skill '*' -a claude-code
 ```
 
 ## 2. Start the dashboard

@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.1.0
+
+### Added
+
+- New look across the whole dashboard, matching the 2.0 design mockup: a top navigation bar (Factory floor, New task, Approvals, Projects, Runs, Knowledge, Reports, Settings, and a More menu for Overview, Tasks and Quality) replaces the left sidebar, and a dark theme is the default (the light theme stays available).
+- Factory floor: always a dark canvas; build fans out into one lane per behavior; each agent station shows its AI tool and model; station labels no longer collide with the links; an "Activity across the factory" feed; a project switcher (each project keeps its own floor); review buttons on waiting gates.
+- Whole-factory pause: the Pause factory button in the header, `sentinel service pause` and `sentinel service resume`, and `GET /api/v1/factory`, `POST /api/v1/factory/pause|resume`. While paused, no new agent task starts; running tasks finish. Audited, with `factory.paused` and `factory.resumed` events.
+- Factory snapshot fields `factory_paused`, `who` (runner and model per agent station) and `activity` (the last 20 events).
+- Usage limits: when a provider CLI reports a usage or rate limit, the task waits (back to QUEUED with `retry_at`, parsed from the message, or `routing.limit_backoff`, default 30 minutes) instead of failing. Optional `routing.fallback` runs it once on another runner. The floor shows "Waiting for usage limit · retries HH:MM"; `task.limit_reached` notification; `sentinel resolve <slug> --retry-now` and a Retry now button.
+- Fix routing: a banner and dialog on the floor and project home suggest a runner and model for each role that blocks engine-driven runs, with a YAML preview and Save; `sentinel doctor --fix-routing` does the same in a terminal.
+- Usage per task: input and output tokens, cost (when the provider reports it) and wall time per agent task, on the run page, the floor side panel and Reports; `sentinel stats --usage`. Optional per-project daily budgets (`factory.budget`) stop new tasks for the day when reached (`budget.reached` notification).
+- Knowledge in the flow: the New task screen shows related past changes and invariants as you type, the free slots and the queue position, and keeps drafts; the approval screens have a "Knowledge used" tab listing what the agents read. `GET /api/v1/projects/{pid}/knowledge/related`.
+- Send an idea from any AI session: `sentinel run new --request-file` and `--spec-file` (an imported spec is draft v1 and still needs your approval with the typed hash), an "I already have a spec" field on Create task, and the `/sentinel-send` skill.
+
+### Fixed
+
+- The factory floor no longer clips the first and last stations, and the legend no longer covers the Knowledge station.
+- The release test AC-OPS-01i no longer races the server's engine loop in the self-test.
+- Backup restore tests no longer read the real user config folder.
+- Gemini runner flags follow the real CLI (`--approval-mode auto_edit --skip-trust`, `--include-directories`, `--yolo`); the model check reports the error line instead of a stack frame.
+- Accessibility: station and knowledge record buttons have names that match their visible text; scrollable blocks are keyboard focusable. Automated axe-core checks now cover every screen.
+
+### Upgrade
+
+- Registry migrations 0014 (usage limits), 0015 (usage per task) and 0016 (artifact provenance) are additive. Rollback: restore the registry backup taken before the upgrade; 2.0.0 ignores the new columns.
+
 ## 2.0.0
 
 ### Added

@@ -77,7 +77,7 @@ You need Python 3.10+ with [uv](https://docs.astral.sh/uv/) or pipx, git, and an
 
 ```bash
 uv tool install sentinel-pipeline     # the dashboard is included
-sentinel --version                    # 2.0.0
+sentinel --version                    # 2.1.0
 ```
 
 A git install has the CLI but not the dashboard UI; see the [installation guide](docs/installation.md#the-dashboard-ui). Add `/sentinel` to your AI tool with `npx skills@latest add chhunlyyy/sentinel -a claude-code`.
@@ -95,10 +95,10 @@ Upgrading from 1.x? Read [migrating to 2.0](docs/migration-2.0.md).
 - [Dashboard user guide](docs/gui-guide.md) and [command-line guide](docs/cli-guide.md)
 - [Quickstart](docs/quickstart.md), [installation](docs/installation.md), [workflow](docs/workflow.md), [knowledge base](docs/knowledge.md)
 - [Dashboard reference](docs/dashboard.md), [operations](docs/operations.md), [configuration](docs/config.md), [security](docs/security.md)
-- [Migrating to 2.0.0](docs/migration-2.0.md), [migrating to 1.1.0](docs/migration-1.1.md), [changelog](CHANGELOG.md), [beta testing](docs/beta-testing.md), [pipeline contract](skills/sentinel/pipeline.md)
+- [Migrating from 1.x to 2.0](docs/migration-2.0.md), [migrating to 1.1.0](docs/migration-1.1.md), [changelog](CHANGELOG.md), [beta testing](docs/beta-testing.md), [pipeline contract](skills/sentinel/pipeline.md)
 
 ## Status
 
-Version 2.0.0, beta. Every part has unit, integration, browser and security tests, but 2.0 has not yet run with whole teams over weeks of real work. A manual screen-reader pass of the dashboard has not been done; accessibility is covered by automated axe-core checks only. Known limits are in [security](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md). The PyPI name is `sentinel-pipeline` because `sentinel` is taken; the command is still `sentinel`.
+Version 2.1.0, beta. Every part has unit, integration, browser and security tests, but 2.0 has not yet run with whole teams over weeks of real work. A manual screen-reader pass of the dashboard has not been done; accessibility is covered by automated axe-core checks only. Known limits are in [security](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md). The PyPI name is `sentinel-pipeline` because `sentinel` is taken; the command is still `sentinel`.
 
 MIT licensed. See [LICENSE](LICENSE).
