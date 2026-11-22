@@ -107,6 +107,17 @@ test.describe('Factory floor screen', () => {
     await expect(sidePanel.getByRole('link', { name: 'Open the report' })).toBeVisible();
   });
 
+  test('a run that needs you shows why and links to the run, not to a review with no decision', async ({ page, api }) => {
+    await api.set(['factory', 'digital-hr', 'runs', 1, 'state'], 'NEEDS_HUMAN');
+    await api.set(['factory', 'digital-hr', 'runs', 1, 'attention'], { kind: 'needs_human', reason: 'imported specification invalid for tier 3' });
+    await open(page, '/floor');
+    await page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Fix payroll rounding/ }).click();
+    const sidePanel = page.getByRole('complementary', { name: 'Selected station' });
+    await expect(sidePanel.getByTestId('floor-attention')).toHaveText('Needs you: imported specification invalid for tier 3');
+    await expect(sidePanel.getByRole('link', { name: 'Open the run to fix and resume' })).toHaveAttribute('href', /runs\/payroll-rounding$/);
+    await expect(sidePanel.getByRole('link', { name: 'Review specification' })).toHaveCount(0);
+  });
+
   test('station labels sit on a background chip and no station is clipped at 1024px', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 800 });
     await open(page, '/floor');

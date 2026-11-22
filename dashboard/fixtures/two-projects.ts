@@ -375,7 +375,7 @@ export function digitalHrFactory(): W.WFactory {
         next_station: 'gherkin',
         agents: {},
         lanes: [],
-        attention: { kind: 'needs_human', reason: 'Spec v1 waits for your approval' },
+        attention: null,
         limit: null,
         task_usage: {},
         pending_notes: 0,
