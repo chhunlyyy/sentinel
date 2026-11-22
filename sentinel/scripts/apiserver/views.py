@@ -293,7 +293,7 @@ def _gate_extra(eng, slug, gate):
         versions.append({"version": a["version"], "sha256": a["sha256"], "created_at": a["created_at"],
                          "decision": rec["decision"] if rec else None, "approver": rec["approver"] if rec else None,
                          "channel": rec["channel"] if rec else None, "decided_at": rec["decided_at"] if rec else None,
-                         "comment": rec["comment"] if rec else None})
+                         "comment": rec["comment"] if rec else None, "provenance": a.get("provenance")})
     ap = _latest(approvals)
     art = arts.get(ap["artifact_id"]) if ap else None
     version = ap["version"] if ap else (sorted(arts.keys())[-1] if arts else 1)
@@ -308,7 +308,8 @@ def specification(eng, slug):
     return {**_gate_extra(eng, slug, "specification"), **{"version": info["version"], "sha256": info["sha256"], "approval_state": info["approval_state"],
             "run_state": info["run_state"], "text": info["text"],
             "validation": {"errors": info["errors"], "warnings": info["warnings"]},
-            "diff": info["diff"], "previous_version": info.get("previous_version")}}
+            "diff": info["diff"], "previous_version": info.get("previous_version"),
+            "provenance": info.get("provenance")}}
 
 
 def specification_version(eng, slug, version):
@@ -321,7 +322,7 @@ def specification_version(eng, slug, version):
     if not rows:
         raise SentinelError("E_NOT_FOUND", f"no specification version {v}", {"version": v})
     A.verify_stored(eng.state_dir, slug, "spec", v, rows[0]["sha256"])
-    return {"version": v, "sha256": rows[0]["sha256"], "text": eng._stored_text(slug, v)}
+    return {"version": v, "sha256": rows[0]["sha256"], "text": eng._stored_text(slug, v), "provenance": rows[0].get("provenance")}
 
 
 def gherkin(eng, slug):

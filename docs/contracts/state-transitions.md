@@ -34,6 +34,8 @@ Actors: `E` engine, `O` orchestrator (AI tool through the CLI), `H` human (TTY o
 
 Docs-only runs skip R8 to R11: `SPECIFICATION_APPROVED -> EXECUTING` (R12d) with the spec approval as the only gate.
 
+Runs with an imported specification (created with `--spec-file` or dashboard `spec`): stored as draft v1 with `provenance = "imported from a session"`. Triage runs normally; upon reaching `PLANNED`, the specifier task is skipped for v1, the imported spec is validated against the computed tier, and the run advances to `SPECIFICATION_REVIEW` with approval state `IN_REVIEW`. The human gate (`R5`) strictly requires the human's typed hash prefix. If changes are requested (`R6`), the engine queues the specifier agent task for v2.
+
 "Any active" = not COMPLETED, FAILED, CANCELLED.
 
 ## 2. Task

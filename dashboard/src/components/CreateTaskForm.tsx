@@ -11,6 +11,7 @@ export interface CreateTaskBody {
   priority: string;
   tier?: number;
   ticket?: string;
+  spec?: string;
 }
 
 export interface CreateTaskFormProps {
@@ -47,6 +48,8 @@ export function CreateTaskForm({
   const [priority, setPriority] = useState('normal');
   const [tier, setTier] = useState('');
   const [ticket, setTicket] = useState('');
+  const [hasSpec, setHasSpec] = useState(false);
+  const [spec, setSpec] = useState('');
   const [chosen, setChosen] = useState<string[]>(repos);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [draftSaved, setDraftSaved] = useState(false);
@@ -73,6 +76,10 @@ export function CreateTaskForm({
           if (parsed.priority) setPriority(parsed.priority);
           if (parsed.tier !== undefined && parsed.tier !== null) setTier(String(parsed.tier));
           if (parsed.ticket) setTicket(parsed.ticket);
+          if (parsed.spec) {
+            setSpec(parsed.spec);
+            setHasSpec(true);
+          }
           if (Array.isArray(parsed.repos) && parsed.repos.length) setChosen(parsed.repos);
         }
       }
@@ -113,6 +120,7 @@ export function CreateTaskForm({
       ...(tier ? { tier: Number(tier) } : {}),
       ...(ticket.trim() ? { ticket: ticket.trim() } : {}),
       ...(chosen.length ? { repos: chosen } : {}),
+      ...(hasSpec && spec.trim() ? { spec: spec.trim() } : {}),
     };
     try {
       window.localStorage.setItem(draftKey, JSON.stringify(draftData));
@@ -131,6 +139,7 @@ export function CreateTaskForm({
     if (chosen.length !== repos.length) body.repos = chosen;
     if (tier) body.tier = Number(tier);
     if (ticket.trim()) body.ticket = ticket.trim();
+    if (hasSpec && spec.trim()) body.spec = spec.trim();
     try {
       await onSubmit(body);
       if (draftKey) {
@@ -239,6 +248,53 @@ export function CreateTaskForm({
         </select>
         {err('type')}
       </div>
+
+      <div className="field">
+        <label className="check" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input
+            id={`${uid}-has-spec`}
+            type="checkbox"
+            checked={hasSpec}
+            onChange={(e) => setHasSpec(e.target.checked)}
+          />
+          <span>I already have a spec</span>
+        </label>
+      </div>
+
+      {hasSpec ? (
+        <div className="field">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+            <label htmlFor={`${uid}-spec`}>Specification</label>
+            <label className="secondary" style={{ cursor: 'pointer', fontSize: '0.85rem' }}>
+              Upload file
+              <input
+                type="file"
+                accept=".md,.txt,text/plain,text/markdown"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const text = ev.target?.result;
+                    if (typeof text === 'string') {
+                      setSpec(text);
+                    }
+                  };
+                  reader.readAsText(file);
+                }}
+              />
+            </label>
+          </div>
+          <textarea
+            id={`${uid}-spec`}
+            rows={8}
+            placeholder="Paste your pre-drafted specification here…"
+            value={spec}
+            onChange={(e) => setSpec(e.target.value)}
+          />
+        </div>
+      ) : null}
 
       {/* Collapsible options as in NewTask mockup */}
       <details open className="panel" style={{ padding: '0.75rem 1rem' }}>

@@ -115,6 +115,7 @@ function VersionsList({ versions, current, gate, pid, slug }: { versions: Versio
       {earlier.map((v) => (
         <li key={v.version} className="panel" data-testid={`version-row-${v.version}`}>
           <Link to={`/projects/${enc(pid)}/runs/${enc(slug)}/${gate}/versions/${v.version}`}>Version {v.version}</Link> <code>{prefix(v.sha256)}</code>{' '}
+          {v.provenance ? <span className="provenance hint">({v.provenance}) </span> : null}
           {v.decision ?? 'no decision'} {v.reviewer ? `by ${v.reviewer}` : ''} {v.channel ? `via ${v.channel}` : ''} {v.at ? `at ${formatTime(v.at)}` : ''}
           {v.comment ? <div className="pre-wrap">Comment: {v.comment}</div> : null}
         </li>
@@ -350,6 +351,7 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged }: ReviewPro
             <h2>{label} review</h2>
             <p>
               <strong data-testid="review-version">Version {view.version}</strong> <span data-testid="approval-state">{STATE_LABEL[view.state] ?? view.state}</span>
+              {'provenance' in view && view.provenance ? <span className="provenance hint" data-testid="review-provenance" style={{ marginLeft: '0.5rem' }}>({view.provenance})</span> : null}
               {view.requested_at ? <span className="hint"> review requested {formatTime(view.requested_at)}</span> : null}
             </p>
             <div>

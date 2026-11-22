@@ -11,6 +11,8 @@ import os
 import shutil
 from pathlib import Path
 
+import yaml
+
 import artifacts as A
 import boundary
 import machines
@@ -166,6 +168,11 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         elif to in ("CANCELLED", "FAILED"):
             self.cancel_open_tasks(run, f"run {to.lower()}")
         if rule == "R3":
+            if self._has_imported_spec_v1(run):
+                self._advance_imported_spec(run)
+            else:
+                self._auto_task({**run, **fields}, "specifier")
+        elif rule == "R6":
             self._auto_task({**run, **fields}, "specifier")
         elif rule == "R5" and run["type"] != "docs":
             self._auto_task({**run, **fields}, "test_designer")
@@ -186,8 +193,72 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         return run
 
     # ---- commands
+    def _prepare_imported_spec(self, text, slug, tier, run_type):
+        raw, body = A._split_front_matter(text)
+        if raw is None:
+            text = f"---\nrun: {slug}\nversion: 1\ntier: {tier}\n---\n" + text.lstrip()
+        else:
+            fm, err = A._load_front_matter(raw)
+            if err:
+                raise SentinelError("E_VALIDATION", f"invalid specification front matter: {err}")
+            if not isinstance(fm, dict):
+                fm = {}
+            fm["run"] = slug
+            fm["version"] = 1
+            fm.setdefault("tier", tier)
+            text = f"---\n{yaml.dump(fm, sort_keys=False)}---\n" + body
+        rep = A.validate_spec(text, slug, tier, run_type or "feature")
+        if not rep.ok:
+            raise SentinelError("E_VALIDATION", f"invalid specification: {'; '.join(rep.errors)}", {"errors": rep.errors})
+        return text
+
+    def _has_imported_spec_v1(self, run):
+        arts = [a for a in self._rows(run, "artifacts", kind="spec") if a["version"] == 1]
+        if not arts or arts[0].get("provenance") != "imported from a session":
+            return False
+        tasks = [t for t in self.reg.rows("tasks", run_id=run["id"]) if t["role"] == "specifier" and t["state"] == "COMPLETED"]
+        if tasks:
+            return False
+        ap = self._latest_approval(run, "specification")
+        return ap is not None and ap["version"] == 1 and ap["state"] in ("DRAFT", "IN_REVIEW")
+
+    def _advance_imported_spec(self, run):
+        slug = run["slug"]
+        tier = run["tier"] or 1
+        path = self.spec_path(slug)
+        if path.is_file():
+            raw_text = path.read_text(encoding="utf-8")
+            raw, body = A._split_front_matter(raw_text)
+            fm, _ = A._load_front_matter(raw) if raw else ({}, None)
+            fm = fm if isinstance(fm, dict) else {}
+            if fm.get("tier") != tier:
+                fm["tier"] = tier
+                new_text = f"---\n{yaml.dump(fm, sort_keys=False)}---\n" + body
+                path.write_text(new_text, encoding="utf-8")
+                art = self._latest_artifact(run, "spec")
+                if art:
+                    dest = self.state_dir / art["path"]
+                    dest.write_text(new_text, encoding="utf-8")
+                    new_sha = A.spec_hash(path)
+                    self.reg.update_row("artifacts", art["id"], sha256=new_sha)
+                    ap = self._latest_approval(run, "specification")
+                    if ap:
+                        self.reg.update_row("approvals", ap["id"], sha256=new_sha)
+        rep = A.validate_spec(path.read_text(encoding="utf-8"), slug, tier, run["type"] or "feature")
+        if not rep.ok:
+            self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=f"imported specification invalid for tier {tier}: {'; '.join(rep.errors)}")
+            return
+        ap = self._latest_approval(run, "specification")
+        if ap and ap["state"] == "DRAFT":
+            machines.check_approval("DRAFT", "IN_REVIEW", machines.ENGINE)
+            self.reg.update_row("approvals", ap["id"], state="IN_REVIEW")
+            self._event(run, "approval.requested", machines.ENGINE,
+                        {"gate": "specification", "version": ap["version"], "sha256": ap["sha256"]})
+        self._set_spec_links(run)
+        self._move(run, "SPECIFICATION_REVIEW", machines.ENGINE, reason="imported specification submitted")
+
     def create_run(self, slug, actor, type=None, baseline=None, request=None, adhoc=False,
-                   priority=None, requested_tier=None, origin=None, driver=None):
+                   priority=None, requested_tier=None, origin=None, driver=None, spec=None):
         baseline = baseline or {}
         driver = driver or ("ai-tool" if origin == "dashboard" else "cli")
         if driver not in DRIVERS:
@@ -196,6 +267,9 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         cfg_file = self.workspace / "sentinel.config.yaml"
         if cfg_file.exists():
             config_text = cfg_file.read_text(encoding="utf-8")
+        prepared_spec = None
+        if spec is not None:
+            prepared_spec = self._prepare_imported_spec(spec, slug, requested_tier or 1, type or "feature")
         with self.reg.transaction():
             if self.reg.get_run(slug):
                 raise SentinelError("E_PRECONDITION", f"run {slug} already exists", {"slug": slug})
@@ -211,6 +285,11 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
             for repo_id, sha in sorted(baseline.items()):
                 self.reg.add_run_repo(run["id"], repo_id, sha)
                 self._record_dirty(run, repo_id)
+            if prepared_spec is not None:
+                sp = self.spec_path(slug)
+                sp.parent.mkdir(parents=True, exist_ok=True)
+                sp.write_text(prepared_spec, encoding="utf-8")
+                self._store_version(run, "spec", provenance="imported from a session", state="DRAFT")
             self._event(run, "run.created", actor, {
                 "tier": None, "type": type, "repos": sorted(baseline),
                 "config_sha256": hashlib.sha256(config_text.encode("utf-8")).hexdigest()})
@@ -359,7 +438,7 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         A.verify_stored(self.state_dir, run["slug"], "spec", ap["version"], ap["sha256"])
         return self._stored_text(run["slug"], ap["version"]), ap["version"]
 
-    def _store_version(self, run, kind, task_id=None):
+    def _store_version(self, run, kind, task_id=None, provenance=None, state="IN_REVIEW"):
         """Inside a transaction: copy the shared file(s), add the artifact row, an IN_REVIEW approval and the events."""
         slug = run["slug"]
         gate = "specification" if kind == "spec" else "gherkin"
@@ -372,15 +451,22 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         src = self.spec_path(slug) if kind == "spec" else self.features_dir(slug)
         version, sha, dest = A.store_version(self.state_dir, slug, kind, src, version)
         path = str(Path(dest).relative_to(self.state_dir))
-        self.reg.insert_row("artifacts", {"run_id": run["id"], "kind": kind, "version": version, "path": path,
-                                          "sha256": sha, "created_at": _now()})
+        art_row = {"run_id": run["id"], "kind": kind, "version": version, "path": path,
+                   "sha256": sha, "created_at": _now()}
+        if provenance:
+            art_row["provenance"] = provenance
+        self.reg.insert_row("artifacts", art_row)
         art = self._latest_artifact(run, kind)
-        self._event(run, "artifact.version_created", machines.ENGINE,
-                    {"kind": kind, "version": version, "sha256": sha, "path": path})
-        machines.check_approval("DRAFT", "IN_REVIEW", machines.ENGINE)
+        ev_payload = {"kind": kind, "version": version, "sha256": sha, "path": path}
+        if provenance:
+            ev_payload["provenance"] = provenance
+        self._event(run, "artifact.version_created", machines.ENGINE, ev_payload)
+        if state != "DRAFT":
+            machines.check_approval("DRAFT", state, machines.ENGINE)
         self.reg.insert_row("approvals", {"run_id": run["id"], "gate": gate, "artifact_id": art["id"],
-                                          "version": version, "sha256": sha, "state": "IN_REVIEW"})
-        self._event(run, "approval.requested", machines.ENGINE, {"gate": gate, "version": version, "sha256": sha})
+                                          "version": version, "sha256": sha, "state": state})
+        if state == "IN_REVIEW":
+            self._event(run, "approval.requested", machines.ENGINE, {"gate": gate, "version": version, "sha256": sha})
 
         dest_k = self.run_dir(slug) / "artifacts" / f"{kind}-v{version}.knowledge.json"
         k_copied = False
@@ -821,10 +907,11 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         adir = self.run_dir(slug) / "artifacts"
         info = {"gate": gate, "kind": kind, "version": art["version"], "sha256": art["sha256"],
                 "approval_state": ap["state"] if ap else None, "run_state": run["state"], "diff": None,
-                "errors": [], "warnings": []}
+                "errors": [], "warnings": [], "provenance": art.get("provenance")}
         if gate == "specification":
             text = self._stored_text(slug, art["version"])
-            rep = A.validate_spec(text, slug, run["tier"], run["type"] or "feature")
+            tier = run["tier"] or run.get("requested_tier") or 1
+            rep = A.validate_spec(text, slug, tier, run["type"] or "feature")
             info.update(text=text, errors=list(rep.errors), warnings=list(rep.warnings))
             if not self.spec_path(slug).is_file():
                 info["errors"].append(f"specs/{slug}/spec.md not found")

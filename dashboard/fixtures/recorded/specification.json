@@ -8,6 +8,7 @@
     "summaries": []
   },
   "previous_version": null,
+  "provenance": null,
   "requested_at": "2026-11-22T01:19:22.250937Z",
   "run_state": "SPECIFICATION_REVIEW",
   "sha256": "8a7d55df0fc2de520e35661173ddf627ca22b365b09c6d761cb2d356d492edcd",
@@ -25,6 +26,7 @@
       "created_at": "2026-11-22T01:19:22.250937Z",
       "decided_at": null,
       "decision": null,
+      "provenance": null,
       "sha256": "8a7d55df0fc2de520e35661173ddf627ca22b365b09c6d761cb2d356d492edcd",
       "version": 1
     }

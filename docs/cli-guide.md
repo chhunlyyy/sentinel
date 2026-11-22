@@ -35,6 +35,8 @@ Let the engine drive it (the factory starts every agent itself):
 sentinel run new leave-export --type feature --driver engine --request "HR exports leave balances as CSV, HR only"
 ```
 
+You can pass a request from a file with `--request-file <path>` (or `-` for stdin; mutually exclusive with `--request`). To start a run with a specification drafted in an AI session, pass `--spec-file <path>`: it goes in as draft v1 and skips the specifier stage, while triage and your human approval gate remain strictly required.
+
 Or drive it yourself, or with your AI tool's `/sentinel` skill (the default `--driver cli`):
 
 ```bash
@@ -149,6 +151,7 @@ Type the command in your tool, or just ask for it in words:
 | `/sentinel-docs` | Updates docs and drafts the PR |
 | `/sentinel-rollout` | Collects deploy-time changes |
 | `/sentinel-retro` | Proposes new project invariants |
+| `/sentinel-send` | Summarizes an AI session into a request and optional spec to start a Sentinel run |
 
 Every stage is also its own skill, so you can run just one: for example `/sentinel-review` for a review of your uncommitted changes, or `/sentinel-release-check` before you commit. A standalone stage needs a config but no spec, lock or shared repo.
 

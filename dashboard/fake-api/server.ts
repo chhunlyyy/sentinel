@@ -388,7 +388,7 @@ route('POST', `${V}/projects/{pid}/tasks`, (c) => {
   const pid = decodeURIComponent(c.params[0]);
   const d = proj(pid);
   const b = body(c);
-  const allowed = ['slug', 'request', 'type', 'repos', 'priority', 'tier', 'ticket'];
+  const allowed = ['slug', 'request', 'type', 'repos', 'priority', 'tier', 'ticket', 'spec'];
   for (const k of Object.keys(b)) if (!allowed.includes(k)) throw new ApiErr(400, 'E_VALIDATION', `unknown field ${k}`, { field: k });
   for (const k of ['slug', 'request', 'type']) if (!b[k]) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
   const slug = String(b.slug);
@@ -401,6 +401,38 @@ route('POST', `${V}/projects/{pid}/tasks`, (c) => {
     created_at: now, updated_at: now, task_counts: {},
     approvals: { specification: { gate: 'specification', state: 'NOT_REQUESTED', version: null, sha256: null }, gherkin: { gate: 'gherkin', state: 'NOT_REQUESTED', version: null, sha256: null } },
   };
+  if (b.spec && typeof b.spec === 'string' && b.spec.trim()) {
+    const specSha = createHash('sha256').update(b.spec).digest('hex');
+    template.specification = {
+      ...template.specification,
+      current: {
+        ...template.specification.current,
+        version: 1,
+        sha256: specSha,
+        text: b.spec,
+        state: 'IN_REVIEW',
+        provenance: 'imported from a session',
+      },
+      versions: [
+        {
+          version: 1,
+          sha256: specSha,
+          decision: null,
+          reviewer: null,
+          channel: null,
+          at: null,
+          comment: null,
+          provenance: 'imported from a session',
+        },
+      ],
+    };
+    template.detail.approvals.specification = {
+      gate: 'specification',
+      state: 'IN_REVIEW',
+      version: 1,
+      sha256: specSha,
+    };
+  }
   template.next = { kind: 'orchestrator', label: 'waiting for AI tool', command: `/sentinel resume ${slug}` };
   template.workflow = { nodes: [], edges: [], gates: [] };
   template.tdd = { cycles: [], evidence: [] };

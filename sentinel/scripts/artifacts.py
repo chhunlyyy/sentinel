@@ -149,6 +149,7 @@ def _front_matter_errors(raw, run_slug, run_tier):
 def required_sections(run_tier, run_type="feature"):
     if run_type == "docs":
         return DOCS_ONLY
+    run_tier = run_tier or 1
     return FULL if run_tier >= 3 else LITE
 
 
