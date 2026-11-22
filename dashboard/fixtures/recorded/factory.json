@@ -1,121 +1,121 @@
 {
   "activity": [
     {
-      "at": "2026-11-22T02:22:35.204449Z",
+      "at": "2026-11-22T12:24:07.832727Z",
       "run": "gherkin-run",
       "station": "gate_gherkin",
       "text": "Gherkin is waiting for you"
     },
     {
-      "at": "2026-11-22T02:22:35.200478Z",
+      "at": "2026-11-22T12:24:07.830248Z",
       "run": "gherkin-run",
       "station": "gherkin",
       "text": "Gherkin agent finished"
     },
     {
-      "at": "2026-11-22T02:22:35.191057Z",
+      "at": "2026-11-22T12:24:07.820495Z",
       "run": "gherkin-run",
       "station": "gherkin",
       "text": "Gherkin agent started"
     },
     {
-      "at": "2026-11-22T02:22:35.177842Z",
+      "at": "2026-11-22T12:24:07.806053Z",
       "run": "gherkin-run",
       "station": "gate_spec",
       "text": "You approved the specification"
     },
     {
-      "at": "2026-11-22T02:22:35.175527Z",
+      "at": "2026-11-22T12:24:07.804244Z",
       "run": "gherkin-run",
       "station": "gate_spec",
       "text": "Specification is waiting for you"
     },
     {
-      "at": "2026-11-22T02:22:35.172354Z",
+      "at": "2026-11-22T12:24:07.801098Z",
       "run": "gherkin-run",
       "station": "spec",
       "text": "Specification agent finished"
     },
     {
-      "at": "2026-11-22T02:22:35.162308Z",
+      "at": "2026-11-22T12:24:07.792111Z",
       "run": "gherkin-run",
       "station": "spec",
       "text": "Specification agent started"
     },
     {
-      "at": "2026-11-22T02:22:35.151776Z",
+      "at": "2026-11-22T12:24:07.781802Z",
       "run": "gherkin-run",
       "station": "intake",
       "text": "Task created"
     },
     {
-      "at": "2026-11-22T02:22:35.147067Z",
+      "at": "2026-11-22T12:24:07.777224Z",
       "run": "spec-run",
       "station": "gate_spec",
       "text": "Specification is waiting for you"
     },
     {
-      "at": "2026-11-22T02:22:35.144961Z",
+      "at": "2026-11-22T12:24:07.775108Z",
       "run": "spec-run",
       "station": "spec",
       "text": "Specification agent finished"
     },
     {
-      "at": "2026-11-22T02:22:35.137165Z",
+      "at": "2026-11-22T12:24:07.766086Z",
       "run": "spec-run",
       "station": "spec",
       "text": "Specification agent started"
     },
     {
-      "at": "2026-11-22T02:22:35.126777Z",
+      "at": "2026-11-22T12:24:07.755096Z",
       "run": "spec-run",
       "station": "intake",
       "text": "Task created"
     },
     {
-      "at": "2026-11-22T02:22:35.093885Z",
+      "at": "2026-11-22T12:24:07.724462Z",
       "run": "leave-balance",
       "station": "gate_gherkin",
       "text": "You approved the Gherkin"
     },
     {
-      "at": "2026-11-22T02:22:35.091800Z",
+      "at": "2026-11-22T12:24:07.722398Z",
       "run": "leave-balance",
       "station": "gate_gherkin",
       "text": "Gherkin is waiting for you"
     },
     {
-      "at": "2026-11-22T02:22:35.089070Z",
+      "at": "2026-11-22T12:24:07.719799Z",
       "run": "leave-balance",
       "station": "gherkin",
       "text": "Gherkin agent finished"
     },
     {
-      "at": "2026-11-22T02:22:35.080051Z",
+      "at": "2026-11-22T12:24:07.710875Z",
       "run": "leave-balance",
       "station": "gherkin",
       "text": "Gherkin agent started"
     },
     {
-      "at": "2026-11-22T02:22:35.066868Z",
+      "at": "2026-11-22T12:24:07.697950Z",
       "run": "leave-balance",
       "station": "gate_spec",
       "text": "You approved the specification"
     },
     {
-      "at": "2026-11-22T02:22:35.065538Z",
+      "at": "2026-11-22T12:24:07.696639Z",
       "run": "leave-balance",
       "station": "gate_spec",
       "text": "Specification is waiting for you"
     },
     {
-      "at": "2026-11-22T02:22:35.061996Z",
+      "at": "2026-11-22T12:24:07.693168Z",
       "run": "leave-balance",
       "station": "spec",
       "text": "Specification agent finished"
     },
     {
-      "at": "2026-11-22T02:22:35.051222Z",
+      "at": "2026-11-22T12:24:07.683145Z",
       "run": "leave-balance",
       "station": "spec",
       "text": "Specification agent started"
@@ -131,7 +131,7 @@
     "usd_per_day": null
   },
   "factory_paused": false,
-  "generated_at": "2026-11-22T02:22:35.310299Z",
+  "generated_at": "2026-11-22T12:24:07.938870Z",
   "limits": {
     "driver": "engine",
     "max_agents": 4,
@@ -157,11 +157,11 @@
     {
       "agents": {},
       "attention": null,
-      "created_at": "2026-11-22T02:22:35.012293Z",
+      "created_at": "2026-11-22T12:24:07.642771Z",
       "driver": "cli",
       "lanes": [
         {
-          "cycle": "c-f418cf4f39cd",
+          "cycle": "c-feebbd4d1f10",
           "green": "todo",
           "name": "features/balance.feature :: Rule Remaining balance",
           "red": "queued",
@@ -170,7 +170,7 @@
           "state": "PLANNED"
         },
         {
-          "cycle": "c-49b73eaf1475",
+          "cycle": "c-a3bd15653984",
           "green": "todo",
           "name": "features/balance.feature :: Rule Carry-over",
           "red": "queued",
@@ -179,7 +179,7 @@
           "state": "PLANNED"
         },
         {
-          "cycle": "c-9919123dd86f",
+          "cycle": "c-156e4eb69934",
           "green": "todo",
           "name": "features/request_form.feature",
           "red": "queued",
@@ -195,6 +195,35 @@
       "slug": "leave-balance",
       "state": "EXECUTING",
       "station": "build",
+      "station_tasks": {
+        "build": [
+          {
+            "finished_at": null,
+            "id": "t-7f5ebd00b727",
+            "role": "tdd_red",
+            "started_at": null,
+            "state": "QUEUED"
+          }
+        ],
+        "gherkin": [
+          {
+            "finished_at": "2026-11-22T12:24:07.719764Z",
+            "id": "t-787bf1d2d383",
+            "role": "test_designer",
+            "started_at": "2026-11-22T12:24:07.710838Z",
+            "state": "COMPLETED"
+          }
+        ],
+        "spec": [
+          {
+            "finished_at": "2026-11-22T12:24:07.693111Z",
+            "id": "t-420e1422a8c6",
+            "role": "specifier",
+            "started_at": "2026-11-22T12:24:07.683092Z",
+            "state": "COMPLETED"
+          }
+        ]
+      },
       "stations": {
         "build": "queued",
         "gate_accept": "todo",
@@ -226,19 +255,19 @@
           "output_tokens": null,
           "role": "specifier",
           "runner": "native",
-          "seconds": 0.011,
+          "seconds": 0.01,
           "tokens": null
         }
       },
       "tier": 3,
       "title": "leave-balance",
       "type": "feature",
-      "updated_at": "2026-11-22T02:22:35.099620Z"
+      "updated_at": "2026-11-22T12:24:07.729938Z"
     },
     {
       "agents": {},
       "attention": null,
-      "created_at": "2026-11-22T02:22:35.121623Z",
+      "created_at": "2026-11-22T12:24:07.750798Z",
       "driver": "cli",
       "lanes": [],
       "limit": null,
@@ -248,6 +277,17 @@
       "slug": "spec-run",
       "state": "SPECIFICATION_REVIEW",
       "station": "gate_spec",
+      "station_tasks": {
+        "spec": [
+          {
+            "finished_at": "2026-11-22T12:24:07.775065Z",
+            "id": "t-a249a5e605f8",
+            "role": "specifier",
+            "started_at": "2026-11-22T12:24:07.766052Z",
+            "state": "COMPLETED"
+          }
+        ]
+      },
       "stations": {
         "build": "todo",
         "gate_accept": "todo",
@@ -269,19 +309,19 @@
           "output_tokens": null,
           "role": "specifier",
           "runner": "native",
-          "seconds": 0.008,
+          "seconds": 0.009,
           "tokens": null
         }
       },
       "tier": 3,
       "title": "spec-run",
       "type": "feature",
-      "updated_at": "2026-11-22T02:22:35.147252Z"
+      "updated_at": "2026-11-22T12:24:07.777462Z"
     },
     {
       "agents": {},
       "attention": null,
-      "created_at": "2026-11-22T02:22:35.147500Z",
+      "created_at": "2026-11-22T12:24:07.777740Z",
       "driver": "cli",
       "lanes": [],
       "limit": null,
@@ -291,6 +331,26 @@
       "slug": "gherkin-run",
       "state": "GHERKIN_REVIEW",
       "station": "gate_gherkin",
+      "station_tasks": {
+        "gherkin": [
+          {
+            "finished_at": "2026-11-22T12:24:07.830205Z",
+            "id": "t-36e5f706afc0",
+            "role": "test_designer",
+            "started_at": "2026-11-22T12:24:07.820435Z",
+            "state": "COMPLETED"
+          }
+        ],
+        "spec": [
+          {
+            "finished_at": "2026-11-22T12:24:07.801017Z",
+            "id": "t-54eb5118453b",
+            "role": "specifier",
+            "started_at": "2026-11-22T12:24:07.792075Z",
+            "state": "COMPLETED"
+          }
+        ]
+      },
       "stations": {
         "build": "next",
         "gate_accept": "todo",
@@ -312,7 +372,7 @@
           "output_tokens": null,
           "role": "test_designer",
           "runner": "native",
-          "seconds": 0.009,
+          "seconds": 0.01,
           "tokens": null
         },
         "spec": {
@@ -322,14 +382,14 @@
           "output_tokens": null,
           "role": "specifier",
           "runner": "native",
-          "seconds": 0.01,
+          "seconds": 0.009,
           "tokens": null
         }
       },
       "tier": 3,
       "title": "gherkin-run",
       "type": "feature",
-      "updated_at": "2026-11-22T02:22:35.204597Z"
+      "updated_at": "2026-11-22T12:24:07.832851Z"
     }
   ],
   "stations": [

@@ -24,6 +24,14 @@ export interface AgentView {
   startedAt: string;
 }
 
+export interface StationTaskView {
+  id: string;
+  role: string;
+  state: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
 export interface RunView {
   slug: string;
   title: string;
@@ -46,6 +54,7 @@ export interface RunView {
   /** the provider usage limit this run waits for, or null */
   limit: { task: string; role: string; runner: string; retryAt: string; reason: string | null } | null;
   task_usage?: Record<string, W.WTaskUsage>;
+  station_tasks?: Record<string, StationTaskView[]>;
   pendingNotes: number;
 }
 

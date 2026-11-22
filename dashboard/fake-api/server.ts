@@ -9,7 +9,7 @@ import type { Db, RunData } from '../fixtures/db.ts';
 import { freshInstall } from '../fixtures/fresh-install.ts';
 import * as E from '../fixtures/encode.ts';
 import { applyPreset } from '../fixtures/presets.ts';
-import { summary, twoProjects } from '../fixtures/two-projects.ts';
+import { summary, twoProjects, payrollRounding } from '../fixtures/two-projects.ts';
 import {
   SAMPLE_KNOWLEDGE_RECORDS,
   sampleKnowledgeStatus,
@@ -279,10 +279,15 @@ function resolveRun(slug: string, query: URLSearchParams): { key: string; run: R
   const project = query.get('project');
   if (project) {
     const key = `${project}/${slug}`;
+    if (!db.runs[key] && slug === 'payroll-rounding') db.runs[key] = payrollRounding();
     if (!db.runs[key]) throw new ApiErr(404, 'E_NOT_FOUND', 'run not found');
     return { key, run: db.runs[key] };
   }
-  const hits = Object.keys(db.runs).filter((k) => k.endsWith(`/${slug}`));
+  let hits = Object.keys(db.runs).filter((k) => k.endsWith(`/${slug}`));
+  if (!hits.length && slug === 'payroll-rounding') {
+    db.runs['digital-hr/payroll-rounding'] = payrollRounding();
+    hits = ['digital-hr/payroll-rounding'];
+  }
   if (hits.length > 1) throw new ApiErr(400, 'E_VALIDATION', 'slug exists in more than one project', { projects: hits.map((k) => k.split('/')[0]) });
   if (!hits.length) throw new ApiErr(404, 'E_NOT_FOUND', 'run not found');
   return { key: hits[0], run: db.runs[hits[0]] };
@@ -937,10 +942,52 @@ route('POST', `${V}/projects/{pid}/config/save`, (c) => {
       }
     }
   }
+  const p = proj(pid);
+  if (p?.configuration) {
+    for (const ch of changes) {
+      const existing = p.configuration.values.find((v: { path: string }) => v.path === ch.path);
+      if (existing) {
+        existing.value = ch.value;
+      } else {
+        p.configuration.values.push({
+          path: ch.path,
+          value: ch.value,
+          category: 'Other',
+          source: 'project',
+        });
+      }
+      if (ch.path === 'orchestrator' && typeof ch.value === 'object' && ch.value !== null) {
+        const orchObj = ch.value as { runner?: string; model?: string | null };
+        if (orchObj.runner) {
+          const exRunner = p.configuration.values.find((v: { path: string }) => v.path === 'orchestrator.runner');
+          if (exRunner) exRunner.value = orchObj.runner;
+          else p.configuration.values.push({ path: 'orchestrator.runner', value: orchObj.runner, category: 'Other', source: 'project' });
+        }
+        const exModel = p.configuration.values.find((v: { path: string }) => v.path === 'orchestrator.model');
+        if (exModel) exModel.value = orchObj.model ?? null;
+        else p.configuration.values.push({ path: 'orchestrator.model', value: orchObj.model ?? null, category: 'Other', source: 'project' });
+      }
+    }
+  }
+  const snap = db.factory?.[pid];
+  if (snap) {
+    const isOrch = changes.some((ch) => ch.path === 'routing_mode' && ch.value === 'orchestrator');
+    if (isOrch) {
+      const orchCh = changes.find((ch) => ch.path === 'orchestrator')?.value as { runner?: string; model?: string | null } | undefined;
+      const runner = orchCh?.runner ?? 'claude';
+      const model = orchCh?.model ?? null;
+      for (const st of Object.keys(snap.who)) {
+        snap.who[st].runner = runner;
+        snap.who[st].model = model;
+      }
+      snap.routing = { problems: [] };
+    }
+    if (changes.some((ch) => ch.path === 'single_model' && ch.value === false)) {
+      snap.routing = { problems: [] };
+    }
+  }
   const newSha = createHash('sha256').update(JSON.stringify(cfg)).digest('hex');
   cfg.sha256 = newSha;
-  const snap = db.factory?.[pid];
-  if (snap && changes.some((ch) => ch.path === 'single_model' && ch.value === false)) snap.routing = { problems: [] };
   const diff = changes.map((ch) => `+ ${ch.path}: ${JSON.stringify(ch.value)}`).join('\n');
   return [200, { ok: true, project: pid, sha256: newSha, diff }];
 });

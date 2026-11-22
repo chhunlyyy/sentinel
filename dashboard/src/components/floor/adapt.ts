@@ -1,6 +1,6 @@
 // Maps the WFactory wire shape to the view-model (FloorSnapshot + RunView) used by the floor screen.
 import type * as W from '../../api/wire.ts';
-import type { ActivityView, WhoView, FloorSnapshot, RunView, StationState, AgentView, LaneView, FactoryLimits, QueueItem } from './types.ts';
+import type { ActivityView, WhoView, FloorSnapshot, RunView, StationState, AgentView, LaneView, FactoryLimits, QueueItem, StationTaskView } from './types.ts';
 
 /** Colour palette for task chips — cycles if more than 5 tasks */
 const TASK_COLORS = ['#4FD1C1', '#F5B547', '#9DB4FF', '#FC8181', '#B794F4', '#68D391'];
@@ -97,6 +97,21 @@ function adaptLanes(lanes: W.WFactoryLane[]): LaneView[] {
   }));
 }
 
+function adaptStationTasks(tasks?: Record<string, W.WStationTask[]>): Record<string, StationTaskView[]> {
+  const out: Record<string, StationTaskView[]> = {};
+  if (!tasks) return out;
+  for (const [st, list] of Object.entries(tasks)) {
+    out[st] = (list ?? []).map((t) => ({
+      id: t.id,
+      role: t.role,
+      state: t.state,
+      startedAt: t.started_at,
+      finishedAt: t.finished_at,
+    }));
+  }
+  return out;
+}
+
 function adaptRun(run: W.WFactoryRun, idx: number): RunView {
   return {
     slug: run.slug,
@@ -118,6 +133,7 @@ function adaptRun(run: W.WFactoryRun, idx: number): RunView {
       ? { task: run.limit.task, role: run.limit.role, runner: run.limit.runner, retryAt: run.limit.retry_at, reason: run.limit.reason }
       : null,
     task_usage: run.task_usage,
+    station_tasks: adaptStationTasks(run.station_tasks),
     pendingNotes: run.pending_notes,
   };
 }

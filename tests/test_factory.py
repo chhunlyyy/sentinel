@@ -605,7 +605,7 @@ class Served(SV):
         runs = {x["slug"]: x for x in snap["runs"]}
         gate = runs["gate-run"]
         self.assertEqual(set(gate), {"slug", "title", "type", "driver", "paused", "state", "tier", "station", "stations",
-                                     "next_station", "agents", "lanes", "attention", "limit", "task_usage", "pending_notes", "created_at", "updated_at"})
+                                     "next_station", "agents", "lanes", "attention", "limit", "task_usage", "station_tasks", "pending_notes", "created_at", "updated_at"})
         self.assertEqual((gate["state"], gate["station"], gate["next_station"], gate["driver"]),
                          ("SPECIFICATION_REVIEW", "gate_spec", "gherkin", "engine"))
         self.assertEqual(gate["stations"], {"intake": "done", "triage": "done", "spec": "done", "gate_spec": "waiting",
@@ -630,6 +630,65 @@ class Served(SV):
                                "knowledge": {"role": "knowledge", "runner": "agy", "model": "k1"}})  # gherkin has no route: left out
         from tasks import select_adapter
         self.assertEqual(select_adapter(self.config, "specifier")[1:], ("agy", "gemini-3.8-flash"))
+
+    def test_snapshot_who_orchestrator_mode_shows_orchestrator(self):
+        self.use_config(routing_mode="orchestrator", orchestrator={"runner": "claude", "model": "sonnet"},
+                        runners={"claude": {"command": "claude", "model_flag": "--model"}})
+        self.serve()
+        who = self.http.get("/api/v1/projects/digital-hr/factory").json["who"]
+        for st, role in factory.WHO_ROLES:
+            self.assertEqual(who[st], {"role": role, "runner": "claude", "model": "sonnet"})
+        self.assertEqual(who["knowledge"], {"role": "knowledge", "runner": "claude", "model": "sonnet"})
+
+    def test_select_adapter_in_both_modes(self):
+        from tasks import select_adapter
+        cfg_per_role = {"version": 1, "shape": "single", "repos": [{"id": "b", "path": "b", "role": "b", "profile": "p"}],
+                        "single_model": False, "routing_mode": "per_role", "agents": {"specifier": {"runner": "agy", "model": "gemini"}}}
+        self.assertEqual(select_adapter(cfg_per_role, "specifier"), ("cli", "agy", "gemini"))
+        self.assertEqual(select_adapter(cfg_per_role, "coder"), ("native", "native", None))
+
+        cfg_orch = {"version": 1, "shape": "single", "repos": [{"id": "b", "path": "b", "role": "b", "profile": "p"}],
+                    "routing_mode": "orchestrator", "orchestrator": {"runner": "claude", "model": "opus"},
+                    "agents": {"specifier": {"runner": "agy", "model": "gemini"}}}
+        self.assertEqual(select_adapter(cfg_orch, "specifier"), ("cli", "claude", "opus"))
+        self.assertEqual(select_adapter(cfg_orch, "coder"), ("cli", "claude", "opus"))
+
+    def test_preflight_in_orchestrator_mode(self):
+        cfg_defined = {"version": 1, "shape": "single", "repos": [{"id": "b", "path": "b", "role": "b", "profile": "p"}],
+                       "routing_mode": "orchestrator", "orchestrator": {"runner": "claude", "model": "opus"},
+                       "runners": {"claude": {"command": "claude", "model_flag": "--model"}}}
+        self.assertEqual(factory.routing_problem_roles(cfg_defined), [])
+
+        cfg_undefined = {"version": 1, "shape": "single", "repos": [{"id": "b", "path": "b", "role": "b", "profile": "p"}],
+                         "routing_mode": "orchestrator", "orchestrator": {"runner": "nonexistent_runner"},
+                         "runners": {"claude": {"command": "claude"}}}
+        problems = factory.routing_problem_roles(cfg_undefined)
+        self.assertTrue(len(problems) > 0)
+        self.assertIn("nonexistent_runner, which is not defined", problems[0][1])
+
+    def test_snapshot_station_tasks_shows_latest_attempt_per_role(self):
+        self.make_run()
+        run = self.eng.reg.get_run(SLUG)
+        rid = run["id"]
+        reg = self.eng.reg
+        # insert two attempts for triage (attempt 1 FAILED, attempt 2 COMPLETED)
+        t1 = reg.insert_row("tasks", {"run_id": rid, "role": "triage", "state": "FAILED", "started_at": "2026-11-22T10:00:00Z", "finished_at": "2026-11-22T10:01:00Z"})
+        t2 = reg.insert_row("tasks", {"run_id": rid, "role": "triage", "state": "COMPLETED", "retry_of": t1, "started_at": "2026-11-22T10:02:00Z", "finished_at": "2026-11-22T10:03:00Z"})
+        # insert planner (also in triage station)
+        t_plan = reg.insert_row("tasks", {"run_id": rid, "role": "planner", "state": "RUNNING", "started_at": "2026-11-22T10:04:00Z"})
+        # insert build role
+        t_red = reg.insert_row("tasks", {"run_id": rid, "role": "tdd_red", "state": "COMPLETED", "started_at": "2026-11-22T10:05:00Z", "finished_at": "2026-11-22T10:06:00Z"})
+        snap = factory.snapshot(self.eng, "digital-hr")
+        snap_run = next(r for r in snap["runs"] if r["slug"] == SLUG)
+        st_tasks = snap_run["station_tasks"]
+        # triage station should have latest triage (t2) and planner (t_plan)
+        triage_tasks = st_tasks.get("triage", [])
+        self.assertEqual([t["id"] for t in triage_tasks], [t2, t_plan])
+        self.assertEqual(triage_tasks[0]["state"], "COMPLETED")
+        self.assertEqual(triage_tasks[1]["state"], "RUNNING")
+        # build station should have tdd_red
+        build_tasks = st_tasks.get("build", [])
+        self.assertEqual([t["id"] for t in build_tasks], [t_red])
 
     def test_snapshot_activity_newest_first_from_registry_rows(self):
         self.make_run()
@@ -826,6 +885,23 @@ class Migration(unittest.TestCase):
             self.assertTrue(list(validator.iter_errors(bad)), bad)
         self.assertEqual(factory.factory_config({}), {"driver": "engine", "max_tasks_per_project": 2, "max_agents": 4})
         self.assertEqual(factory.factory_config({"factory": {"max_agents": 0, "driver": "x"}})["max_agents"], 4)
+
+
+    def test_config_schema_routing_mode_and_orchestrator(self):
+        import jsonschema
+        schema = json.loads((Path(registry.__file__).resolve().parents[1] / "core" / "schema" / "config.schema.json").read_text())
+        validator = jsonschema.Draft202012Validator(schema)
+        base = {"version": 1, "shape": "single", "repos": [{"id": "b", "path": "b", "role": "b", "profile": "p"}]}
+        # valid configurations
+        self.assertEqual(list(validator.iter_errors({**base, "routing_mode": "per_role"})), [])
+        self.assertEqual(list(validator.iter_errors({**base, "routing_mode": "orchestrator", "orchestrator": {"runner": "claude"}})), [])
+        self.assertEqual(list(validator.iter_errors({**base, "routing_mode": "orchestrator", "orchestrator": {"runner": "claude", "model": "opus"}})), [])
+        self.assertEqual(list(validator.iter_errors({**base, "routing_mode": "orchestrator", "orchestrator": {"runner": "claude", "model": None}})), [])
+        # invalid configurations
+        self.assertTrue(list(validator.iter_errors({**base, "routing_mode": "invalid_mode"})))
+        self.assertTrue(list(validator.iter_errors({**base, "orchestrator": {}})))  # missing runner
+        self.assertTrue(list(validator.iter_errors({**base, "orchestrator": {"runner": 123}})))
+        self.assertTrue(list(validator.iter_errors({**base, "orchestrator": {"runner": "claude", "extra": 1}})))
 
 
 if __name__ == "__main__":

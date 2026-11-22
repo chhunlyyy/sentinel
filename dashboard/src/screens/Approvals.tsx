@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { calls } from '../api/calls.ts';
 import type { ApiError } from '../api/errors.ts';
 import type { DecisionRecord, GherkinAnswer, KnowledgeUsed, SpecificationAnswer, VersionRow } from '../api/types.ts';
@@ -87,6 +87,7 @@ interface ReviewProps {
   /** an earlier version, shown read only */
   version?: string;
   onRunChanged: () => void;
+  compact?: boolean;
 }
 
 function ValidationView({ validation }: { validation: ReviewData['validation'] }) {
@@ -275,7 +276,51 @@ function SpecBody({ data, tab, setTab, pid, slug }: { data: SpecificationAnswer;
   );
 }
 
-export function ReviewPage({ gate, pid, slug, version, onRunChanged }: ReviewProps) {
+export function parseSpecDoc(text: string): { title: string; sections: { id: string; title: string; content: string }[] } {
+  if (!text) return { title: '', sections: [] };
+  const lines = text.split('\n');
+  let title = '';
+  const sections: { id: string; title: string; content: string }[] = [];
+  let currentTitle: string | null = null;
+  let currentLines: string[] = [];
+  let count = 0;
+
+  for (const line of lines) {
+    const h1Match = line.match(/^#\s+(.+)$/);
+    if (h1Match && !title) {
+      title = h1Match[1].trim();
+      continue;
+    }
+    const h2Match = line.match(/^##\s+(.+)$/);
+    if (h2Match) {
+      if (currentTitle !== null) {
+        sections.push({
+          id: `sec-${count++}`,
+          title: currentTitle,
+          content: currentLines.join('\n').trim(),
+        });
+        currentLines = [];
+      }
+      currentTitle = h2Match[1].trim();
+    } else if (currentTitle !== null) {
+      currentLines.push(line);
+    }
+  }
+  if (currentTitle !== null) {
+    sections.push({
+      id: `sec-${count++}`,
+      title: currentTitle,
+      content: currentLines.join('\n').trim(),
+    });
+  }
+  return { title, sections };
+}
+
+export function parseSpecSections(text: string): { id: string; title: string; content: string }[] {
+  return parseSpecDoc(text).sections;
+}
+
+export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: ReviewProps) {
   const app = useApp();
   const enabled = useControlsEnabled();
   const res = useResource<ReviewData>(
@@ -292,6 +337,27 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged }: ReviewPro
   const [staleError, setStaleError] = useState(false);
   const [minVersion, setMinVersion] = useState<number | null>(null);
   const [tab, setTab] = useState('spec');
+  const [fullScreen, setFullScreen] = useState(false);
+  const expandBtnRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (fullScreen && dialogRef.current) {
+      dialogRef.current.focus();
+    }
+  }, [fullScreen]);
+
+  const closeFullScreen = () => {
+    setFullScreen(false);
+    expandBtnRef.current?.focus();
+  };
+
+  const onDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeFullScreen();
+    }
+  };
 
   useEffect(() => {
     if (!res.data) return;
@@ -345,14 +411,42 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged }: ReviewPro
 
         const blockedByStale = stale || staleError;
         const staleText = staleError ? 'A newer version is in review. Nothing was approved.' : `Version ${latest?.version} replaced the version you are reading`;
+        const specDoc = gate === 'specification'
+          ? parseSpecDoc((view as SpecificationAnswer).text)
+          : {
+              title: `${label} review · ${slug}`,
+              sections: ((view as GherkinAnswer).features ?? []).map((f, i) => ({
+                id: `feature-${i}`,
+                title: f.name,
+                content: f.scenarios.map((s) => `${s.name} (${s.ac}) ${s.type} ${s.priority}`).join('\n'),
+              })),
+            };
+        const sections = specDoc.sections;
 
         return (
           <>
+            {compact && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 12, color: 'var(--floor-text-muted)' }}>Reading in the side panel</span>
+                <button
+                  type="button"
+                  ref={expandBtnRef}
+                  className="floor-btn-expand"
+                  onClick={() => setFullScreen(true)}
+                  aria-label="Expand the review to full screen"
+                >
+                  <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ verticalAlign: -2 }}>
+                    <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" />
+                  </svg>
+                  Expand
+                </button>
+              </div>
+            )}
             <h2>{label} review</h2>
             <p>
-              <strong data-testid="review-version">Version {view.version}</strong> <span data-testid="approval-state">{STATE_LABEL[view.state] ?? view.state}</span>
+              <strong data-testid="review-version">Version {view.version}</strong> · <span data-testid="approval-state">{STATE_LABEL[view.state] ?? view.state}</span>
               {'provenance' in view && view.provenance ? <span className="provenance hint" data-testid="review-provenance" style={{ marginLeft: '0.5rem' }}>({view.provenance})</span> : null}
-              {view.requested_at ? <span className="hint"> review requested {formatTime(view.requested_at)}</span> : null}
+              {view.requested_at ? <span className="hint"> · requested {formatTime(view.requested_at)}</span> : null}
             </p>
             <div>
               <code className="sha mono" data-testid="sha-full">
@@ -397,6 +491,110 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged }: ReviewPro
                 <VersionsList versions={view.versions} current={view.version} gate="gherkin" pid={pid} slug={slug} />
               </>
             ) : null}
+
+            {fullScreen && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${label} review, full screen`}
+                tabIndex={-1}
+                ref={dialogRef}
+                onKeyDown={onDialogKeyDown}
+                className="floor-fullscreen-dialog"
+              >
+                <div className="floor-fullscreen-header">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '1 1 360px', minWidth: 0 }}>
+                    <h2 style={{ margin: 0, fontFamily: "'Space Grotesk', system-ui, sans-serif", fontSize: 20 }}>
+                      {label} review · {slug}
+                    </h2>
+                    <span style={{ fontSize: 12, color: 'var(--floor-text-muted)' }}>
+                      <strong style={{ color: 'var(--floor-text)' }}>Version {view.version}</strong>{' '}
+                      <span style={{ color: 'var(--floor-waiting-label)' }}>{STATE_LABEL[view.state] ?? view.state}</span>
+                      {'provenance' in view && view.provenance ? ` · ${view.provenance}` : ''}
+                      {' · '}
+                      <code className="mono" style={{ wordBreak: 'break-all' }}>{view.sha256}</code>
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--floor-text-muted)' }}>
+                    Still on the factory floor. The run keeps its place.
+                  </span>
+                  <button type="button" className="floor-btn-exit" onClick={closeFullScreen}>
+                    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ verticalAlign: -2, marginRight: 6 }}>
+                      <path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" />
+                    </svg>
+                    Exit full screen
+                  </button>
+                </div>
+
+                <div className="floor-fullscreen-body">
+                  <nav aria-label="Sections" className="floor-fullscreen-nav">
+                    <h3 style={{ margin: '0 0 10px', fontSize: 11, letterSpacing: '.4px', textTransform: 'uppercase', color: 'var(--floor-text-muted)' }}>
+                      Sections
+                    </h3>
+                    <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {sections.map((s) => (
+                        <li key={s.id}>
+                          <a
+                            href={`#${s.id}`}
+                            style={{ color: 'var(--floor-text-muted)', fontSize: 13, textDecoration: 'none' }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                          >
+                            {s.title}
+                          </a>
+                        </li>
+                      ))}
+                    </ol>
+                  </nav>
+
+                  <article className="floor-fullscreen-center">
+                    <div style={{ maxWidth: 760, margin: '0 auto', fontSize: 15, lineHeight: 1.7, color: '#D5DBE1' }}>
+                      {gate === 'specification' ? (
+                        <>
+                          {specDoc.title ? (
+                            <h1 style={{ margin: '0 0 20px', fontFamily: "'Space Grotesk', system-ui, sans-serif", fontSize: 28, lineHeight: 1.25, color: 'var(--floor-text)' }}>
+                              {specDoc.title}
+                            </h1>
+                          ) : null}
+                          {sections.map((s) => (
+                            <section key={s.id} id={s.id} style={{ marginBottom: 28 }}>
+                              <h2 style={{ margin: '0 0 8px', fontSize: 18, color: 'var(--floor-text)' }}>{s.title}</h2>
+                              <pre className="pre-wrap" style={{ fontSize: 14, lineHeight: 1.6, color: '#D5DBE1', fontFamily: 'inherit' }}>
+                                {s.content}
+                              </pre>
+                            </section>
+                          ))}
+                        </>
+                      ) : (
+                        <GherkinBody data={view as GherkinAnswer} />
+                      )}
+                    </div>
+                  </article>
+
+                  <aside className="floor-fullscreen-aside">
+                    {action.message && !(staleError && action.message.kind === 'error') ? <ActionResult message={action.message} /> : null}
+                    {decided ? <DecisionRecordView record={decided} text={record?.text} /> : null}
+                    {inReview && !record ? (
+                      <div style={{ position: 'sticky', top: 20 }}>
+                        <DecisionPanel
+                          key={`${shown.sha256}-${blockedByStale}-fullscreen`}
+                          kind="approval"
+                          version={view.version}
+                          sha256={view.sha256}
+                          subject={slug}
+                          disabled={blockedByStale || !enabled}
+                          pending={action.pending}
+                          onDecide={decide}
+                        />
+                      </div>
+                    ) : null}
+                    <ValidationView validation={view.validation} />
+                  </aside>
+                </div>
+              </div>
+            )}
           </>
         );
       }}

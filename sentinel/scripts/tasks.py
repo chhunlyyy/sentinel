@@ -82,7 +82,10 @@ def schema_problems(name, doc, indexes=False):
 
 def select_adapter(config, role, repo=None):
     """(adapter, provider, model) for a role from a config snapshot. Workflows never name a provider (PRV-05)."""
-    from run_stage import find_route, single_model
+    from run_stage import find_route, single_model, orchestrator_route
+    orch = orchestrator_route(config)
+    if orch:
+        return "cli", orch["runner"], orch.get("model")
     native = ("native", "native", None)
     if single_model(config):
         return native

@@ -3,6 +3,7 @@ import { floorSnapshot, laneState } from '../../src/components/floor/adapt.ts';
 import { buildLanePositions, stationById, STATIONS, MAX_LANES } from '../../src/components/floor/layout.ts';
 import { stateLook, feedEdgeCls } from '../../src/components/floor/look.ts';
 import { stationsOf } from '../../src/screens/Floor.tsx';
+import { parseSpecDoc } from '../../src/screens/Approvals.tsx';
 import type * as W from '../../src/api/wire.ts';
 
 const SAMPLE_WIRE_FACTORY: W.WFactory = {
@@ -124,6 +125,38 @@ describe('factory floor snapshot-to-view mapping', () => {
       model: 'sonnet',
       adapter: 'cli',
       startedAt: '2026-11-21T10:12:40.000000Z',
+    });
+  });
+
+  test('maps station_tasks per station', () => {
+    const wireWithStationTasks = {
+      ...SAMPLE_WIRE_FACTORY,
+      runs: [
+        {
+          ...SAMPLE_WIRE_FACTORY.runs[0],
+          station_tasks: {
+            build: [
+              {
+                id: 't-0123456789ab',
+                role: 'tdd_green',
+                state: 'RUNNING',
+                started_at: '2026-11-21T10:12:40.000000Z',
+                finished_at: null,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const snap = floorSnapshot(wireWithStationTasks);
+    const r = snap.runs[0];
+    expect(r.station_tasks?.build).toBeDefined();
+    expect(r.station_tasks?.build[0]).toEqual({
+      id: 't-0123456789ab',
+      role: 'tdd_green',
+      state: 'RUNNING',
+      startedAt: '2026-11-21T10:12:40.000000Z',
+      finishedAt: null,
     });
   });
 
@@ -318,6 +351,24 @@ describe('usage limit and routing problems', () => {
   test('a build lane that works while its task waits for a limit shows the limit', () => {
     expect(laneState({ red: 'done', green: 'working', refactor: 'todo' }, false, true)).toBe('limit');
     expect(laneState({ red: 'done', green: 'working', refactor: 'todo' }, true, true)).toBe('paused');
+  });
+
+  test('parseSpecDoc parses # title as doc title and ## headings as sections without Overview', () => {
+    const markdown = `# Self-request escalation: push to parent
+
+## Problem statement
+When the approver of a step submits a request...
+
+## Objectives
+A requester never decides their own step.
+`;
+    const doc = parseSpecDoc(markdown);
+    expect(doc.title).toBe('Self-request escalation: push to parent');
+    expect(doc.sections).toHaveLength(2);
+    expect(doc.sections[0].title).toBe('Problem statement');
+    expect(doc.sections[0].content).toContain('When the approver');
+    expect(doc.sections[1].title).toBe('Objectives');
+    expect(doc.sections.some((s) => s.title === 'Overview')).toBe(false);
   });
 });
 

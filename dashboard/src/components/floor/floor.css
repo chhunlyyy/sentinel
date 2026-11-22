@@ -220,3 +220,393 @@
 
 .floor-paused-note { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid #5A4A22; background: #2A2110; color: #F5C776; font-size: 13px; }
 .floor-project-select { min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #3A4654; background: #141A21; color: #E6EAEE; font: inherit; font-size: 13px; }
+
+/* ---- Panel tabs ---- */
+.floor-panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--floor-border);
+  background: var(--floor-surface);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  overflow: hidden;
+}
+.floor-panel-tab {
+  flex: 1 1 0;
+  min-height: 40px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--floor-text-muted);
+  font: 600 13px system-ui, sans-serif;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.floor-panel-tab[aria-pressed="true"] {
+  color: var(--floor-text);
+  border-bottom-color: var(--floor-working-ring);
+}
+.floor-panel-tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* ---- Orchestrator & routed tags ---- */
+.floor-tag-orch {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: #26304A;
+  color: #B9C8FF;
+}
+.floor-tag-routed {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: #173D39;
+  color: #7FE3D7;
+}
+
+/* ---- Routing segmented control ---- */
+.floor-routing-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--floor-border);
+  background: #11161C;
+}
+.floor-routing-btn {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--floor-text-muted);
+  cursor: pointer;
+}
+.floor-routing-btn[aria-pressed="true"] {
+  background: #1F2730;
+  color: var(--floor-text);
+  font-weight: 600;
+}
+.floor-routing-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.floor-routing-btn:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+/* ---- Station log tail box ---- */
+.floor-log-box {
+  list-style: none;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #0B0F13;
+  border: 1px solid var(--floor-canvas-border);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow: auto;
+  color: #C9D1D9;
+}
+
+/* ---- Full-screen review dialog ---- */
+.floor-fullscreen-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #0B0F13;
+  display: flex;
+  flex-direction: column;
+  color: var(--floor-text);
+  outline: none;
+}
+.floor-fullscreen-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--floor-canvas-border);
+  background: var(--floor-canvas-bg);
+}
+.floor-fullscreen-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.floor-fullscreen-nav {
+  flex: 1 1 200px;
+  max-width: 240px;
+  padding: 20px 16px;
+  border-right: 1px solid var(--floor-canvas-border);
+  font-size: 13px;
+  overflow-y: auto;
+}
+.floor-fullscreen-center {
+  flex: 999 1 520px;
+  min-width: 0;
+  padding: 28px 40px 60px;
+  overflow: auto;
+}
+.floor-fullscreen-aside {
+  flex: 1 1 340px;
+  max-width: 420px;
+  padding: 20px;
+  border-left: 1px solid var(--floor-canvas-border);
+  background: #11161C;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  .floor-fullscreen-body {
+    flex-direction: column;
+  }
+  .floor-fullscreen-nav,
+  .floor-fullscreen-aside {
+    max-width: 100%;
+    border-right: none;
+    border-left: none;
+    border-bottom: 1px solid var(--floor-canvas-border);
+  }
+}
+
+/* ---- Scoped review and dialog styles on the dark floor (contrast >= 4.5:1) ---- */
+.floor-panel,
+.floor-fullscreen-dialog {
+  color: #D5DBE1;
+}
+
+.floor-panel pre,
+.floor-panel code,
+.floor-fullscreen-dialog pre,
+.floor-fullscreen-dialog code,
+.floor-panel [data-testid="spec-text"] {
+  background: var(--floor-canvas-bg);
+  border: 1px solid var(--floor-border);
+  color: #D5DBE1;
+}
+
+.floor-panel pre.pre-wrap,
+.floor-fullscreen-dialog pre.pre-wrap {
+  background: var(--floor-canvas-bg);
+  border: 1px solid var(--floor-border);
+  color: #D5DBE1;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+.floor-panel .sha,
+.floor-fullscreen-dialog .sha {
+  background: var(--floor-canvas-bg);
+  border: 1px solid var(--floor-border);
+  color: #D5DBE1;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.floor-panel .panel,
+.floor-fullscreen-dialog .panel {
+  background: var(--floor-canvas-bg);
+  border: 1px solid var(--floor-border);
+  color: #D5DBE1;
+}
+
+.floor-panel h1, .floor-panel h2, .floor-panel h3, .floor-panel h4,
+.floor-fullscreen-dialog h1, .floor-fullscreen-dialog h2, .floor-fullscreen-dialog h3, .floor-fullscreen-dialog h4 {
+  color: var(--floor-text);
+}
+
+.floor-panel .hint, .floor-panel .muted,
+.floor-fullscreen-dialog .hint, .floor-fullscreen-dialog .muted {
+  color: var(--floor-text-muted);
+}
+
+.floor-panel [data-testid="validation"],
+.floor-fullscreen-dialog [data-testid="validation"] {
+  color: #D5DBE1;
+}
+
+.floor-panel [data-testid="knowledge-used"],
+.floor-fullscreen-dialog [data-testid="knowledge-used"] {
+  color: #D5DBE1;
+}
+.floor-panel [data-testid="knowledge-used"] li.panel,
+.floor-fullscreen-dialog [data-testid="knowledge-used"] li.panel {
+  background: var(--floor-canvas-bg);
+  border: 1px solid var(--floor-border);
+  color: #D5DBE1;
+}
+
+.floor-panel input[type="text"],
+.floor-panel textarea,
+.floor-fullscreen-dialog input[type="text"],
+.floor-fullscreen-dialog textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--floor-border);
+  background: var(--floor-canvas-bg);
+  color: #D5DBE1;
+  font: 13px Inter, system-ui, sans-serif;
+}
+.floor-panel input[type="text"]:focus,
+.floor-panel textarea:focus,
+.floor-fullscreen-dialog input[type="text"]:focus,
+.floor-fullscreen-dialog textarea:focus {
+  border-color: var(--floor-working-ring);
+  outline: none;
+}
+
+.floor-panel button.secondary,
+.floor-fullscreen-dialog button.secondary {
+  background: var(--floor-surface);
+  border: 1px solid var(--floor-border);
+  color: #D5DBE1;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.floor-panel button.secondary:hover,
+.floor-fullscreen-dialog button.secondary:hover {
+  border-color: #4A5866;
+  color: var(--floor-text);
+}
+
+/* Decision form polish: Approve / Request changes / Reject on one row, inline-flex, no broken labels, no doubled border */
+.floor-panel [data-testid="decision-panel"],
+.floor-fullscreen-dialog [data-testid="decision-panel"] {
+  background: var(--floor-canvas-bg);
+  border: 1px solid var(--floor-border);
+  border-radius: 12px;
+  padding: 16px;
+  color: #D5DBE1;
+}
+
+.floor-panel [data-testid="decision-panel"] fieldset,
+.floor-fullscreen-dialog [data-testid="decision-panel"] fieldset {
+  border: 0;
+  margin: 0 0 14px 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+}
+
+.floor-panel [data-testid="decision-panel"] fieldset legend,
+.floor-fullscreen-dialog [data-testid="decision-panel"] fieldset legend {
+  font-size: 12px;
+  color: var(--floor-text-muted);
+  margin-bottom: 6px;
+  display: block;
+  width: 100%;
+  padding: 0;
+}
+
+.floor-panel [data-testid="decision-panel"] fieldset label,
+.floor-fullscreen-dialog [data-testid="decision-panel"] fieldset label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--floor-text);
+  cursor: pointer;
+}
+
+/* Floor buttons: teal primary #4FD1C1 on #062420 for decision submit */
+.floor-panel [data-testid="decision-panel"] button[type="button"],
+.floor-fullscreen-dialog [data-testid="decision-panel"] button[type="button"] {
+  background: #4FD1C1;
+  border: 1px solid #4FD1C1;
+  color: #062420;
+  font-weight: 600;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.floor-panel [data-testid="decision-panel"] button[type="button"]:disabled,
+.floor-fullscreen-dialog [data-testid="decision-panel"] button[type="button"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.floor-panel [data-testid="decision-panel"] button[type="button"]:hover:not(:disabled),
+.floor-fullscreen-dialog [data-testid="decision-panel"] button[type="button"]:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* Floor buttons: Expand & Exit full screen (dark mock styling) */
+.floor-btn-expand,
+.floor-btn-exit {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #33404C;
+  background: #141A21;
+  color: #E6EAEE;
+  font: 600 13px Inter, system-ui, sans-serif;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.floor-btn-expand:hover,
+.floor-btn-exit:hover {
+  border-color: #4A5866;
+}
+
+/* Floor buttons: Resume / needs you amber */
+.floor-btn-resume {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border-radius: 10px;
+  background: var(--floor-waiting-ring);
+  border: 1px solid var(--floor-waiting-ring);
+  color: #1A1206;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+.floor-btn-resume:hover {
+  filter: brightness(1.05);
+}
+
+/* spec views tabs (Specification / Changes / Knowledge used / Versions) on the dark floor */
+.floor-panel [role="tablist"].tabs [role="tab"],
+.floor-fullscreen-dialog [role="tablist"].tabs [role="tab"] {
+  background: transparent;
+  color: var(--floor-text-muted);
+  border: 1px solid var(--floor-border);
+}
+.floor-panel [role="tablist"].tabs [role="tab"][aria-selected="true"],
+.floor-fullscreen-dialog [role="tablist"].tabs [role="tab"][aria-selected="true"] {
+  background: var(--floor-working-badge-bg);
+  color: var(--floor-working-label);
+  border-color: var(--floor-working-ring);
+}
