@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1
+
+### Fixed
+
+- Factory floor: a run that needs you (NEEDS_HUMAN) or is blocked now shows the reason in the side panel and links to the run page, which holds the Resume control. Before, the panel showed no reason and no way to resume, and its "Review specification" link led to a page with no decision while the specification was still a draft.
+
 ## 2.1.0
 
 ### Added

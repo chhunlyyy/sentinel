@@ -10,7 +10,7 @@
     },
     {
       "fix": "",
-      "message": "2.1.0",
+      "message": "2.1.1",
       "name": "version",
       "required": true,
       "status": "passed"
