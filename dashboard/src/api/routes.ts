@@ -44,6 +44,8 @@ export const ROUTES = {
   unpause: { method: 'POST', pattern: '/api/v1/tasks/{slug}/unpause' },
   note: { method: 'POST', pattern: '/api/v1/tasks/{slug}/note' },
   retryNow: { method: 'POST', pattern: '/api/v1/tasks/{slug}/retry-now' },
+  chat: { method: 'GET', pattern: '/api/v1/runs/{slug}/chat' },
+  sendChat: { method: 'POST', pattern: '/api/v1/runs/{slug}/chat' },
   audit: { method: 'GET', pattern: '/api/v1/audit' },
   events: { method: 'GET', pattern: '/api/v1/events' },
   notifications: { method: 'GET', pattern: '/api/v1/notifications' },

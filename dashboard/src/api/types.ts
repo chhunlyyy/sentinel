@@ -415,6 +415,23 @@ export interface StreamEnvelope {
   payload: Record<string, unknown>;
 }
 
+export interface ChatItem {
+  id: string;
+  role: 'user' | 'orchestrator';
+  text: string;
+  at: string;
+  status: 'done' | 'pending' | 'failed';
+  error?: string;
+}
+
+export interface ChatAnswer {
+  items: ChatItem[];
+  orchestrator: {
+    runner: string;
+    model: string | null;
+  };
+}
+
 export type {
   WDetectItem as DetectItem,
   WDetect as DetectResult,

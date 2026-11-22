@@ -48,6 +48,8 @@ let sentEvents: { id: string; t: number }[] = [];
 let streams = new Set<ServerResponse>();
 let refuseUntil = 0;
 let eventSeq = 100;
+let chatFail = false;
+let runChats: Record<string, { id: string; role: 'user' | 'orchestrator'; text: string; at: string; status: 'done' | 'pending' | 'failed'; error?: string }[]> = {};
 let heartbeat: ReturnType<typeof setInterval> | null = null;
 
 interface FactoryState {
@@ -205,7 +207,16 @@ function setPath(root: unknown, path: (string | number)[], value: unknown) {
 
 function pushEvent(event: string, data: unknown, raw = false, id?: string) {
   const eid = id ?? `digital-hr:${++eventSeq}`;
-  const payload = raw ? String(data) : JSON.stringify(data);
+  let payloadData = data;
+  if (!raw && typeof data === 'object' && data !== null && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+    payloadData = {
+      project: obj.project ?? 'digital-hr',
+      run: obj.run ?? obj.slug ?? null,
+      ...obj,
+    };
+  }
+  const payload = raw ? String(payloadData) : JSON.stringify(payloadData);
   const frame = `id: ${eid}\nevent: ${event}\ndata: ${payload}\n\n`;
   sentEvents.push({ id: eid, t: Date.now() });
   for (const s of streams) s.write(frame);
@@ -226,10 +237,15 @@ async function control(req: IncomingMessage, res: ServerResponse, path: string) 
       log = [];
       sentEvents = [];
       refuseUntil = 0;
+      chatFail = false;
+      runChats = {};
       for (const s of streams) s.end();
       streams = new Set();
       return send(res, 200, { ok: true });
     }
+    case 'chat-fail':
+      chatFail = b.fail !== false;
+      return send(res, 200, { ok: true });
     case 'preset':
       applyPreset(db, String(b.name));
       return send(res, 200, { ok: true });
@@ -696,6 +712,65 @@ route('POST', `${V}/tasks/{slug}/note`, (c) => {
   pushEvent('run.note_added', { slug: c.params[0] });
   return [201, { ...wrun(run), note: { text: b.text } }];
 });
+
+const handleChatGet = (c: Ctx): [number, unknown] => {
+  const { key } = resolveRun(c.params[0], c.query);
+  const items = runChats[key] ?? [];
+  const runner = ext.orchestrator ?? 'claude';
+  return [200, { items, orchestrator: { runner, model: null } }];
+};
+
+const handleChatPost = (c: Ctx): [number, unknown] => {
+  const { run, key } = resolveRun(c.params[0], c.query);
+  const b = body(c) as { text?: string };
+  if (typeof b.text !== 'string' || !b.text.trim()) {
+    throw new ApiErr(400, 'E_VALIDATION', 'text is required', { field: 'text' });
+  }
+  if (b.text.length > 4000) {
+    throw new ApiErr(400, 'E_VALIDATION', 'text exceeds 4000 characters', { field: 'text' });
+  }
+  const items = (runChats[key] ??= []);
+  if (items.some((it) => it.status === 'pending')) {
+    throw new ApiErr(412, 'E_PRECONDITION', 'another orchestrator reply is already pending');
+  }
+  const userId = 'u-' + Date.now();
+  const userItem: { id: string; role: 'user' | 'orchestrator'; text: string; at: string; status: 'done' | 'pending' | 'failed'; error?: string } = {
+    id: userId,
+    role: 'user',
+    text: b.text.trim(),
+    at: new Date().toISOString(),
+    status: 'done',
+  };
+  const orchId = 'o-' + (Date.now() + 1);
+  const orchItem: { id: string; role: 'user' | 'orchestrator'; text: string; at: string; status: 'done' | 'pending' | 'failed'; error?: string } = {
+    id: orchId,
+    role: 'orchestrator',
+    text: '',
+    at: new Date().toISOString(),
+    status: 'pending',
+  };
+  items.push(userItem, orchItem);
+
+  const slug = c.params[0];
+  setTimeout(() => {
+    if (chatFail) {
+      orchItem.status = 'failed';
+      orchItem.error = 'orchestrator runner failed';
+      pushEvent('chat.message', { slug, id: orchId, role: 'orchestrator', status: 'failed' });
+    } else {
+      orchItem.status = 'done';
+      orchItem.text = `Run ${slug} is currently in state ${run.detail.state}. Actions stay with the human operator.`;
+      pushEvent('chat.message', { slug, id: orchId, role: 'orchestrator', status: 'done' });
+    }
+  }, 100);
+
+  return [202, { user: userItem, orchestrator: orchItem, items: [userItem, orchItem] }];
+};
+
+route('GET', `${V}/runs/{slug}/chat`, handleChatGet);
+route('POST', `${V}/runs/{slug}/chat`, handleChatPost);
+route('GET', `${V}/tasks/{slug}/chat`, handleChatGet);
+route('POST', `${V}/tasks/{slug}/chat`, handleChatPost);
 
 // ---- providers, orchestrator, agents, folders, project creation ----
 

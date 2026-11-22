@@ -734,4 +734,28 @@ export interface WKnowledgeRelated {
   records: WKnowledgeRelatedRecord[];
 }
 
+export interface WChatItem {
+  id: string;
+  role: 'user' | 'orchestrator';
+  text: string;
+  at: string;
+  status: 'done' | 'pending' | 'failed';
+  error?: string;
+}
+
+export interface WChatAnswer {
+  items: WChatItem[];
+  orchestrator: {
+    runner: string;
+    model: string | null;
+  };
+}
+
+export interface WSendChatAnswer {
+  user: WChatItem;
+  orchestrator: WChatItem;
+  items?: WChatItem[];
+}
+
+
 

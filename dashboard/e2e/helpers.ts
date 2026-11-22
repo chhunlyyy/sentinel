@@ -67,6 +67,9 @@ export class Api {
   stream(action: 'drop' | 'refuse', ms = 0) {
     return this.post('stream', { action, ms });
   }
+  chatFail(fail = true) {
+    return this.post('chat-fail', { fail });
+  }
   async requests(): Promise<LoggedRequest[]> {
     const res = await this.req.get(`${this.base}/__control/requests`);
     return res.json();

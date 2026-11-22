@@ -610,3 +610,228 @@
   color: var(--floor-working-label);
   border-color: var(--floor-working-ring);
 }
+
+/* ---- Orchestrator Chat Tab (Phase 2) ---- */
+.floor-chat-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 520px;
+}
+
+.floor-chat-header {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--floor-border);
+  font-size: 12px;
+  color: var(--floor-text-muted);
+  line-height: 1.4;
+}
+
+.floor-chat-header .mono {
+  font-family: ui-monospace, monospace;
+  color: var(--floor-text);
+}
+
+.floor-chat-list {
+  list-style: none;
+  margin: 0;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  max-height: 380px;
+}
+
+.floor-chat-msg {
+  word-break: break-word;
+}
+
+.floor-chat-user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 10px 12px;
+  border-radius: 12px 12px 4px 12px;
+  background: #173D39;
+  color: #E6FFFB;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.floor-chat-orch {
+  align-self: flex-start;
+  max-width: 90%;
+  padding: 10px 12px;
+  border-radius: 12px 12px 12px 4px;
+  background: #1C232C;
+  border: 1px solid var(--floor-border);
+  color: var(--floor-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.floor-chat-author {
+  font-size: 11px;
+  margin-bottom: 3px;
+  font-weight: 500;
+}
+
+.floor-chat-text {
+  white-space: pre-wrap;
+}
+
+.floor-chat-chips {
+  padding: 0 18px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.floor-chat-chip {
+  background: #19222B;
+  border: 1px solid var(--floor-border);
+  color: #C5D0DC;
+  border-radius: 14px;
+  padding: 5px 11px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease;
+}
+
+.floor-chat-chip:hover:not(:disabled) {
+  border-color: #3F5060;
+  color: #E6EAEE;
+}
+
+.floor-chat-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.floor-chat-form {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--floor-border);
+  align-items: flex-end;
+}
+
+.floor-chat-form textarea {
+  flex: 1 1 auto;
+  resize: none;
+  min-height: 48px;
+  border-radius: 10px;
+  border: 1px solid var(--floor-border);
+  background: var(--floor-canvas-bg);
+  color: var(--floor-text);
+  font: 13px Inter, system-ui, sans-serif;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+
+.floor-chat-form textarea:focus {
+  border-color: var(--floor-working-ring);
+  outline: none;
+}
+
+.floor-chat-form textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.floor-chat-send-btn {
+  background: #4FD1C1;
+  border: 1px solid #4FD1C1;
+  color: #062420;
+  font-weight: 600;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.floor-chat-send-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.floor-chat-send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.floor-chat-note-btn {
+  background: transparent;
+  border: 1px solid #33404C;
+  color: var(--floor-working-label);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.floor-chat-note-btn:hover:not(:disabled) {
+  border-color: var(--floor-working-ring);
+  background: rgba(79, 209, 193, 0.08);
+}
+
+.floor-chat-note-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.floor-chat-retry-btn {
+  background: transparent;
+  border: 1px solid #E06C75;
+  color: #F2A3A3;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.floor-chat-retry-btn:hover:not(:disabled) {
+  background: rgba(242, 163, 163, 0.1);
+}
+
+.floor-chat-retry-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.floor-btn-ask-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border-radius: 10px;
+  background: #19222B;
+  border: 1px solid #33404C;
+  color: #C5D0DC;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 8px;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+
+.floor-btn-ask-step:hover:not(:disabled) {
+  border-color: #4FD1C1;
+  color: #E6EAEE;
+  background: #1D2833;
+}
+
+.floor-btn-ask-step:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
