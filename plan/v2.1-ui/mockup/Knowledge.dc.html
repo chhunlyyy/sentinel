@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Knowledge base</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0F1419}
+a{color:#4FD1C1}a:hover{color:#8AE5DA}
+button,input,select{font-family:inherit}
+@media (prefers-reduced-motion: no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #0F1419; color: #E6EAEE; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px; border-bottom: 1px solid #26303A; background: #121820">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #E6EAEE"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4FD1C1" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="5" r="2.2"></circle><circle cx="12" cy="19" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle><path d="M7 11l3-4M7 13l3 4M14 6l3 4M14 18l3-4"></path></svg><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">Sentinel</span></a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 2px; margin-left: 8px">
+<a href="Floor.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Factory floor</a>
+<a href="NewTask.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">New task</a>
+<a href="Approve.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Approvals</a>
+<a href="Project.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Projects</a>
+<a href="Knowledge.dc.html" aria-current="page" style="padding: 8px 12px; border-radius: 8px; background: #1C242D; color: #E6EAEE; text-decoration: none; font-weight: 600">Knowledge</a>
+<a href="Settings.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Settings</a>
+</nav>
+</header>
+
+<main style="max-width: 1320px; margin: 0 auto; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Team knowledge · mef-hr</h1>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 10px; border-radius: 10px; background: #1D2440; color: #B9C8FF"><span class="pulse" style="width: 7px; height: 7px; border-radius: 50%; background: #9DB4FF"></span>harvesting run-overtime-approval-chain</span>
+<span style="flex: 1 1 auto"></span>
+<button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A4654; background: #1C242D; color: #E6EAEE; font-weight: 600; cursor: pointer">Ingest now</button>
+<button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A4654; background: #1C242D; color: #E6EAEE; font-weight: 600; cursor: pointer">Backfill history…</button>
+</div>
+
+<section aria-label="Status" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px">
+<div style="padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><span style="font-size: 12px; color: #9AA6B2">Change records</span><strong style="display: block; font-family: 'Space Grotesk', sans-serif; font-size: 24px">[count]</strong><span style="font-size: 12px; color: #C5CDD5">verified from runs and inferred from git</span></div>
+<div style="padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><span style="font-size: 12px; color: #9AA6B2">Tracked branches</span><strong style="display: block; font-family: 'Space Grotesk', sans-serif; font-size: 24px">4</strong><span style="font-size: 12px; color: #C5CDD5">backend@develop, @main · frontend@develop · deploy@main</span></div>
+<div style="padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><span style="font-size: 12px; color: #9AA6B2">Module summaries</span><strong style="display: block; font-family: 'Space Grotesk', sans-serif; font-size: 24px">[count]</strong><span style="font-size: 12px; color: #F5C776">2 stale · refresh queued</span></div>
+<div style="padding: 14px; border-radius: 12px; border: 1px solid #26303A; background: #171D24"><span style="font-size: 12px; color: #9AA6B2">Last publish</span><strong style="display: block; font-family: 'Space Grotesk', sans-serif; font-size: 24px">10:31</strong><span style="font-size: 12px; color: #C5CDD5">knowledge/ only · scrub passed</span></div>
+</section>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<section aria-label="Change records" style="flex: 999 1 560px; min-width: 0; padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px; flex: 1 1 auto">Changes</h2>
+<input aria-label="Search changes" placeholder="Search title, file, author" style="min-height: 40px; padding: 0 10px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; min-width: 220px">
+<div role="group" aria-label="Filter" style="display: flex; gap: 4px">
+<sc-for list="{{filters}}" as="f" hint-placeholder-count="3">
+<button type="button" onClick="{{f.pick}}" aria-pressed="{{f.pressed}}" style="min-height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid {{f.border}}; background: #171D24; color: #E6EAEE; cursor: pointer">{{f.label}}</button>
+</sc-for>
+</div>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{records}}" as="r" hint-placeholder-count="5">
+<li style="padding: 12px; border-radius: 10px; background: #171D24; display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9AA6B2">{{r.key}}</span>
+<strong>{{r.title}}</strong>
+<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 8px; background: {{r.provBg}}; color: {{r.provFg}}">{{r.prov}}</span>
+</div>
+<span style="font-size: 12px; color: #C5CDD5">{{r.summary}}</span>
+<span style="font-size: 12px; color: #9AA6B2">{{r.reached}}</span>
+</li>
+</sc-for>
+</ul>
+</section>
+
+<aside style="flex: 1 1 320px; max-width: 420px; display: flex; flex-direction: column; gap: 12px">
+<section style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Capture work done outside Sentinel</h2>
+<p style="margin: 0; font-size: 13px; color: #C5CDD5">Add this workflow to each project repo. It records every merge to a tracked branch, even when nobody runs Sentinel.</p>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9AA6B2">Repo<select style="min-height: 40px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; padding: 0 8px"><option>backend</option><option>frontend</option><option>digital-hr-deploy</option></select></label>
+<pre style="margin: 0; padding: 10px; border-radius: 8px; background: #0B0F13; font-family: 'JetBrains Mono', monospace; font-size: 11px; white-space: pre-wrap; color: #B8C2CC">REPO_ID: backend
+REPO_PROFILE: spring-gradle
+TRACKED_BRANCHES: "[develop, main]"</pre>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="flex: 1 1 140px; min-height: 44px; border-radius: 10px; border: 0; background: #4FD1C1; color: #062420; font-weight: 600; cursor: pointer">Copy workflow file</button>
+<button type="button" style="flex: 1 1 120px; min-height: 44px; border-radius: 10px; border: 1px solid #3A4654; background: transparent; color: #E6EAEE; font-weight: 600; cursor: pointer">Secrets help</button>
+</div>
+</section>
+<section style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 18px">Rules from the team</h2>
+<p style="margin: 0; font-size: 13px; color: #C5CDD5">3 proposed invariants wait for review. Agents only follow rules a person approved.</p>
+<a href="Approve.dc.html" style="font-size: 13px">Review proposals</a>
+</section>
+<section style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; font-size: 12px; letter-spacing: .4px; text-transform: uppercase; color: #9AA6B2">Background jobs</h2>
+<p style="margin: 0; font-size: 13px; color: #C5CDD5">running: harvest run-overtime-approval-chain · queued: refresh after pull · failed: none</p>
+</section>
+</aside>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { f: 'all' }; }
+  renderVals() {
+    var self = this, f = this.state.f;
+    var ALL = [
+      { key: 'run-employee-search', title: 'Employee search by ID', prov: 'verified', summary: 'Adds /employees/search with exact ID match; HR and managers only.', reached: 'backend · develop Nov 19 → main Nov 20' },
+      { key: 'pr-231', title: 'Bump Spring Boot to 3.4', prov: 'inferred', summary: 'Dependency update; no behavior change found in the diff.', reached: 'backend · develop Nov 18' },
+      { key: 'pr-228', title: 'Leave screen paging', prov: 'inferred', summary: 'Server-side paging for the leave list, 50 per page.', reached: 'frontend · develop Nov 15' },
+      { key: 'p-9c1e0a77b2d4', title: 'Hotfix: payslip PDF font', prov: 'inferred', summary: 'Direct commit on main; embeds the Khmer font in payslip PDFs.', reached: 'backend · main Nov 12' },
+      { key: 'pr-212', title: 'Leave balance API', prov: 'inferred', summary: 'GET /leave/balance per employee; used by the dashboard widget.', reached: 'backend · develop Oct 30 → main Nov 3' }
+    ];
+    var records = ALL.filter(function (r) { return f === 'all' || r.prov === f; }).map(function (r) {
+      var v = r.prov === 'verified';
+      return Object.assign({}, r, { provBg: v ? '#173D39' : '#1D2440', provFg: v ? '#7FE3D7' : '#B9C8FF' });
+    });
+    var filters = [['all', 'All'], ['verified', 'Verified'], ['inferred', 'From git']].map(function (x) {
+      var on = f === x[0];
+      return { label: x[1], pressed: on ? 'true' : 'false', border: on ? '#4FD1C1' : '#3A4654', pick: function () { self.setState({ f: x[0] }); } };
+    });
+    return { records: records, filters: filters };
+  }
+}
+</script>
+</body>
+</html>

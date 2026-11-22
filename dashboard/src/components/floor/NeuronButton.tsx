@@ -13,6 +13,8 @@ interface NeuronButtonProps {
   station: StationDef;
   state: StationState;
   taskDots: TaskDot[];
+  /** second label line: `runner · model` for agents, `engine`, or `you` for gates */
+  sub: string;
   selected: boolean;
   onClick: () => void;
 }
@@ -23,10 +25,10 @@ function kindClass(kind: StationKind): string {
   return 'floor-neuron floor-neuron-engine';
 }
 
-export function NeuronButton({ station, state, taskDots, selected, onClick }: NeuronButtonProps) {
+export function NeuronButton({ station, state, taskDots, sub, selected, onClick }: NeuronButtonProps) {
   const L = stateLook(state);
   const isGate = station.kind === 'gate';
-  const ring = isGate && (state === 'todo' || state === 'next') ? 'var(--floor-waiting-ring)' : L.ring;
+  const ring = isGate && (state === 'todo' || state === 'next') ? 'var(--floor-gate-idle-ring)' : L.ring;
   const baseGlow = L.glow === 'none' ? '' : L.glow;
   const selExtra = selected
     ? (baseGlow ? `, 0 0 0 3px rgba(230, 234, 238, 0.4)` : '0 0 0 3px rgba(230, 234, 238, 0.3)')
@@ -82,9 +84,9 @@ export function NeuronButton({ station, state, taskDots, selected, onClick }: Ne
             color: L.ink,
           }}
         >
-          <span className="floor-neuron-label" style={{ display: 'block' }}>
-            {station.glyph}
-          </span>
+          {/* the glyph is drawn by CSS (generated content), not text: the button's name is the label above, and a visible
+              text that the name does not contain would break WCAG 2.5.3 (label in name) */}
+          <span className="floor-neuron-label" style={{ display: 'block' }} aria-hidden="true" data-glyph={station.glyph} />
         </button>
         {/* task dots in top-right corner */}
         {taskDots.length > 0 && (
@@ -100,7 +102,7 @@ export function NeuronButton({ station, state, taskDots, selected, onClick }: Ne
                   width: 18,
                   height: 18,
                   borderRadius: '50%',
-                  border: '2px solid var(--floor-canvas-border, #1F2730)',
+                  border: '2px solid #0E1419',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -117,28 +119,10 @@ export function NeuronButton({ station, state, taskDots, selected, onClick }: Ne
           </div>
         )}
       </div>
-      {/* station name label */}
-      <span
-        style={{
-          fontSize: 12,
-          fontWeight: 600,
-          textAlign: 'center',
-          color: L.labelColor,
-        }}
-      >
-        {station.name}
-      </span>
-      {/* sub-label: role/kind */}
-      <span
-        style={{
-          fontFamily: 'ui-monospace, monospace',
-          fontSize: 10,
-          color: 'var(--floor-text-muted)',
-          textAlign: 'center',
-          marginTop: -4,
-        }}
-      >
-        {station.kind === 'gate' ? 'you' : station.kind}
+      {/* station name + sub-label sit on a chip so edges running behind never cross the text */}
+      <span className="floor-label">
+        <span className="floor-label-name" style={{ color: L.labelColor }}>{station.name}</span>
+        <span className="floor-label-sub">{sub}</span>
       </span>
     </div>
   );

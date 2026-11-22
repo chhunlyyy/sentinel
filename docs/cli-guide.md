@@ -35,6 +35,8 @@ Let the engine drive it (the factory starts every agent itself):
 sentinel run new leave-export --type feature --driver engine --request "HR exports leave balances as CSV, HR only"
 ```
 
+You can pass a request from a file with `--request-file <path>` (or `-` for stdin; mutually exclusive with `--request`). To start a run with a specification drafted in an AI session, pass `--spec-file <path>`: it goes in as draft v1 and skips the specifier stage, while triage and your human approval gate remain strictly required.
+
 Or drive it yourself, or with your AI tool's `/sentinel` skill (the default `--driver cli`):
 
 ```bash
@@ -66,7 +68,30 @@ sentinel pause leave-export                                 # start nothing new;
 sentinel unpause leave-export
 sentinel note leave-export "reuse ExportService, do not add a new class"   # read once by the next agent
 sentinel resolve leave-export --refresh-config -m "routing fixed"          # pick up a changed config
+sentinel resolve leave-export --retry-now                                  # start tasks that wait for a usage limit at once
 ```
+
+When a provider CLI stops because of a usage or rate limit, the task is not failed: it goes back to the queue with a retry time read from the message (or `routing.limit_backoff`, default 30 minutes), and the dispatcher starts it again after that time. `sentinel next <slug>` then answers `Wait: waiting for the claude usage limit until <time>` with the `--retry-now` command. If `routing.fallback` names an installed runner, the task runs there at once instead. `--retry-now` is for a human at a terminal (or via the dashboard floor "Retry now" button).
+
+### Usage analytics
+
+```bash
+sentinel stats --usage                                  # usage across all models and weeks
+sentinel stats --usage --project digital-hr             # filtered by project
+sentinel stats --usage --since 2026-11-01 --format md   # filtered by date, as Markdown
+```
+
+Prints token counts (input, output, total), cost estimates from adapters, seconds, and task counts broken down by model, week, and role.
+
+### Fix routing
+
+An engine-driven run needs a command-line runner for every role. If a role has none, the run is blocked with a routing message.
+
+```bash
+sentinel doctor --fix-routing    # prints each blocked role with a suggested runner and model and the YAML change
+```
+
+The command writes `sentinel.config.yaml` only after you type `yes` in an interactive terminal (it is refused in a task process and without a terminal, after printing the suggestion). The change is stored in the config history. Comments in the file are not kept, as with the dashboard.
 
 ## The background service
 
@@ -74,6 +99,8 @@ sentinel resolve leave-export --refresh-config -m "routing fixed"          # pic
 sentinel service start        # start the factory in the background
 sentinel service status       # running or not, port, uptime, log file
 sentinel service stop         # or: sentinel stop
+sentinel service pause -m "deploy window"   # whole factory: nothing new starts in any project; running work finishes
+sentinel service resume       # runs you paused one by one stay paused
 sentinel service autostart on # start at login (Linux, systemd user unit)
 sentinel dashboard            # start the service if needed and open the browser
 sentinel dashboard --foreground   # the old way: the server lives in this terminal
@@ -124,6 +151,7 @@ Type the command in your tool, or just ask for it in words:
 | `/sentinel-docs` | Updates docs and drafts the PR |
 | `/sentinel-rollout` | Collects deploy-time changes |
 | `/sentinel-retro` | Proposes new project invariants |
+| `/sentinel-send` | Summarizes an AI session into a request and optional spec to start a Sentinel run |
 
 Every stage is also its own skill, so you can run just one: for example `/sentinel-review` for a review of your uncommitted changes, or `/sentinel-release-check` before you commit. A standalone stage needs a config but no spec, lock or shared repo.
 

@@ -26,7 +26,7 @@ Please try at least one of each and tell us how it went:
 | A small feature with a new endpoint or screen (Tier 3) | specifier, interview, reviewer, QA, promotion, docs; none of these has run for real yet |
 | A change that touches auth, data or a migration (Tier 4) | hardener, full QA, rollout notes, retrospective; also untested |
 | Your own stack | a profile other than Spring Boot and Next.js; the Flutter, Python and Node profiles have only been tried on samples |
-| A tool other than Claude (Codex, Gemini, Cursor) | the adapters were built from memory of those tools and never run against the real CLIs |
+| A tool other than Claude (Codex, Cursor, or Gemini with a working account) | the Codex and Cursor adapters were built from memory and never run against the real CLIs; the Gemini adapter was checked against the real Gemini CLI 0.60.0 for flags and failures only (the account used was refused, so no successful answer was ever parsed) |
 | Two people on the same slug | the lock in the shared repo |
 | `sentinel resume` after you quit mid-run | state recovery |
 | macOS or Windows | only Linux has been tried |
@@ -44,7 +44,8 @@ Please try at least one of each and tell us how it went:
 
 - Stages not yet run for real: specifier, reviewer, hardener, QA, promotion, docs, rollout, retrospective, and the change map on a large change.
 - The MySQL QA plugin has been dry-run only; the clone itself has not been run by Sentinel.
-- Codex, Gemini, Cursor and `agy` flags are unverified.
+- Codex and Cursor flags are unverified (the tools are not installed where Sentinel is developed). The Gemini flags were checked against the real Gemini CLI 0.60.0 help and a real failed headless call (a refused account); a successful Gemini answer has not been seen.
+- Accessibility: the dashboard has an automated axe-core check over its screens, the header menus and the factory floor dialogs. A manual screen-reader pass has not been done.
 - Stage isolation depends on each tool's subagent feature. Claude Code is tested; Antigravity's `invoke_subagent` and the others are not yet confirmed in a Sentinel run. Check `sentinel stats` after a run for inline stages.
 - The self-test covers the mechanics (config, prompts, locks, boundary check, scrubber, release check), not the quality of what an agent writes.
 - Upgrade both parts: `uv tool upgrade sentinel-pipeline` and `npx skills@latest update`.

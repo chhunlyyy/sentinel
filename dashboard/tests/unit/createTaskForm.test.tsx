@@ -42,4 +42,132 @@ describe('AC-TSK-01n the form checks fields before sending', () => {
     await user.click(screen.getByRole('button', { name: 'Create task' }));
     expect(onSubmit).toHaveBeenCalledWith({ slug: 'leave-report', request: 'Report leave per team', type: 'feature', priority: 'normal' });
   });
+
+  test('Save as draft stores draft into localStorage and restores it across renders', async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const onRequestChange = vi.fn();
+    const { unmount } = render(
+      <CreateTaskForm
+        pid="test-proj"
+        repos={['backend', 'frontend']}
+        onSubmit={onSubmit}
+        onRequestChange={onRequestChange}
+      />
+    );
+    await user.type(screen.getByLabelText('Slug'), 'draft-task');
+    await user.type(screen.getByLabelText('Request'), 'Draft request details');
+    await user.selectOptions(screen.getByLabelText('Type'), 'bug');
+    expect(onRequestChange).toHaveBeenCalledWith('Draft request details');
+
+    await user.click(screen.getByRole('button', { name: 'Save as draft' }));
+    expect(screen.getByText('Draft saved')).toBeInTheDocument();
+
+    const stored = JSON.parse(window.localStorage.getItem('sentinel_task_draft_test-proj') || '{}');
+    expect(stored.slug).toBe('draft-task');
+    expect(stored.request).toBe('Draft request details');
+    expect(stored.type).toBe('bug');
+
+    unmount();
+
+    render(
+      <CreateTaskForm
+        pid="test-proj"
+        repos={['backend', 'frontend']}
+        onSubmit={onSubmit}
+      />
+    );
+    expect(screen.getByLabelText('Slug')).toHaveValue('draft-task');
+    expect(screen.getByLabelText('Request')).toHaveValue('Draft request details');
+    expect(screen.getByLabelText('Type')).toHaveValue('bug');
+  });
+
+  test('submitting the form clears the project draft from localStorage', async () => {
+    window.localStorage.setItem(
+      'sentinel_task_draft_test-proj',
+      JSON.stringify({ slug: 'draft-task', request: 'Draft request', type: 'feature' })
+    );
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <CreateTaskForm
+        pid="test-proj"
+        repos={['backend', 'frontend']}
+        onSubmit={onSubmit}
+      />
+    );
+    expect(screen.getByLabelText('Slug')).toHaveValue('draft-task');
+    await user.click(screen.getByRole('button', { name: 'Create task' }));
+    expect(onSubmit).toHaveBeenCalled();
+    expect(window.localStorage.getItem('sentinel_task_draft_test-proj')).toBeNull();
+  });
+
+  test('localStorage errors are handled gracefully without crashing', async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(
+      <CreateTaskForm
+        pid="test-proj"
+        repos={['backend', 'frontend']}
+        onSubmit={onSubmit}
+      />
+    );
+    await user.type(screen.getByLabelText('Slug'), 'fail-draft');
+    await user.click(screen.getByRole('button', { name: 'Save as draft' }));
+    expect(screen.getByLabelText('Slug')).toHaveValue('fail-draft');
+    setItemSpy.mockRestore();
+  });
+
+  test('submitting with an imported spec passes spec in body', async () => {
+    const { user, onSubmit } = await validForm();
+    await user.click(screen.getByLabelText('I already have a spec'));
+    await user.type(screen.getByLabelText('Specification'), '## Problem statement\nPre-drafted spec');
+    await user.click(screen.getByRole('button', { name: 'Create task' }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      slug: 'leave-report',
+      request: 'Report leave per team',
+      type: 'feature',
+      priority: 'normal',
+      spec: '## Problem statement\nPre-drafted spec',
+    });
+  });
+
+  test('drafting saves and restores imported spec', async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const { unmount } = render(
+      <CreateTaskForm
+        pid="test-proj"
+        repos={['backend']}
+        onSubmit={onSubmit}
+      />
+    );
+    await user.type(screen.getByLabelText('Slug'), 'draft-spec-task');
+    await user.type(screen.getByLabelText('Request'), 'Some request');
+    await user.selectOptions(screen.getByLabelText('Type'), 'feature');
+    await user.click(screen.getByLabelText('I already have a spec'));
+    await user.type(screen.getByLabelText('Specification'), '## Problem statement\nDrafted spec');
+
+    await user.click(screen.getByRole('button', { name: 'Save as draft' }));
+    expect(screen.getByText('Draft saved')).toBeInTheDocument();
+
+    const stored = JSON.parse(window.localStorage.getItem('sentinel_task_draft_test-proj') || '{}');
+    expect(stored.spec).toBe('## Problem statement\nDrafted spec');
+
+    unmount();
+
+    render(
+      <CreateTaskForm
+        pid="test-proj"
+        repos={['backend']}
+        onSubmit={onSubmit}
+      />
+    );
+    expect(screen.getByLabelText('Specification')).toHaveValue('## Problem statement\nDrafted spec');
+  });
 });

@@ -156,6 +156,13 @@ export interface WVersion {
   channel: string | null;
   decided_at: string | null;
   comment: string | null;
+  provenance?: string | null;
+}
+
+export interface WKnowledgeUsed {
+  invariants: { id?: string; path?: string; rule?: string; text: string }[];
+  records: { date?: string; key: string; path?: string; repo?: string; summary?: string; title?: string }[];
+  summaries: { module?: string | null; path: string; repo: string; text: string }[];
 }
 
 interface WReview {
@@ -169,6 +176,8 @@ interface WReview {
   versions: WVersion[];
   decision: WDecision | null;
   requested_at: string | null;
+  knowledge_used?: WKnowledgeUsed;
+  provenance?: string | null;
 }
 
 export interface WSpecification extends WReview {
@@ -179,6 +188,7 @@ export interface WSpecVersion {
   version: number;
   sha256: string;
   text: string;
+  provenance?: string | null;
 }
 
 export interface WGherkin extends WReview {
@@ -202,6 +212,10 @@ export interface WNode {
   finished_at: string | null;
   seconds: number | null;
   label: string | null;
+  tokens?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cost?: number | null;
 }
 
 export interface WWorkflow {
@@ -385,6 +399,23 @@ export interface WCostTotal {
   unreported_tasks: number;
 }
 
+export interface WUsageTotal {
+  tokens: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost: number | null;
+  seconds: number | null;
+  reported_tasks: number;
+  unreported_tasks: number;
+}
+
+export interface WUsageBreakdown {
+  total: WUsageTotal | WNullMetric;
+  by_model: Record<string, { tokens: number; input_tokens: number; output_tokens: number; cost: number; seconds: number; tasks: number }>;
+  by_week: Record<string, { tokens: number; input_tokens: number; output_tokens: number; cost: number; seconds: number; tasks: number }>;
+  by_role: Record<string, { tokens: number; input_tokens: number; output_tokens: number; cost: number; seconds: number; tasks: number }>;
+}
+
 /** GET /reports/analytics. Each metric is its value, or a WNullMetric with the reason. */
 export interface WAnalytics {
   range: { from: string | null; to: string | null };
@@ -402,12 +433,13 @@ export interface WAnalytics {
     first_attempt_pass_rate: { value: number; passed_first: number; verified: number } | WNullMetric;
   };
   rework: { spec_revisions: number; gherkin_revisions: number; changes_requested: number; findings_routed: number } | WNullMetric;
+  usage?: WUsageBreakdown;
 }
 
 // ---- Factory (W4) ----
 
 /** Station states returned per run in GET /api/v1/projects/{pid}/factory */
-export type WStationState = 'done' | 'working' | 'waiting' | 'paused' | 'queued' | 'next' | 'todo';
+export type WStationState = 'done' | 'working' | 'waiting' | 'paused' | 'limit' | 'queued' | 'next' | 'todo';
 
 export interface WFactoryAgent {
   task: string;
@@ -442,9 +474,43 @@ export interface WFactoryRun {
   agents: Record<string, WFactoryAgent[]>;
   lanes: WFactoryLane[];
   attention: { kind: 'needs_human' | 'blocked'; reason: string } | null;
+  /** set while the current station waits for a provider usage limit to end (station state `limit`) */
+  limit?: WFactoryLimitWait | null;
+  task_usage?: Record<string, WTaskUsage>;
   pending_notes: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WTaskUsage {
+  tokens: number | null;
+  cost: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  seconds: number | null;
+  role: string;
+  runner?: string | null;
+  model?: string | null;
+}
+
+export interface WFactoryBudget {
+  reached: boolean;
+  tokens_today: number;
+  cost_today: number;
+  tokens_per_day: number | null;
+  usd_per_day: number | null;
+  reason: string | null;
+  resets_at: string | null;
+}
+
+export interface WFactoryLimitWait {
+  station: string;
+  task: string;
+  role: string;
+  runner: string;
+  /** ISO time the task starts again */
+  retry_at: string;
+  reason: string | null;
 }
 
 export interface WFactoryQueueItem {
@@ -460,15 +526,58 @@ export interface WFactoryLimits {
   max_agents: number;
   running_in_project: number;
   running_total: number;
+  budget?: { tokens_per_day: number | null; usd_per_day: number | null };
+}
+
+export interface WFactoryWho {
+  role: string;
+  runner: string;
+  model: string | null;
+}
+
+export interface WFactoryActivity {
+  at: string;
+  run: string;
+  station: string;
+  text: string;
+}
+
+export interface WFactoryStatus {
+  paused: boolean;
+  paused_at: string | null;
+  running_total: number;
+  max_agents: number;
 }
 
 export interface WFactory {
   project: string;
+  factory_paused: boolean;
+  /** agent stations (triage, spec, gherkin, build, knowledge) from the routing config; a station without a route is absent */
+  who: Record<string, WFactoryWho>;
+  /** newest first, at most 20 */
+  activity: WFactoryActivity[];
   generated_at: string;
   stations: string[];
   limits: WFactoryLimits;
   runs: WFactoryRun[];
   queue: WFactoryQueueItem[];
+  budget?: WFactoryBudget;
+  /** roles that block engine-driven runs (empty when routing is fine or the driver is not `engine`) */
+  routing?: { problems: string[] };
+}
+
+export interface WRoutingFixRow {
+  role: string;
+  text: string;
+  current: { runner: string | null; model: string | null };
+  suggested: { runner: string; model: string | null };
+}
+
+export interface WRoutingFix {
+  project: string;
+  applies: boolean;
+  problems: WRoutingFixRow[];
+  changes: { path: string; value: unknown }[];
 }
 
 export interface WDetectItem {
@@ -594,4 +703,26 @@ export interface WKnowledgeBackfill {
   state: 'queued';
   estimated: number | null;
 }
+
+export interface WKnowledgeRelatedRecord {
+  date?: string;
+  key: string;
+  path?: string;
+  repo?: string;
+  summary?: string;
+  title?: string;
+}
+
+export interface WKnowledgeRelatedInvariant {
+  id?: string;
+  path?: string;
+  rule?: string;
+  text?: string;
+}
+
+export interface WKnowledgeRelated {
+  invariants: WKnowledgeRelatedInvariant[];
+  records: WKnowledgeRelatedRecord[];
+}
+
 

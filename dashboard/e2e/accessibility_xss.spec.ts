@@ -25,6 +25,18 @@ const screens: Screen[] = [
   { name: 'Changes with a split diff', theme: 'light', route: `${RUN_URL}/changes?repo=backend&path=src%2Fmain%2FLeave.java&mode=split`, wait: 'Changes' },
   { name: 'Changes with a split diff', theme: 'dark', route: `${RUN_URL}/changes?repo=backend&path=src%2Fmain%2FLeave.java&mode=split`, wait: 'Changes' },
   { name: 'Trace', theme: 'light', route: `${RUN_URL}/trace`, wait: 'Trace' },
+  { name: 'Factory floor', theme: 'light', route: '/floor', wait: 'Factory floor' },
+  { name: 'Factory floor', theme: 'dark', route: '/floor', wait: 'Factory floor' },
+  { name: 'Factory floor with a waiting gate', theme: 'light', route: '/floor', wait: 'Factory floor', setup: (a) => a.preset('approvals') },
+  { name: 'Tasks', theme: 'light', route: '/tasks', wait: 'Tasks' },
+  { name: 'Runs', theme: 'light', route: '/runs', wait: 'Runs' },
+  { name: 'Quality', theme: 'light', route: '/quality', wait: 'Quality' },
+  { name: 'Reports', theme: 'light', route: '/reports', wait: 'Reports' },
+  { name: 'Reports', theme: 'dark', route: '/reports', wait: 'Reports' },
+  { name: 'Knowledge', theme: 'light', route: '/projects/digital-hr/knowledge', wait: 'Team knowledge' },
+  { name: 'Settings, installation', theme: 'light', route: '/settings/installation', wait: /Installation|Settings/ },
+  { name: 'Settings, providers', theme: 'light', route: '/settings/providers', wait: /Providers|Settings|Orchestrator/ },
+  { name: 'Run overview', theme: 'light', route: RUN_URL, wait: /leave-balance|Leave balance/i },
   {
     name: 'Session ended', theme: 'light', route: '/', wait: 'Session ended',
     setup: (a) => a.rule({ method: 'GET', path: 're:^/api/v1/(?!session)', status: 401, body: { error: { code: 'E_AUTH', message: 'authentication required', details: {} } } }),
@@ -46,13 +58,85 @@ test.describe('automated accessibility checks', () => {
   }
 });
 
+const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+
+async function noSeriousViolation(page: Page) {
+  const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+  const bad = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+  expect(bad.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+}
+
+test.describe('header, menus and dialogs (accessibility)', () => {
+  test('AC-DSH-01e the top header has one banner, one named main navigation, one main region and a named status', async ({ page }) => {
+    await open(page, '/floor');
+    await expect(page.getByRole('heading', { name: 'Factory floor', exact: true })).toBeVisible();
+    await expect(page.getByRole('banner')).toHaveCount(1);
+    await expect(page.getByRole('main')).toHaveCount(1);
+    await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(1);
+    await expect(page.getByRole('link', { name: 'Sentinel home' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: /Connected/ })).toHaveCount(1);
+    // every button and link in the header has an accessible name
+    const unnamed = await page.getByRole('banner').locator('button, a').evaluateAll((els) =>
+      els.filter((e) => !((e.getAttribute('aria-label') ?? '').trim() || (e.textContent ?? '').trim())).map((e) => e.outerHTML.slice(0, 80)));
+    expect(unnamed).toEqual([]);
+    await noSeriousViolation(page);
+  });
+
+  test('AC-DSH-01e the More menu is a named toggle that reports its state, opens its links and closes with Escape', async ({ page }) => {
+    await open(page, '/floor');
+    const more = page.getByRole('button', { name: 'More' });
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await more.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    for (const name of ['Overview', 'Tasks', 'Quality']) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
+    await noSeriousViolation(page);
+    await page.keyboard.press('Escape');
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await expect(nav.getByRole('link', { name: 'Quality', exact: true })).toHaveCount(0);
+  });
+
+  test('AC-DSH-01e the notification list opened from the bell has no serious violation', async ({ page }) => {
+    await open(page, '/floor');
+    await expect(page.getByRole('heading', { name: 'Factory floor', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /Notifications/ }).click();
+    await expect(page.getByTestId('notification-panel')).toBeVisible();
+    await noSeriousViolation(page);
+  });
+
+  test('AC-DSH-01e the factory floor regions are named and its cancel dialog is a labelled modal with no serious violation', async ({ page }) => {
+    await open(page, '/floor');
+    await expect(page.getByRole('region', { name: 'Factory network' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Tasks on the floor' })).toBeVisible();
+    const side = page.getByRole('complementary', { name: 'Selected station' });
+    await expect(side).toBeVisible();
+    // every station on the canvas is a named toggle button
+    const stations = page.getByRole('region', { name: 'Factory network' }).getByRole('button');
+    expect(await stations.count()).toBeGreaterThan(3);
+    for (const b of await stations.all()) expect((await b.getAttribute('aria-pressed')) !== null || ((await b.getAttribute('aria-label')) ?? (await b.textContent()) ?? '').trim().length > 0).toBeTruthy();
+    await side.getByRole('button', { name: 'Cancel', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAccessibleName(/\S/);
+    await noSeriousViolation(page);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test('AC-DSH-01e the factory pause button is named and states what it does', async ({ page }) => {
+    await open(page, '/floor');
+    await expect(page.getByRole('button', { name: /^(Pause|Resume) factory$/ })).toBeVisible();
+    await expect(page.getByRole('banner').getByText(/Factory (running|paused)/).first()).toBeVisible();
+  });
+});
+
 test.describe('keyboard use', () => {
   test('AC-DSH-01g approving a specification with the keyboard only', async ({ page, api }) => {
     await api.preset('approvals');
     const outlines: boolean[] = [];
     await open(page, '/overview');
     await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
-    await tabTo(page, /^My Approvals/, 40, outlines);
+    await tabTo(page, /^Approvals/, 40, outlines);
     await page.keyboard.press('Enter');
     // a route change moves focus to the main area and sets the page title (finding: focus and title on navigation)
     await expect(page.getByRole('main')).toBeFocused();

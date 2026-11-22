@@ -179,7 +179,9 @@ The section is capped at approximately 6,000 characters and contains:
 3. Relevant project rules and candidate proposals from `proposals/knowledge-*`.
 4. Up to 5 newest change records touching the affected modules.
 
-Files are referenced by absolute read-only paths so agents can inspect full details if needed.
+Files are referenced by absolute read-only paths so agents can inspect full details if needed. The exact structured knowledge read for each agent task is written to `knowledge.json` in the task directory and preserved with versions (e.g. `specification-v1.knowledge.json`), allowing review gates and the approval screen to display the exact knowledge context used.
+
+Related knowledge can also be searched on demand via the API endpoint `GET /api/v1/projects/{pid}/knowledge/related?q=<text>&limit=<n>`, which searches across change records and project invariants using the same matching logic.
 
 ## CLI commands
 

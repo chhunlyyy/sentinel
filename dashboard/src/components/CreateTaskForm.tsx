@@ -11,12 +11,15 @@ export interface CreateTaskBody {
   priority: string;
   tier?: number;
   ticket?: string;
+  spec?: string;
 }
 
 export interface CreateTaskFormProps {
   repos: string[];
+  pid?: string;
   onSubmit: (body: CreateTaskBody) => void | Promise<void>;
   onTypeChange?: (type: string) => void;
+  onRequestChange?: (request: string) => void;
   /** server refusals by field name */
   fieldErrors?: Record<string, string>;
   pending?: boolean;
@@ -28,8 +31,10 @@ export interface CreateTaskFormProps {
 
 export function CreateTaskForm({
   repos,
+  pid,
   onSubmit,
   onTypeChange,
+  onRequestChange,
   fieldErrors = {},
   pending = false,
   blocked = false,
@@ -43,9 +48,45 @@ export function CreateTaskForm({
   const [priority, setPriority] = useState('normal');
   const [tier, setTier] = useState('');
   const [ticket, setTicket] = useState('');
+  const [hasSpec, setHasSpec] = useState(false);
+  const [spec, setSpec] = useState('');
   const [chosen, setChosen] = useState<string[]>(repos);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [draftSaved, setDraftSaved] = useState(false);
   const busy = useRef(false);
+
+  const draftKey = pid ? `sentinel_task_draft_${pid}` : null;
+
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.slug) setSlug(parsed.slug);
+          if (parsed.request) {
+            setRequest(parsed.request);
+            onRequestChange?.(parsed.request);
+          }
+          if (parsed.type) {
+            setType(parsed.type);
+            onTypeChange?.(parsed.type);
+          }
+          if (parsed.priority) setPriority(parsed.priority);
+          if (parsed.tier !== undefined && parsed.tier !== null) setTier(String(parsed.tier));
+          if (parsed.ticket) setTicket(parsed.ticket);
+          if (parsed.spec) {
+            setSpec(parsed.spec);
+            setHasSpec(true);
+          }
+          if (Array.isArray(parsed.repos) && parsed.repos.length) setChosen(parsed.repos);
+        }
+      }
+    } catch {
+      // storage errors must not crash
+    }
+  }, [draftKey]);
 
   useEffect(() => setChosen(repos), [repos.join('|')]);
 
@@ -69,6 +110,27 @@ export function CreateTaskForm({
     onTypeChange?.(selectedType);
   };
 
+  const saveDraft = () => {
+    if (!draftKey) return;
+    const draftData: CreateTaskBody = {
+      slug,
+      request,
+      type,
+      priority,
+      ...(tier ? { tier: Number(tier) } : {}),
+      ...(ticket.trim() ? { ticket: ticket.trim() } : {}),
+      ...(chosen.length ? { repos: chosen } : {}),
+      ...(hasSpec && spec.trim() ? { spec: spec.trim() } : {}),
+    };
+    try {
+      window.localStorage.setItem(draftKey, JSON.stringify(draftData));
+      setDraftSaved(true);
+      setTimeout(() => setDraftSaved(false), 3000);
+    } catch {
+      // storage errors must not crash
+    }
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (invalid || blocked || pending || busy.current) return;
@@ -77,8 +139,16 @@ export function CreateTaskForm({
     if (chosen.length !== repos.length) body.repos = chosen;
     if (tier) body.tier = Number(tier);
     if (ticket.trim()) body.ticket = ticket.trim();
+    if (hasSpec && spec.trim()) body.spec = spec.trim();
     try {
       await onSubmit(body);
+      if (draftKey) {
+        try {
+          window.localStorage.removeItem(draftKey);
+        } catch {
+          // ignore
+        }
+      }
     } finally {
       busy.current = false;
     }
@@ -151,8 +221,10 @@ export function CreateTaskForm({
           placeholder="Describe what should be built in plain words…"
           value={request}
           onChange={(e) => {
-            setRequest(e.target.value);
+            const val = e.target.value;
+            setRequest(val);
             touch('request');
+            onRequestChange?.(val);
           }}
           {...aria('request')}
         />
@@ -176,6 +248,53 @@ export function CreateTaskForm({
         </select>
         {err('type')}
       </div>
+
+      <div className="field">
+        <label className="check" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input
+            id={`${uid}-has-spec`}
+            type="checkbox"
+            checked={hasSpec}
+            onChange={(e) => setHasSpec(e.target.checked)}
+          />
+          <span>I already have a spec</span>
+        </label>
+      </div>
+
+      {hasSpec ? (
+        <div className="field">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+            <label htmlFor={`${uid}-spec`}>Specification</label>
+            <label className="secondary" style={{ cursor: 'pointer', fontSize: '0.85rem' }}>
+              Upload file
+              <input
+                type="file"
+                accept=".md,.txt,text/plain,text/markdown"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const text = ev.target?.result;
+                    if (typeof text === 'string') {
+                      setSpec(text);
+                    }
+                  };
+                  reader.readAsText(file);
+                }}
+              />
+            </label>
+          </div>
+          <textarea
+            id={`${uid}-spec`}
+            rows={8}
+            placeholder="Paste your pre-drafted specification here…"
+            value={spec}
+            onChange={(e) => setSpec(e.target.value)}
+          />
+        </div>
+      ) : null}
 
       {/* Collapsible options as in NewTask mockup */}
       <details open className="panel" style={{ padding: '0.75rem 1rem' }}>
@@ -247,10 +366,21 @@ export function CreateTaskForm({
 
       {children}
 
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="submit" disabled={invalid || blocked || pending}>
           {pending ? 'Sending…' : submitLabel}
         </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={saveDraft}
+          style={{ cursor: 'pointer' }}
+        >
+          Save as draft
+        </button>
+        {draftSaved ? (
+          <span style={{ fontSize: '0.85rem', color: '#4FD1C1' }}>Draft saved</span>
+        ) : null}
       </div>
     </form>
   );

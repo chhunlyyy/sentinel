@@ -1,4 +1,4 @@
-import { Component, useEffect, useRef, type ReactNode } from 'react';
+import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
 import { calls } from './api/calls.ts';
 import { AppProvider, useApp, useResource } from './state/app.tsx';
 import { Link, enc, segments, useRoute, type Route } from './router.tsx';
@@ -134,49 +134,6 @@ export function titleFor(path: string): string {
   return TITLES[s[0]] ?? 'Page not found';
 }
 
-function Nav({ path }: { path: string }) {
-  const approvals = useResource('approvals-count', (c) => calls.approvals(c), {});
-  const count = approvals.data?.items.length ?? 0;
-  const projects = useResource('nav-projects', (c) => calls.projects(c), {});
-  const unavailable = projects.data?.items.filter((p) => p.status === 'unavailable') ?? [];
-  const hasProjects = (projects.data?.items.filter((p) => p.status === 'available').length ?? 0) > 0;
-  const firstPid = projects.data?.items.find((p) => p.status === 'available')?.id ?? '';
-  const items: { to: string; label: string; icon: string; match: (p: string) => boolean }[] = [
-    { to: '/floor', label: 'Factory floor', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5', match: (p) => p === '/floor' || p.endsWith('/floor') || (p === '/' && hasProjects) },
-    { to: '/overview', label: 'Overview', icon: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10', match: (p) => p === '/overview' || (p === '/' && !hasProjects) },
-    { to: '/projects', label: 'Projects', icon: 'M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z', match: (p) => p.startsWith('/projects') && !p.endsWith('/floor') && !p.includes('/knowledge') },
-    { to: firstPid ? `/projects/${enc(firstPid)}/knowledge` : '/knowledge', label: 'Knowledge', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', match: (p) => p.includes('/knowledge') },
-    { to: '/tasks', label: 'Tasks', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2', match: (p) => p.startsWith('/tasks') },
-    { to: '/approvals', label: 'My Approvals', icon: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM8.5 12l2.5 2.5 4.5-5', match: (p) => p.startsWith('/approvals') },
-    { to: '/runs', label: 'Runs', icon: 'M6 4l14 8-14 8z', match: (p) => p === '/runs' },
-    { to: '/quality', label: 'Quality', icon: 'M4 20V10M10 20V4M16 20v-7M22 20H2', match: (p) => p === '/quality' },
-    { to: '/reports', label: 'Reports', icon: 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7', match: (p) => p === '/reports' },
-    { to: '/settings', label: 'Settings', icon: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M18 16v4', match: (p) => p.startsWith('/settings') },
-  ];
-  return (
-    <nav aria-label="Main">
-      <ul>
-        {items.map((i) => (
-          <li key={i.to}>
-            <Link to={i.to === '/settings' ? '/settings/installation' : i.to} current={i.match(path)}>
-              <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d={i.icon} />
-              </svg>
-              <span className="nav-label">{i.label}</span>
-              {i.to === '/approvals' && count > 0 ? <span className="badge">{count}</span> : null}
-            </Link>
-          </li>
-        ))}
-      </ul>
-      {unavailable.length ? (
-        <p className="hint" data-testid="unavailable-projects">
-          {unavailable.map((p) => `Unavailable: ${p.name} (${p.reason ?? 'unknown'})`).join('; ')}
-        </p>
-      ) : null}
-    </nav>
-  );
-}
-
 function OrchestratorBadge() {
   const orch = useResource('header-orchestrator', (c) => calls.orchestrator(c), {});
   const providers = useResource('header-providers', (c) => calls.providers(c), {});
@@ -194,19 +151,233 @@ function OrchestratorBadge() {
   );
 }
 
+function FactoryControls() {
+  const app = useApp();
+  const factory = useResource('header-factory-status', (c) => calls.factoryStatus(c), {
+    types: ['factory.paused', 'factory.resumed'],
+  });
+  const [pending, setPending] = useState(false);
+  const isPaused = factory.data?.paused ?? false;
+  const runningTotal = factory.data?.running_total ?? 1;
+  const maxAgents = factory.data?.max_agents ?? 4;
+
+  const handleToggle = async () => {
+    if (pending) return;
+    if (!isPaused) {
+      if (!window.confirm('Pause the entire factory? Tasks already running will finish, but no new tasks will start.')) {
+        return;
+      }
+      setPending(true);
+      try {
+        await calls.pauseFactory(app.client);
+        await factory.reload();
+      } finally {
+        setPending(false);
+      }
+    } else {
+      setPending(true);
+      try {
+        await calls.resumeFactory(app.client);
+        await factory.reload();
+      } finally {
+        setPending(false);
+      }
+    }
+  };
+
+  return (
+    <div className="factory-controls">
+      <span className="factory-pill" data-testid="factory-status-pill">
+        <span
+          className={`factory-dot${isPaused ? ' paused' : ' running pulse'}`}
+          aria-hidden="true"
+        />
+        <span title={isPaused ? 'Factory paused · nothing new starts' : `Factory running · ${runningTotal} of ${maxAgents} agents busy`}>
+          {isPaused ? 'Factory paused' : 'Factory running'}
+          {/* the detail drops on narrower windows so the header stays on one row */}
+          <span className="pill-extra">
+            {isPaused ? ' · nothing new starts' : ` · ${runningTotal} of ${maxAgents} agents busy`}
+          </span>
+        </span>
+      </span>
+      <button
+        type="button"
+        className="factory-btn secondary"
+        disabled={pending}
+        onClick={handleToggle}
+      >
+        {isPaused ? 'Resume factory' : 'Pause factory'}
+      </button>
+    </div>
+  );
+}
+
+function TopHeader({ path, label }: { path: string; label: string }) {
+  const approvals = useResource('approvals-count', (c) => calls.approvals(c), {});
+  const count = approvals.data?.items.length ?? 0;
+  const projects = useResource('nav-projects', (c) => calls.projects(c), {});
+  const unavailable = projects.data?.items.filter((p) => p.status === 'unavailable') ?? [];
+  const hasProjects = (projects.data?.items.filter((p) => p.status === 'available').length ?? 0) > 0;
+  const firstPid = projects.data?.items.find((p) => p.status === 'available')?.id ?? '';
+
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const onClick = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMoreOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [moreOpen]);
+
+  useEffect(() => {
+    setMoreOpen(false);
+    setMobileMenuOpen(false);
+  }, [path]);
+
+  const isFloor = path === '/floor' || path.endsWith('/floor') || (path === '/' && hasProjects);
+  const isNewTask = path === '/tasks/new' || path.startsWith('/tasks/new');
+  const isApprovals = path.startsWith('/approvals');
+  const isProjects = path.startsWith('/projects') && !path.endsWith('/floor') && !path.includes('/knowledge');
+  const isRuns = path === '/runs' || path.startsWith('/runs');
+  const isKnowledge = path.includes('/knowledge');
+  const isReports = path.startsWith('/reports');
+  const isSettings = path.startsWith('/settings');
+
+  const isOverview = path === '/overview' || (path === '/' && !hasProjects);
+  const isTasks = path.startsWith('/tasks') && !path.startsWith('/tasks/new');
+  const isQuality = path.startsWith('/quality');
+  const isMoreActive = isOverview || isTasks || isQuality;
+
+  return (
+    <>
+      <header className="topbar-header" data-testid="topbar">
+        <Link to="/" className="brand" aria-label="Sentinel home">
+          <svg className="brand-logo" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4FD1C1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="5" cy="12" r="2.2" />
+            <circle cx="12" cy="5" r="2.2" />
+            <circle cx="12" cy="19" r="2.2" />
+            <circle cx="19" cy="12" r="2.2" />
+            <path d="M7 11l3-4M7 13l3 4M14 6l3 4M14 18l3-4" />
+          </svg>
+          <span className="brand-name">Sentinel</span>
+        </Link>
+
+        <button
+          type="button"
+          className="mobile-menu-btn"
+          aria-expanded={mobileMenuOpen}
+          aria-label="Navigation menu"
+          onClick={() => setMobileMenuOpen((o) => !o)}
+        >
+          Menu
+        </button>
+
+        <nav aria-label="Main" className={mobileMenuOpen ? 'main-nav open' : 'main-nav'}>
+          <Link to="/floor" current={isFloor}>
+            Factory floor
+          </Link>
+          <Link to="/tasks/new" current={isNewTask}>
+            New task
+          </Link>
+          <Link to="/approvals" current={isApprovals}>
+            Approvals
+            {count > 0 ? <span className="badge">{count}</span> : null}
+          </Link>
+          <Link to="/projects" current={isProjects}>
+            Projects
+          </Link>
+          <Link to="/runs" current={isRuns}>
+            Runs
+          </Link>
+          <Link to={firstPid ? `/projects/${enc(firstPid)}/knowledge` : '/knowledge'} current={isKnowledge}>
+            Knowledge
+          </Link>
+          <Link to="/reports" current={isReports}>
+            Reports
+          </Link>
+          <Link to="/settings/installation" current={isSettings}>
+            Settings
+          </Link>
+
+          <div className="more-menu-container" ref={moreRef}>
+            <button
+              type="button"
+              className={`more-btn${isMoreActive ? ' active' : ''}`}
+              aria-expanded={moreOpen}
+              aria-haspopup="true"
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              <span>More</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {moreOpen ? (
+              <div className="more-dropdown">
+                <Link to="/overview" current={isOverview}>
+                  Overview
+                </Link>
+                <Link to="/tasks" current={isTasks}>
+                  Tasks
+                </Link>
+                <Link to="/quality" current={isQuality}>
+                  Quality
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        </nav>
+
+        <span className="header-spacer" />
+
+        <div className="header-right">
+          <FactoryControls />
+          <NotificationBell />
+          <OrchestratorBadge />
+          <span role="status" data-testid="connection-status" className="session-status" title={label}>
+            <span className={`session-dot${label === 'Connected' ? ' ok' : ''}`} aria-hidden="true" />
+            <span className="sr-only">{label}</span>
+          </span>
+        </div>
+      </header>
+      {unavailable.length ? (
+        <div className="hint unavailable-banner" data-testid="unavailable-projects">
+          {unavailable.map((p) => `Unavailable: ${p.name} (${p.reason ?? 'unknown'})`).join('; ')}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function Shell() {
   const app = useApp();
   const route = useRoute();
   const mainRef = useRef<HTMLElement>(null);
   const first = useRef(true);
-  // a route change sets the page title and moves focus to the main area, so assistive technology reads the new page
+
   useEffect(() => {
     document.title = `${titleFor(route.path)} - Sentinel`;
     if (first.current) first.current = false;
     else mainRef.current?.focus();
   }, [route.path]);
+
   if (app.sessionEnded) return <SessionEnded />;
+
   const label = app.status === 'connected' ? 'Connected' : app.status === 'connecting' ? 'Connecting' : 'Connection lost. Reconnecting.';
+
   return (
     <div className="shell">
       <a
@@ -219,28 +390,13 @@ function Shell() {
       >
         Skip to content
       </a>
-      <aside className="sidebar">
-        <span className="brand">Sentinel</span>
-        <NotificationBell />
-        <Nav path={route.path} />
-        <div className="statusbar">
-          <span role="status" data-testid="connection-status">
-            {label}
-          </span>
-        </div>
-      </aside>
-      <div className="content">
-      <header className="topbar" data-testid="topbar">
-        <span className="topbar-fill" />
-        <OrchestratorBadge />
-      </header>
-      <main id="main" tabIndex={-1} ref={mainRef}>
+      <TopHeader path={route.path} label={label} />
+      <main id="main" tabIndex={-1} ref={mainRef} className={route.path === '/' || route.path.endsWith('/floor') || route.path === '/floor' ? 'wide' : undefined}>
         <ScreenBoundary resetKey={route.path}>{screenFor(route)}</ScreenBoundary>
         <div className="sr-only" aria-live="polite" data-testid="announcer">
           {app.announcement}
         </div>
       </main>
-      </div>
     </div>
   );
 }

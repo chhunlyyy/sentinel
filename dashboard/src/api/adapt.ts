@@ -100,6 +100,7 @@ export function run(w: W.WRun): T.Run {
 
 const versionRow = (v: W.WVersion): T.VersionRow => ({
   version: v.version, sha256: v.sha256, decision: v.decision, reviewer: v.approver, channel: v.channel, at: v.decided_at, comment: v.comment,
+  provenance: v.provenance ?? undefined,
 });
 
 const findings = (v: { errors: string[]; warnings: string[] }): T.Finding[] => [
@@ -111,14 +112,19 @@ export const specification = (w: W.WSpecification): T.SpecificationAnswer => ({
   version: w.version, sha256: w.sha256, state: w.approval_state ?? 'NOT_REQUESTED', text: w.text,
   validation: { ok: w.validation.errors.length === 0, findings: findings(w.validation) },
   previous_version: w.previous_version, diff_to_previous: w.diff, versions: w.versions.map(versionRow),
-  decision: record(w.decision), requested_at: w.requested_at,
+  decision: record(w.decision), requested_at: w.requested_at, knowledge_used: w.knowledge_used,
+  provenance: w.provenance ?? undefined,
 });
 
 /** An earlier version is read only; its text comes from the versions route, its list from the current answer. */
-export const specificationVersion = (w: W.WSpecVersion, current: W.WSpecification): T.SpecificationAnswer => ({
-  ...specification(current),
-  version: w.version, sha256: w.sha256, text: w.text, state: 'EARLIER', previous_version: null, diff_to_previous: null, decision: null,
-});
+export const specificationVersion = (w: W.WSpecVersion, current: W.WSpecification): T.SpecificationAnswer => {
+  const matching = current.versions.find((v) => v.version === w.version);
+  return {
+    ...specification(current),
+    version: w.version, sha256: w.sha256, text: w.text, state: 'EARLIER', previous_version: null, diff_to_previous: null, decision: null,
+    provenance: matching?.provenance ?? (w.version === current.version ? current.provenance : undefined) ?? undefined,
+  };
+};
 
 const TYPES = new Set(['unit', 'integration', 'e2e', 'contract', 'security', 'regression', 'performance']);
 
@@ -153,6 +159,7 @@ export function gherkin(w: W.WGherkin): T.GherkinAnswer {
     })),
     validation: { ok: w.validation.errors.length === 0, findings: findings(w.validation) },
     versions: w.versions.map(versionRow), decision: record(w.decision), requested_at: w.requested_at,
+    knowledge_used: w.knowledge_used,
   };
 }
 

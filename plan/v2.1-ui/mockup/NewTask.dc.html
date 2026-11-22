@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New task</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0F1419}
+a{color:#4FD1C1}a:hover{color:#8AE5DA}
+button,input,select,textarea{font-family:inherit}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #0F1419; color: #E6EAEE; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px; border-bottom: 1px solid #26303A; background: #121820">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #E6EAEE"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4FD1C1" stroke-width="1.8" stroke-linecap="round"><circle cx="5" cy="12" r="2.2"></circle><circle cx="12" cy="5" r="2.2"></circle><circle cx="12" cy="19" r="2.2"></circle><circle cx="19" cy="12" r="2.2"></circle><path d="M7 11l3-4M7 13l3 4M14 6l3 4M14 18l3-4"></path></svg><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">Sentinel</span></a>
+<nav aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 2px; margin-left: 8px">
+<a href="Floor.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Factory floor</a>
+<a href="NewTask.dc.html" aria-current="page" style="padding: 8px 12px; border-radius: 8px; background: #1C242D; color: #E6EAEE; text-decoration: none; font-weight: 600">New task</a>
+<a href="Approve.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Approvals <span style="background: #F5B547; color: #1A1206; border-radius: 10px; padding: 0 7px; font-size: 12px; font-weight: 600">1</span></a>
+<a href="Project.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Projects</a>
+<a href="Knowledge.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Knowledge</a>
+<a href="Settings.dc.html" style="padding: 8px 12px; border-radius: 8px; color: #9AA6B2; text-decoration: none">Settings</a>
+</nav>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 28px 24px">
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 30px">What should the factory build?</h1>
+<label style="display: flex; flex-direction: column; gap: 6px; max-width: 320px"><span style="font-weight: 600">Project</span>
+<select style="min-height: 44px; padding: 0 10px; border-radius: 10px; border: 1px solid #3A4654; background: #171D24; color: #E6EAEE"><option>mef-hr</option><option>payroll-portal</option></select></label>
+
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 8px">
+<legend style="font-weight: 600; margin-bottom: 8px">Kind</legend>
+<sc-for list="{{kinds}}" as="k" hint-placeholder-count="3">
+<button type="button" onClick="{{k.pick}}" aria-pressed="{{k.pressed}}" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid {{k.border}}; background: {{k.bg}}; color: #E6EAEE; font-weight: 600; cursor: pointer">{{k.label}}</button>
+</sc-for>
+</fieldset>
+
+<label style="display: flex; flex-direction: column; gap: 6px"><span style="font-weight: 600">Title</span>
+<input value="Leave balance export" style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #3A4654; background: #171D24; color: #E6EAEE"></label>
+<label style="display: flex; flex-direction: column; gap: 6px"><span style="font-weight: 600">Describe it in plain words</span>
+<textarea rows="7" style="padding: 12px; border-radius: 10px; border: 1px solid #3A4654; background: #171D24; color: #E6EAEE; font-size: 14px; line-height: 1.5">HR needs to export each employee’s leave balance as CSV from the Leave screen. They must be able to filter by department. Only HR users can export.</textarea></label>
+
+<details style="border-radius: 12px; border: 1px solid #26303A; background: #141A21; padding: 12px 14px">
+<summary style="cursor: pointer; font-weight: 600">Options (Sentinel chooses if you leave these)</summary>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 12px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px">Repositories<select style="min-height: 40px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; padding: 0 8px"><option>Let triage decide</option><option>backend + frontend</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px">Rigor<select style="min-height: 40px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; padding: 0 8px"><option>Let triage decide</option><option>Light (one tier lower)</option><option>Full (tier 4)</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px">Priority<select style="min-height: 40px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; padding: 0 8px"><option>Normal</option><option>Next free slot</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px">Link (issue or ticket)<input placeholder="https://…" style="min-height: 40px; border-radius: 8px; border: 1px solid #3A4654; background: #0F1419; color: #E6EAEE; padding: 0 10px"></label>
+</div>
+</details>
+
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<a href="Floor.dc.html" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 12px; background: #4FD1C1; color: #062420; font-weight: 600; text-decoration: none">Send to the factory</a>
+<button type="button" style="min-height: 48px; padding: 0 18px; border-radius: 12px; border: 1px solid #3A4654; background: transparent; color: #E6EAEE; font-weight: 600; cursor: pointer">Save as draft</button>
+</div>
+</main>
+
+<aside aria-label="What happens next" style="flex: 1 1 300px; max-width: 380px; display: flex; flex-direction: column; gap: 12px">
+<section style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 12px; letter-spacing: .4px; text-transform: uppercase; color: #9AA6B2">After you send it</h2>
+<ol style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: #C5CDD5">
+<li>Triage sizes it (about a minute)</li>
+<li>An agent writes the spec</li>
+<li><strong style="color: #F5C776">You approve the spec</strong></li>
+<li>Scenarios, then <strong style="color: #F5C776">you approve them</strong></li>
+<li>Build, verify, report</li>
+<li><strong style="color: #F5C776">You accept</strong></li>
+</ol>
+<p style="margin: 0; font-size: 12px; color: #9AA6B2">You get a notification at every gate. Close the tab any time: the factory keeps going.</p>
+</section>
+<section style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 12px; letter-spacing: .4px; text-transform: uppercase; color: #9DB4FF">Knowledge found</h2>
+<p style="margin: 0; font-size: 13px; color: #C5CDD5">Related past changes the agents will read:</p>
+<ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #C5CDD5; display: flex; flex-direction: column; gap: 4px">
+<li>pr-212 · Leave balance API (Oct 30)</li>
+<li>run-employee-search · verified (Nov 19)</li>
+<li>invariant: HR data only for role HR</li>
+</ul>
+<a href="Knowledge.dc.html" style="font-size: 13px">Open knowledge</a>
+</section>
+<section style="padding: 16px; border-radius: 14px; border: 1px solid #26303A; background: #141A21; font-size: 13px; color: #C5CDD5">Slots: 2 of 2 busy in mef-hr. This task starts when one frees up (position 3 in the queue).</section>
+</aside>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { kind: 'feature' }; }
+  renderVals() {
+    var self = this;
+    var kinds = [['feature', 'Feature'], ['bug', 'Bug fix'], ['docs', 'Docs only']].map(function (k) {
+      var on = self.state.kind === k[0];
+      return { label: k[1], pressed: on ? 'true' : 'false', border: on ? '#4FD1C1' : '#3A4654', bg: on ? '#16222A' : '#171D24',
+        pick: function () { self.setState({ kind: k[0] }); } };
+    });
+    return { kinds: kinds };
+  }
+}
+</script>
+</body>
+</html>

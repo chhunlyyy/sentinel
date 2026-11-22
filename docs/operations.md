@@ -15,6 +15,7 @@ Everyday commands for running Sentinel 1.1.0: notifications, statistics, the aud
 | A task failed, or a provider is unavailable | warning |
 | A verification check failed | warning |
 | Knowledge harvest failed | warning |
+| A provider usage limit was reached (`task.limit_reached`) | warning, with the retry time and `sentinel resolve <slug> --retry-now`; info when `routing.fallback` took over |
 | Run completed and waiting for acceptance | action: `sentinel accept` |
 | Run accepted, rejected or failed | info or warning |
 
@@ -30,6 +31,27 @@ Which notifications you have read is kept only in `~/.config/sentinel/user.db` (
 
 An agent cannot mark notifications read: `sentinel notifications read` is refused inside a task process.
 
+## Usage limits
+
+A provider CLI that exits non-zero with a usage, quota or rate-limit message (Claude "usage limit reached ... resets 3pm", Gemini and Antigravity `RESOURCE_EXHAUSTED` or "quota exceeded ... reset after 1h2m", Codex "try again at 3:45 PM", HTTP 429) does not fail the task. The task returns from RUNNING to QUEUED with `retry_at` and the reason; the dispatcher starts it after that time, and the run is not parked. Patterns are kept in one table per runner in `sentinel/scripts/limits.py`. Without a parsable time the wait is `routing.limit_backoff` minutes (default 30). With `routing.fallback` the task moves to the fallback runner at once. A task waiting for a usage limit can also be retried immediately via `sentinel resolve <slug> --retry-now` or the floor side panel "Retry now" button (`POST /api/v1/tasks/{slug}/retry-now`). See [config](config.md#routing-a-model-or-provider-per-stage-optional).
+
+Registry migration 0014 adds the columns `tasks.retry_at`, `limit_reason` and `limit_hits`. Registry migration 0015 adds columns `tasks.input_tokens` and `tasks.output_tokens`. They are additive; to roll back, restore the registry backup taken at upgrade (`sentinel.db.bak-13` / `sentinel.db.bak-14`), since older versions do not read these columns.
+
+## Daily project budget
+
+Projects can configure an optional daily budget in `sentinel.config.yaml`:
+```yaml
+factory:
+  budget:
+    tokens_per_day: 1000000
+    usd_per_day: 20.0
+```
+When total tokens or total USD cost reported by tasks finished on that UTC day reach the budget ceiling:
+- The factory dispatcher pauses starting new agent tasks for that project until the next day (00:00 UTC).
+- Tasks currently executing finish normally.
+- An in-app notification `budget.reached` is raised once per day (no desktop notification).
+- A warning banner appears on the factory floor.
+
 ## Stats and analytics
 
 `sentinel stats` prints the 0.1 statistics (which count 0.1 runs only) plus a `v2` section for version 2 runs:
@@ -37,9 +59,10 @@ An agent cannot mark notifications read: `sentinel notifications read` is refuse
 ```bash
 sentinel stats
 sentinel stats --from 2026-11-01 --to 2026-11-30 --format md
+sentinel stats --usage [--project digital-hr] [--since 2026-11-01] [--format md|json]
 ```
 
-`--from` and `--to` filter on the run's creation date (UTC, inclusive). `--format md` prints a Markdown table. Stats open the registry read only and never create it. The dashboard's Reports screen and `GET /api/v1/reports/analytics` give the same numbers.
+`--from` and `--to` filter on the run's creation date (UTC, inclusive). `--format md` prints a Markdown table. `--usage` outputs usage totals (tokens, input/output tokens, cost, seconds, tasks) and breakdowns by model, week, and role. Stats open the registry read only and never create it. The dashboard's Reports screen and `GET /api/v1/reports/analytics` give the same numbers.
 
 | Metric | Definition |
 |---|---|
@@ -118,11 +141,15 @@ sentinel service start                # start the service detached in the backgr
 sentinel service start --port 8765    # fix the port
 sentinel service stop                 # stop the running service (or: sentinel stop)
 sentinel service status               # status, PID, port, uptime, projects, log path
-sentinel service status --json        # machine-readable JSON status
+sentinel service status --json        # machine-readable JSON status (includes factory_paused)
+sentinel service pause -m "reason"    # pause the whole factory: no new agent task starts in any project
+sentinel service resume               # resume it (runs keep their own pause)
 sentinel service run                  # run the server in the foreground
 ```
 
 The service logs to `~/.config/sentinel/service.log`.
+
+`sentinel service pause` (the dashboard's **Pause factory** button does the same) writes `~/.config/sentinel/factory.json`. While it is set the service starts no new agent task in any project; tasks already running finish, and `sentinel service status` shows `Factory: paused`. Each change is recorded in the audit log of every project as `factory_pause` or `factory_resume`. Both commands need a terminal and are refused inside a task process.
 
 On startup, the service automatically inspects registered projects for tasks left in `RUNNING` state by a previous server process and recovers them. Tasks that were interrupted are safely marked for retry.
 

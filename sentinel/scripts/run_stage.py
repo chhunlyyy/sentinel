@@ -34,9 +34,9 @@ def stage_group(stage):
 
 
 DEFAULT_RUNNERS = {
-    "claude": {"command": "claude", "prompt_flag": "-p", "model_flag": "--model", "add_dir_flag": "--add-dir", "args": ["--permission-mode", "acceptEdits"]},
+    "claude": {"command": "claude", "prompt_flag": "-p", "model_flag": "--model", "add_dir_flag": "--add-dir", "args": ["--permission-mode", "acceptEdits", "--output-format", "json"]},
     "codex": {"command": "codex exec", "model_flag": "-m"},
-    "gemini": {"command": "gemini", "prompt_flag": "-p", "model_flag": "-m"},
+    "gemini": {"command": "gemini", "prompt_flag": "-p", "model_flag": "-m", "add_dir_flag": "--include-directories", "args": ["--approval-mode", "auto_edit", "--skip-trust"], "unsafe_args": ["--yolo"]},
     "agy": {"command": "agy", "prompt_flag": "-p", "model_flag": "--model", "resume_flag": "--conversation", "add_dir_flag": "--add-dir", "output": "json_response", "args": ["--output-format", "json", "--mode", "accept-edits"], "unsafe_args": ["--dangerously-skip-permissions"]},
 }
 
@@ -48,10 +48,18 @@ def all_runners(config):
     return merged
 
 
+ROUTING_SETTINGS = ("fallback", "limit_backoff")   # keys of `routing` that are settings, not routes
+
+
+def routes(config):
+    """{key: route} of the `routing` block without its settings (fallback, limit_backoff)."""
+    return {k: v for k, v in (config.get("routing") or {}).items() if k not in ROUTING_SETTINGS and isinstance(v, dict)}
+
+
 def find_route(config, stage, repo=None):
     if single_model(config):
         return None
-    routing = config.get("routing") or {}
+    routing = routes(config)
     group = stage_group(stage)
     keys = ([f"{repo}-{group}", f"{repo}-{stage}"] if repo else []) + [group, stage]
     for key in keys:

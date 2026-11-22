@@ -269,6 +269,10 @@ function RecordDrawer({ pid, recordKey, onClose }: RecordDrawerProps) {
                 <h3>Record body</h3>
                 {/* STRICT ACCESSIBILITY AND SECURITY: untrusted markdown/text is rendered as plain text inside pre, NEVER as HTML */}
                 <pre
+                  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+                  tabIndex={0}
+                  role="region"
+                  aria-label="Record body"
                   data-testid="record-body-pre"
                   style={{
                     backgroundColor: 'var(--code-bg)',
@@ -530,7 +534,6 @@ export function KnowledgeScreen({ pid }: { pid: string }) {
                         <li key={r.key} className="panel" style={{ padding: 0 }}>
                           <button
                             type="button"
-                            aria-label={`View details for ${r.title || r.key}`}
                             onClick={() => setSelectedRecordKey(r.key)}
                             style={{
                               width: '100%',
@@ -624,6 +627,10 @@ export function KnowledgeScreen({ pid }: { pid: string }) {
               {(ci: KnowledgeCiTemplateResult) => (
                 <>
                   <pre
+                    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+                    tabIndex={0}
+                    role="region"
+                    aria-label="CI template"
                     style={{
                       margin: 0,
                       padding: '0.75rem',

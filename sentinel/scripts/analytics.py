@@ -156,6 +156,7 @@ def _answer(conn, lo, hi, start, end, providers):
         out["provider_failure_rate"] = {p: null(reason) for p in sorted(set(providers))}
         out["verification"] = {"pass_rate": null(reason), "first_attempt_pass_rate": null(reason)}
         out["cost"] = {"total": null(reason), "partial": False, "by_task": {}, "by_role": {}, "by_provider": {}}
+        out["usage"] = {"total": null(reason), "by_model": {}, "by_week": {}, "by_role": {}}
         return out
 
     lead = [s for s in (_seconds(r["created_at"], r["finished_at"]) for r in runs if r["finished_at"] and r["state"] != "CANCELLED")
@@ -169,6 +170,7 @@ def _answer(conn, lo, hi, start, end, providers):
     out["tasks"], out["retries"] = _tasks(conn, args)
     out["provider_failure_rate"] = _providers(conn, args, providers)
     out["cost"] = _cost(conn, args)
+    out["usage"] = _usage(conn, args)
     out["tdd"] = _tdd(conn, args)
     out["verification"] = _verification(conn, args)
     out["rework"] = _rework(conn, args)
@@ -259,6 +261,239 @@ def _cost(conn, args):
     return {"total": ({"value": total, "partial": partial, "reported_tasks": reported, "unreported_tasks": unreported}
                       if reported else null("not reported")),
             "partial": partial, "by_task": by_task, "by_role": by_role, "by_provider": by_provider}
+
+
+def _iso_week(ts):
+    if not ts:
+        return "unknown"
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        year, week, _ = dt.isocalendar()
+        return f"{year}-W{week:02d}"
+    except Exception:
+        return ts[:7]
+
+
+def _usage(conn, args):
+    by_model, by_week, by_role = {}, {}, {}
+    reported = unreported = 0
+    total_tokens = total_input = total_output = 0
+    total_cost = 0.0
+    total_seconds = 0.0
+
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+    in_out = "t.input_tokens, t.output_tokens," if "input_tokens" in cols else "NULL as input_tokens, NULL as output_tokens,"
+    model_col = "t.model," if "model" in cols else "NULL as model,"
+
+    query = (
+        f"SELECT t.id, t.role, t.provider, {model_col} t.tokens, {in_out} t.cost, t.seconds, "
+        f"COALESCE(t.created_at, r.created_at) as created_at "
+        f"FROM tasks t JOIN runs r ON r.id = t.run_id WHERE {RUN_FILTER} ORDER BY t.id"
+    )
+    for t in conn.execute(query, args):
+        tokens = t["tokens"]
+        inp = t["input_tokens"]
+        outp = t["output_tokens"]
+        cost = t["cost"]
+        secs = t["seconds"]
+        model = t["model"] or "unspecified"
+        week = _iso_week(t["created_at"])
+        role = t["role"] or "unknown"
+
+        has_data = any(x is not None for x in (tokens, inp, outp, cost))
+        if not has_data:
+            unreported += 1
+            continue
+        reported += 1
+
+        if tokens is not None:
+            total_tokens += tokens
+        if inp is not None:
+            total_input += inp
+        if outp is not None:
+            total_output += outp
+        if cost is not None:
+            total_cost += cost
+        if secs is not None:
+            total_seconds += secs
+
+        m = by_model.setdefault(model, {"tokens": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "seconds": 0.0, "tasks": 0})
+        m["tasks"] += 1
+        if tokens: m["tokens"] += tokens
+        if inp: m["input_tokens"] += inp
+        if outp: m["output_tokens"] += outp
+        if cost: m["cost"] = round(m["cost"] + cost, 4)
+        if secs: m["seconds"] = round(m["seconds"] + secs, 2)
+
+        w = by_week.setdefault(week, {"tokens": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "seconds": 0.0, "tasks": 0})
+        w["tasks"] += 1
+        if tokens: w["tokens"] += tokens
+        if inp: w["input_tokens"] += inp
+        if outp: w["output_tokens"] += outp
+        if cost: w["cost"] = round(w["cost"] + cost, 4)
+        if secs: w["seconds"] = round(w["seconds"] + secs, 2)
+
+        r = by_role.setdefault(role, {"tokens": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "seconds": 0.0, "tasks": 0})
+        r["tasks"] += 1
+        if tokens: r["tokens"] += tokens
+        if inp: r["input_tokens"] += inp
+        if outp: r["output_tokens"] += outp
+        if cost: r["cost"] = round(r["cost"] + cost, 4)
+        if secs: r["seconds"] = round(r["seconds"] + secs, 2)
+
+    total_cost = round(total_cost, 4)
+    total_seconds = round(total_seconds, 2)
+    tot = {
+        "tokens": total_tokens if reported else None,
+        "input_tokens": total_input if reported else None,
+        "output_tokens": total_output if reported else None,
+        "cost": total_cost if reported else None,
+        "seconds": total_seconds if reported else None,
+        "reported_tasks": reported,
+        "unreported_tasks": unreported,
+    } if reported else null("no usage reported")
+
+    return {
+        "total": tot,
+        "by_model": by_model,
+        "by_week": by_week,
+        "by_role": by_role,
+    }
+
+
+def compute_usage(sources, project=None, since=None, end=None):
+    """Compute usage across sources (list of (pid, db_path)) or a single (pid, db_path).
+    Returns {"range": ..., "totals": ..., "by_project": ..., "by_model": ..., "by_week": ...}."""
+    start = parse_day(since, "since") if since else None
+    end = parse_day(end, "to") if end else None
+    if start and end and start > end:
+        raise SentinelError("E_VALIDATION", f"since ({start}) must not be after to ({end})", {"field": "since"})
+    if isinstance(sources, tuple):
+        sources = [sources]
+    by_project, by_model, by_week = {}, {}, {}
+    total_tokens = total_input = total_output = 0
+    total_cost = 0.0
+    total_seconds = 0.0
+    total_reported = total_unreported = 0
+
+    for pid, db in sources:
+        if project and pid != project:
+            continue
+        db_path = Path(db)
+        if not db_path.exists():
+            continue
+        try:
+            conn = open_readonly(db_path)
+            try:
+                args = (start or "0000-01-01", end or "9999-12-31")
+                u = _usage(conn, args)
+                tot = u["total"]
+                if not is_null(tot):
+                    total_reported += tot.get("reported_tasks") or 0
+                    total_unreported += tot.get("unreported_tasks") or 0
+                    if tot.get("tokens"): total_tokens += tot["tokens"]
+                    if tot.get("input_tokens"): total_input += tot["input_tokens"]
+                    if tot.get("output_tokens"): total_output += tot["output_tokens"]
+                    if tot.get("cost"): total_cost += tot["cost"]
+                    if tot.get("seconds"): total_seconds += tot["seconds"]
+
+                    proj_m = by_project.setdefault(pid, {"tokens": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "seconds": 0.0, "tasks": 0})
+                    proj_m["tasks"] += tot.get("reported_tasks") or 0
+                    if tot.get("tokens"): proj_m["tokens"] += tot["tokens"]
+                    if tot.get("input_tokens"): proj_m["input_tokens"] += tot["input_tokens"]
+                    if tot.get("output_tokens"): proj_m["output_tokens"] += tot["output_tokens"]
+                    if tot.get("cost"): proj_m["cost"] = round(proj_m["cost"] + tot["cost"], 4)
+                    if tot.get("seconds"): proj_m["seconds"] = round(proj_m["seconds"] + tot["seconds"], 2)
+
+                for m_k, m_v in u["by_model"].items():
+                    m = by_model.setdefault(m_k, {"tokens": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "seconds": 0.0, "tasks": 0})
+                    m["tasks"] += m_v["tasks"]
+                    m["tokens"] += m_v["tokens"]
+                    m["input_tokens"] += m_v["input_tokens"]
+                    m["output_tokens"] += m_v["output_tokens"]
+                    m["cost"] = round(m["cost"] + m_v["cost"], 4)
+                    m["seconds"] = round(m["seconds"] + m_v["seconds"], 2)
+
+                for w_k, w_v in u["by_week"].items():
+                    w = by_week.setdefault(w_k, {"tokens": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0, "seconds": 0.0, "tasks": 0})
+                    w["tasks"] += w_v["tasks"]
+                    w["tokens"] += w_v["tokens"]
+                    w["input_tokens"] += w_v["input_tokens"]
+                    w["output_tokens"] += w_v["output_tokens"]
+                    w["cost"] = round(w["cost"] + w_v["cost"], 4)
+                    w["seconds"] = round(w["seconds"] + w_v["seconds"], 2)
+            finally:
+                conn.close()
+        except Exception:
+            continue
+
+    total_cost = round(total_cost, 4)
+    total_seconds = round(total_seconds, 2)
+    totals = {
+        "tokens": total_tokens if total_reported else None,
+        "input_tokens": total_input if total_reported else None,
+        "output_tokens": total_output if total_reported else None,
+        "cost": total_cost if total_reported else None,
+        "seconds": total_seconds if total_reported else None,
+        "reported_tasks": total_reported,
+        "unreported_tasks": total_unreported,
+    } if total_reported else null("no usage reported")
+
+    return {
+        "range": {"since": since, "to": end},
+        "totals": totals,
+        "by_project": by_project,
+        "by_model": by_model,
+        "by_week": by_week,
+    }
+
+
+def markdown_usage(usage):
+    lines = ["# Usage Report", ""]
+    tot = usage.get("totals") or usage.get("total") or {}
+    if is_null(tot):
+        return f"No usage reported: {tot.get('reason', 'none')}.\n"
+    lines.append("## Totals")
+    lines.append("")
+    lines.append("| Metric | Value |")
+    lines.append("|---|---|")
+    lines.append(f"| Total tokens | {tot.get('tokens', 0) or 0:,} |")
+    if tot.get("input_tokens") is not None:
+        lines.append(f"| Input tokens | {tot.get('input_tokens', 0) or 0:,} |")
+    if tot.get("output_tokens") is not None:
+        lines.append(f"| Output tokens | {tot.get('output_tokens', 0) or 0:,} |")
+    lines.append(f"| Cost | ${tot.get('cost', 0.0) or 0.0:.2f} |")
+    lines.append(f"| Tasks | {tot.get('reported_tasks', 0)} reported, {tot.get('unreported_tasks', 0)} unreported |")
+    lines.append("")
+
+    if usage.get("by_project"):
+        lines.append("## Usage by Project")
+        lines.append("")
+        lines.append("| Project | Tokens | Cost | Tasks |")
+        lines.append("|---|---|---|---|")
+        for p, d in sorted(usage["by_project"].items()):
+            lines.append(f"| {p} | {d.get('tokens', 0) or 0:,} | ${d.get('cost', 0.0) or 0.0:.2f} | {d.get('tasks', 0)} |")
+        lines.append("")
+
+    if usage.get("by_model"):
+        lines.append("## Usage by Model")
+        lines.append("")
+        lines.append("| Model | Tokens | Input | Output | Cost | Tasks |")
+        lines.append("|---|---|---|---|---|---|")
+        for m, d in sorted(usage["by_model"].items()):
+            lines.append(f"| {m} | {d.get('tokens', 0) or 0:,} | {d.get('input_tokens', 0) or 0:,} | {d.get('output_tokens', 0) or 0:,} | ${d.get('cost', 0.0) or 0.0:.2f} | {d.get('tasks', 0)} |")
+        lines.append("")
+
+    if usage.get("by_week"):
+        lines.append("## Usage by Week")
+        lines.append("")
+        lines.append("| Week | Tokens | Cost | Tasks |")
+        lines.append("|---|---|---|---|")
+        for w, d in sorted(usage["by_week"].items()):
+            lines.append(f"| {w} | {d.get('tokens', 0) or 0:,} | ${d.get('cost', 0.0) or 0.0:.2f} | {d.get('tasks', 0)} |")
+        lines.append("")
+
+    return "\n".join(lines) + "\n"
 
 
 def _tdd(conn, args):

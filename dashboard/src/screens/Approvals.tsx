@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { calls } from '../api/calls.ts';
 import type { ApiError } from '../api/errors.ts';
-import type { DecisionRecord, GherkinAnswer, SpecificationAnswer, VersionRow } from '../api/types.ts';
+import type { DecisionRecord, GherkinAnswer, KnowledgeUsed, SpecificationAnswer, VersionRow } from '../api/types.ts';
 import { ActionResult, CopyButton, Loaded, StatusChip, useAction, useControlsEnabled } from '../components/common.tsx';
 import { AriaTabs } from '../components/AriaTabs.tsx';
 import { DecisionPanel, type Decision } from '../components/DecisionPanel.tsx';
 import { UnifiedText } from '../components/DiffView.tsx';
-import { formatTime, prefix } from '../format.ts';
+import { formatDate, formatTime, prefix } from '../format.ts';
 import { Link, enc } from '../router.tsx';
 import { useApp, useResource } from '../state/app.tsx';
 
@@ -115,6 +115,7 @@ function VersionsList({ versions, current, gate, pid, slug }: { versions: Versio
       {earlier.map((v) => (
         <li key={v.version} className="panel" data-testid={`version-row-${v.version}`}>
           <Link to={`/projects/${enc(pid)}/runs/${enc(slug)}/${gate}/versions/${v.version}`}>Version {v.version}</Link> <code>{prefix(v.sha256)}</code>{' '}
+          {v.provenance ? <span className="provenance hint">({v.provenance}) </span> : null}
           {v.decision ?? 'no decision'} {v.reviewer ? `by ${v.reviewer}` : ''} {v.channel ? `via ${v.channel}` : ''} {v.at ? `at ${formatTime(v.at)}` : ''}
           {v.comment ? <div className="pre-wrap">Comment: {v.comment}</div> : null}
         </li>
@@ -182,10 +183,82 @@ function GherkinBody({ data }: { data: GherkinAnswer }) {
   );
 }
 
+export function KnowledgeUsedView({ knowledge }: { knowledge?: KnowledgeUsed | null }) {
+  const records = knowledge?.records ?? [];
+  const summaries = knowledge?.summaries ?? [];
+  const invariants = knowledge?.invariants ?? [];
+  const hasItems = records.length > 0 || summaries.length > 0 || invariants.length > 0;
+
+  if (!hasItems) {
+    return (
+      <div data-testid="knowledge-used" className="panel" style={{ padding: '1rem' }}>
+        <p className="hint" style={{ margin: 0 }}>No knowledge base records or summaries were read for this document.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="knowledge-used" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {records.length > 0 ? (
+        <section>
+          <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}>Change records</h3>
+          <ul className="plain" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {records.map((r) => (
+              <li key={r.key} className="panel" style={{ padding: '0.75rem 1rem' }} data-testid={`knowledge-record-${r.key}`}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <strong>
+                    {r.key} {r.title ? `· ${r.title}` : ''}
+                  </strong>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {r.repo ? `${r.repo} ` : ''}{r.date ? `(${formatDate(r.date)})` : ''}
+                  </span>
+                </div>
+                {r.summary ? <p style={{ margin: '0.25rem 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>{r.summary}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {invariants.length > 0 ? (
+        <section>
+          <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}>Invariants</h3>
+          <ul className="plain" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {invariants.map((inv, idx) => (
+              <li key={inv.id || idx} className="panel" style={{ padding: '0.75rem 1rem' }} data-testid={`knowledge-invariant-${inv.id || idx}`}>
+                <strong>{inv.id ? `${inv.id}: ` : 'Invariant: '}</strong>
+                <span>{inv.rule || inv.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {summaries.length > 0 ? (
+        <section>
+          <h3 style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}>Module & repository summaries</h3>
+          <ul className="plain" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {summaries.map((s, idx) => (
+              <li key={s.path || idx} className="panel" style={{ padding: '0.75rem 1rem' }} data-testid={`knowledge-summary-${idx}`}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <strong>{s.module ? `${s.repo} / ${s.module}` : s.repo}</strong>
+                  <code>{s.path}</code>
+                </div>
+                {s.text ? <pre className="pre-wrap" style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>{s.text}</pre> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function SpecBody({ data, tab, setTab, pid, slug }: { data: SpecificationAnswer; tab: string; setTab: (t: string) => void; pid: string; slug: string }) {
   const tabs = [
     { id: 'spec', label: 'Specification' },
     { id: 'diff', label: `Changes since version ${data.previous_version ?? 'none'}` },
+    { id: 'knowledge', label: 'Knowledge used' },
     { id: 'versions', label: 'Versions' },
   ];
   return (
@@ -196,6 +269,7 @@ function SpecBody({ data, tab, setTab, pid, slug }: { data: SpecificationAnswer;
         </pre>
       ) : null}
       {tab === 'diff' ? (data.diff_to_previous ? <UnifiedText text={data.diff_to_previous} /> : <p>No earlier version to compare with</p>) : null}
+      {tab === 'knowledge' ? <KnowledgeUsedView knowledge={data.knowledge_used} /> : null}
       {tab === 'versions' ? <VersionsList versions={data.versions} current={data.version} gate="specification" pid={pid} slug={slug} /> : null}
     </AriaTabs>
   );
@@ -277,6 +351,7 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged }: ReviewPro
             <h2>{label} review</h2>
             <p>
               <strong data-testid="review-version">Version {view.version}</strong> <span data-testid="approval-state">{STATE_LABEL[view.state] ?? view.state}</span>
+              {'provenance' in view && view.provenance ? <span className="provenance hint" data-testid="review-provenance" style={{ marginLeft: '0.5rem' }}>({view.provenance})</span> : null}
               {view.requested_at ? <span className="hint"> review requested {formatTime(view.requested_at)}</span> : null}
             </p>
             <div>

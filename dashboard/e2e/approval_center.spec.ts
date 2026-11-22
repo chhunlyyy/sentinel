@@ -21,7 +21,7 @@ test.describe('My Approvals', () => {
     await expect(rows.nth(1)).toContainText('tax-form');
     await expect(rows.nth(1)).toContainText('gherkin');
     expect((await api.gets(/\/api\/v1\/approvals\?state=IN_REVIEW/)).length).toBeGreaterThan(0);
-    await expect(nav(page).getByRole('link', { name: /My Approvals/ })).toContainText('2');
+    await expect(nav(page).getByRole('link', { name: /Approvals/ })).toContainText('2');
   });
 
   test('AC-SEC-03y nothing to approve', async ({ page, api }) => {
@@ -62,6 +62,17 @@ test.describe('reviewing the specification', () => {
     await expect(page.getByText('Version 1 is not in review')).toBeVisible();
     await expect(page.getByRole('radio')).toHaveCount(0);
     expect((await api.gets(/specification\/versions\/1/)).length).toBeGreaterThan(0);
+  });
+
+  test('AC-SPA-04f knowledge used tab shows records and summaries read by agents', async ({ page }) => {
+    await open(page, SPEC_URL);
+    await page.getByRole('tab', { name: 'Knowledge used' }).click();
+    const knowledgePanel = page.getByTestId('knowledge-used');
+    await expect(knowledgePanel).toBeVisible();
+    await expect(knowledgePanel.getByRole('heading', { name: 'Change records' })).toBeVisible();
+    await expect(knowledgePanel.getByText('pr-212')).toBeVisible();
+    await expect(knowledgePanel.getByRole('heading', { name: 'Invariants' })).toBeVisible();
+    await expect(knowledgePanel.getByText('HR data only for role HR')).toBeVisible();
   });
 });
 

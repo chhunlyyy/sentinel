@@ -1,7 +1,8 @@
 """Q2 dispatch: while the server runs, ready CLI tasks of runs that have a driver (`engine` or `ai-tool`) are started with
 `sentinel task run`, the same path as the CLI. Runs with driver `engine` are driven here: `factory.drive` does the orchestrator
 steps (triage, decisions, verify) with agent tasks and in-process engine calls. For driver `ai-tool` every orchestrator step
-waits for the AI tool. A run with driver `cli` is never touched. A paused run starts nothing; running tasks finish.
+waits for the AI tool. A run with driver `cli` is never touched. A paused run starts nothing; running tasks finish. While the whole factory is paused (`factory.json` in the config
+dir) no project starts anything.
 Starts respect `factory.max_tasks_per_project` and `factory.max_agents`.
 The engine's own start checks decide, so a race with an orchestrator has one winner.
 """
@@ -99,10 +100,14 @@ class Dispatcher:
             for tid in [t for t, p in self.children.items() if p.poll() is not None]:
                 self.children.pop(tid)
                 self.child_project.pop(tid, None)
+            if factory.pause_state(self.projects.cfgdir)["paused"]:
+                return started   # the whole factory is paused: no new task, orchestrator launch or engine step; running tasks finish
             available = [p for p in self.projects.list() if self.projects.probe(p)[0] == "available"]
             load = {p.id: self._running(p) for p in available}
             total = sum(len(v) for v in load.values())
             for project in available:
+                if self._budget_reached(project):
+                    continue
                 limits = self._limits(project)
                 for tid in self._candidates(project):
                     if len(load[project.id]) >= limits["max_tasks_per_project"] or total >= limits["max_agents"]:
@@ -123,6 +128,23 @@ class Dispatcher:
             thread.join(max(0.0, end - time.time()))
 
     # ---- limits
+    def _budget_reached(self, project):
+        try:
+            with self.projects.engine(project) as eng:
+                stat = factory.budget_status(eng)
+                if not stat["reached"]:
+                    return False
+                today = (factory._now() if hasattr(factory, "_now") else time.strftime("%Y-%m-%d"))[:10]
+                rows = eng.reg._c.execute(
+                    "SELECT id FROM events WHERE type = 'budget.reached' AND substr(at, 1, 10) = ?", (today,)
+                ).fetchall()
+                if not rows:
+                    eng.record_budget_reached(stat)
+                return True
+        except Exception as e:
+            self.log(f"dispatch: budget check {project.id}: {type(e).__name__}: {e}")
+            return False
+
     def _limits(self, project):
         try:
             return factory.factory_config(self.projects.require(project))

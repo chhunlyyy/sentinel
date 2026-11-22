@@ -4,6 +4,7 @@
 import type * as T from '../src/api/types.ts';
 import type * as W from '../src/api/wire.ts';
 import type { ProjectData, RunData } from './db.ts';
+import { sampleKnowledgeUsed } from './knowledge-fixtures.ts';
 
 export const installation = (i: T.Installation): W.WInstallation => ({ version: i.version, install_path: i.path, python: i.python, method: i.method });
 
@@ -105,7 +106,7 @@ const decision = (r: T.DecisionRecord | null): W.WDecision | null =>
   r ? { decision: r.decision, approver: r.approver, channel: r.channel, comment: r.comment, decided_at: r.at } : null;
 
 const versions = (list: T.VersionRow[], at: string): W.WVersion[] =>
-  list.map((v) => ({ version: v.version, sha256: v.sha256, created_at: at, decision: v.decision, approver: v.reviewer, channel: v.channel, decided_at: v.at, comment: v.comment }));
+  list.map((v) => ({ version: v.version, sha256: v.sha256, created_at: at, decision: v.decision, approver: v.reviewer, channel: v.channel, decided_at: v.at, comment: v.comment, provenance: v.provenance }));
 
 const validation = (v: { findings: T.Finding[] }) => ({
   errors: v.findings.filter((f) => f.severity === 'error').map((f) => f.message),
@@ -115,9 +116,11 @@ const validation = (v: { findings: T.Finding[] }) => ({
 export const specification = (s: T.SpecificationAnswer, list: T.VersionRow[], runState: string): W.WSpecification => ({
   version: s.version, sha256: s.sha256, approval_state: s.state, run_state: runState, text: s.text, validation: validation(s.validation), diff: s.diff_to_previous,
   previous_version: s.previous_version, versions: versions(list, s.requested_at ?? ''), decision: decision(s.decision), requested_at: s.requested_at,
+  knowledge_used: s.knowledge_used ?? sampleKnowledgeUsed(),
+  provenance: s.provenance,
 });
 
-export const specVersion = (s: T.SpecificationAnswer): W.WSpecVersion => ({ version: s.version, sha256: s.sha256, text: s.text });
+export const specVersion = (s: T.SpecificationAnswer): W.WSpecVersion => ({ version: s.version, sha256: s.sha256, text: s.text, provenance: s.provenance ?? null });
 
 export function gherkin(g: T.GherkinAnswer, runState: string): W.WGherkin {
   const files = g.features.map((f) => ({
@@ -132,6 +135,7 @@ export function gherkin(g: T.GherkinAnswer, runState: string): W.WGherkin {
       summary: '', warnings: g.coverage.filter((c) => c.status === 'missing').map((c) => `${c.category}: missing`),
     },
     validation: validation(g.validation), diff: null, previous_version: null, versions: versions(g.versions, g.requested_at ?? ''), decision: decision(g.decision), requested_at: g.requested_at,
+    knowledge_used: g.knowledge_used ?? sampleKnowledgeUsed(),
   };
 }
 
@@ -139,6 +143,7 @@ export const workflow = (w: T.Workflow, d: T.Run): W.WWorkflow => ({
   nodes: w.nodes.map((n) => ({
     id: n.id, role: n.role, repo: n.repo, state: n.state, adapter: n.adapter, provider: n.provider, model: n.model, attempt: n.attempt, retry_of: n.retry_of,
     error_code: n.error_code, started_at: n.started_at, finished_at: n.finished_at, seconds: n.seconds, label: n.label ?? null,
+    tokens: n.tokens ?? null, cost: n.cost ?? null, input_tokens: n.input_tokens ?? null, output_tokens: n.output_tokens ?? null,
   })),
   edges: w.edges,
   gates: w.gates.map((g) => ({ gate: g.gate, state: g.state, version: g.version ?? 0, sha256: d.approvals[g.gate].sha256 ?? '' })),

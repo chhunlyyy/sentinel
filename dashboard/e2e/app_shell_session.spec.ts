@@ -5,7 +5,15 @@ test.describe('app shell: navigation', () => {
   test('AC-DSH-01a the main navigation', async ({ page }) => {
     await open(page, '/');
     const n = nav(page);
-    for (const name of ['Factory floor', 'Overview', 'Projects', 'Tasks', 'My Approvals', 'Runs', 'Quality', 'Reports', 'Settings']) {
+    for (const name of ['Factory floor', 'New task', 'Approvals', 'Projects', 'Runs', 'Knowledge', 'Reports', 'Settings']) {
+      await expect(n.getByRole('link', { name: new RegExp(`^${name}`) })).toBeVisible();
+    }
+    const moreBtn = n.getByRole('button', { name: /More/ });
+    await expect(moreBtn).toBeVisible();
+    await expect(moreBtn).toHaveAttribute('aria-expanded', 'false');
+    await moreBtn.click();
+    await expect(moreBtn).toHaveAttribute('aria-expanded', 'true');
+    for (const name of ['Overview', 'Tasks', 'Quality']) {
       await expect(n.getByRole('link', { name: new RegExp(`^${name}`) })).toBeVisible();
     }
     // Phase H: Reports is a menu entry; the notification bell is a button, not a menu entry
@@ -57,6 +65,58 @@ test.describe('app shell: navigation', () => {
     const runReqs = (await api.requests()).filter((r) => /^\/api\/v1\/tasks\/leave-balance/.test(r.path));
     expect(runReqs.length).toBeGreaterThan(0);
     for (const r of runReqs) expect(new URLSearchParams(r.search).get('project')).toBe('payroll');
+  });
+
+  test('global factory pause and resume with confirmation and event refetch', async ({ page, api }) => {
+    await open(page, '/');
+    const pill = page.getByTestId('factory-status-pill');
+    await expect(pill).toContainText('Factory running');
+
+    // Confirm dialog when clicking Pause factory
+    let dialogTriggered = false;
+    page.once('dialog', async (dialog) => {
+      dialogTriggered = true;
+      expect(dialog.message()).toContain('Pause');
+      await dialog.accept();
+    });
+
+    await page.getByRole('button', { name: 'Pause factory' }).click();
+    expect(dialogTriggered).toBe(true);
+
+    // Pill updates to paused state
+    await expect(pill).toHaveText('Factory paused · nothing new starts');
+    await expect(page.getByRole('button', { name: 'Resume factory' })).toBeVisible();
+
+    const pausePosts = await api.posts(/\/api\/v1\/factory\/pause/);
+    expect(pausePosts.length).toBe(1);
+
+    // Click resume
+    await page.getByRole('button', { name: 'Resume factory' }).click();
+    await expect(pill).toContainText('Factory running');
+    await expect(page.getByRole('button', { name: 'Pause factory' })).toBeVisible();
+
+    const resumePosts = await api.posts(/\/api\/v1\/factory\/resume/);
+    expect(resumePosts.length).toBe(1);
+  });
+
+  test('phone width 390px wraps/collapses into menu button with no horizontal scroll', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await open(page, '/');
+    await expect(heading(page, 'Factory floor')).toBeVisible();
+
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(over).toBeLessThanOrEqual(0);
+
+    const menuBtn = page.getByRole('button', { name: 'Navigation menu' });
+    await expect(menuBtn).toBeVisible();
+    await expect(menuBtn).toHaveAttribute('aria-expanded', 'false');
+
+    await menuBtn.click();
+    await expect(menuBtn).toHaveAttribute('aria-expanded', 'true');
+    await expect(nav(page).getByRole('link', { name: 'Factory floor' })).toBeVisible();
+
+    const overAfterOpen = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overAfterOpen).toBeLessThanOrEqual(0);
   });
 });
 

@@ -9,6 +9,7 @@ from paths import slug_problem
 import analytics
 import factory
 import notifications
+import providers
 
 from . import manage, ops, readroutes, views
 from .projects import scrub_obj
@@ -93,7 +94,7 @@ def h_create_run(ctx, pid):
     ctx.project = project
     config = ctx.projects.require(project)
     with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
-        slug = ops.create_run(eng, project, config, ctx.body, ctx.user)
+        slug = ops.create_run(eng, project, config, ctx.body, ctx.user, scrubber=ctx.projects.scrubber(project))
         return 201, ctx.clean(project, views.run_detail(eng, project, slug))
 
 
@@ -285,6 +286,17 @@ def h_routing_suggest(ctx):
     return 200, manage.suggest_routing()
 
 
+@_project_read
+def h_routing_fix(ctx, project):
+    """The "Fix routing" dialog: the roles that block engine runs, a suggested runner and model for each, and the config
+    changes that apply the suggestion (saved through the config preview and save routes)."""
+    if ctx.query:
+        extra = sorted(ctx.query)[0]
+        raise views.validation(f"unknown query parameter {extra}", extra)
+    _, config = manage.read_project_config(project)
+    return {"project": project.id, **factory.routing_fix(config, providers.suggest_routing(config))}
+
+
 # ---- Config Form
 @_project_read
 def h_config_form(ctx, project):
@@ -304,6 +316,11 @@ def h_config_save(ctx, pid):
 
 
 # ---- Knowledge
+@_project_read
+def h_knowledge_related(ctx, project):
+    return readroutes.knowledge_related(ctx.projects, project, ctx.query)
+
+
 @_project_read
 def h_knowledge_status(ctx, project):
     return readroutes.knowledge_status(ctx.projects, project)
@@ -388,6 +405,14 @@ def h_note(ctx, slug):
         return 201, ctx.clean(project, {"note": note_id, **views.run_detail(eng, project, slug)})
 
 
+def h_retry_now(ctx, slug):
+    project = ctx.locate(slug)
+    with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
+        res = ops.retry_now(eng, slug, ctx.user)
+        return 200, ctx.clean(project, {**res, **views.run_detail(eng, project, slug)})
+
+
+
 def h_factory(ctx, pid):
     if ctx.query:
         extra = sorted(ctx.query)[0]
@@ -397,7 +422,30 @@ def h_factory(ctx, pid):
     ctx.projects.require(project)
     total = views.running_total(ctx.projects)
     with ctx.projects.engine(project) as eng:
-        return 200, ctx.clean(project, factory.snapshot(eng, project.id, total_running=total))
+        return 200, ctx.clean(project, factory.snapshot(eng, project.id, total_running=total,
+                                                        factory_paused=factory.pause_state(ctx.api.cfgdir)["paused"]))
+
+
+def _factory_pause_body(ctx):
+    return {**factory.pause_state(ctx.api.cfgdir), "running_total": views.running_total(ctx.projects),
+            "max_agents": factory.max_agents_over(ctx.projects)}
+
+
+def h_factory_get(ctx):
+    if ctx.query:
+        extra = sorted(ctx.query)[0]
+        raise views.validation(f"unknown query parameter {extra}", extra)
+    return 200, _factory_pause_body(ctx)
+
+
+def h_factory_pause(ctx):
+    ops.factory_pause(ctx.api.cfgdir, ctx.projects, True, ctx.body, ctx.user)
+    return 200, _factory_pause_body(ctx)
+
+
+def h_factory_resume(ctx):
+    ops.factory_pause(ctx.api.cfgdir, ctx.projects, False, ctx.body, ctx.user)
+    return 200, _factory_pause_body(ctx)
 
 
 # ---- across projects
@@ -494,7 +542,11 @@ ROUTES = [
     Route("POST", "pause", "tasks/{slug}/pause", h_pause, ("Engine.pause_run",)),
     Route("POST", "unpause", "tasks/{slug}/unpause", h_unpause, ("Engine.unpause_run",)),
     Route("POST", "note", "tasks/{slug}/note", h_note, ("Engine.add_note",)),
+    Route("POST", "retry_now", "tasks/{slug}/retry-now", h_retry_now, ("Engine.retry_limited_now",)),
     Route("GET", "factory", "projects/{pid}/factory", h_factory),
+    Route("GET", "factory_state", "factory", h_factory_get),
+    Route("POST", "factory_pause", "factory/pause", h_factory_pause, ("factory.set_paused",)),
+    Route("POST", "factory_resume", "factory/resume", h_factory_resume, ("factory.set_paused",)),
     Route("GET", "approval_list", "approvals", h_approval_list),
     Route("GET", "audit", "audit", h_audit),
     Route("GET", "events", "events", h_events),
@@ -525,9 +577,11 @@ ROUTES = [
     Route("POST", "detect", "detect", h_detect),
     Route("POST", "shared_test", "shared/test", h_shared_test),
     Route("GET", "routing_suggest", "routing/suggest", h_routing_suggest),
+    Route("GET", "routing_fix", "projects/{pid}/routing/fix", h_routing_fix),
     Route("GET", "config_form", "projects/{pid}/config/form", h_config_form),
     Route("POST", "config_preview", "projects/{pid}/config/preview", h_config_preview),
     Route("POST", "config_save", "projects/{pid}/config/save", h_config_save, ("manage.write_config",)),
+    Route("GET", "knowledge_related", "projects/{pid}/knowledge/related", h_knowledge_related),
     Route("GET", "knowledge_status", "projects/{pid}/knowledge/status", h_knowledge_status),
     Route("GET", "knowledge_records", "projects/{pid}/knowledge/records", h_knowledge_records),
     Route("GET", "knowledge_record", "projects/{pid}/knowledge/records/{key}", h_knowledge_record),

@@ -12,7 +12,7 @@ export interface EventClientHandlers {
   onResync: (projects: string[], reason: string | null) => void;
 }
 
-const KNOWN = /^(run|task|approval|artifact|cycle|red|green|refactor|evidence|finding|config|project|repository|publish|notification)\./;
+const KNOWN = /^(factory|run|task|approval|artifact|cycle|red|green|refactor|evidence|finding|config|project|repository|publish|notification)\./;
 
 export interface EventClient {
   handleMessage(msg: RawMessage): 'handled' | 'ignored';
@@ -47,6 +47,19 @@ export function createEventClient(handlers: EventClientHandlers): EventClient {
           return 'handled';
         }
         if (!KNOWN.test(msg.event)) return ignore();
+        if (msg.event.startsWith('factory.')) {
+          handlers.onEvent({
+            id: typeof obj.id === 'number' ? obj.id : 0,
+            type: msg.event,
+            at: typeof obj.at === 'string' ? obj.at : '',
+            project: typeof obj.project === 'string' ? obj.project : '',
+            run: null,
+            task: null,
+            actor: { kind: 'engine', name: null, channel: 'engine' },
+            payload: obj,
+          });
+          return 'handled';
+        }
         if (typeof obj.project !== 'string' || !obj.project) return ignore();
         const run = typeof obj.run === 'string' ? obj.run : null;
         const task = typeof obj.task === 'string' ? obj.task : null;

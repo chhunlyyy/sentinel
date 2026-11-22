@@ -10,6 +10,7 @@ import queue
 import sqlite3
 import threading
 
+import factory
 from util import connect_ro
 
 from .projects import scrub_obj
@@ -29,6 +30,11 @@ def resync(project, reason):
 
 
 QUEUE_MAX = 10000
+
+
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class Sub:
@@ -88,6 +94,7 @@ class Hub:
         self.interval = interval
         self.log = log or (lambda msg: None)
         self.cursors, self.avail = {}, {}
+        self.paused = None   # the whole-factory pause flag last seen; a change becomes a `factory.paused` or `factory.resumed` event
         self.subs = set()
         self.lock = threading.Lock()
         self._stop = threading.Event()
@@ -192,7 +199,23 @@ class Hub:
         finally:
             conn.close()
 
+    def _scan_factory(self):
+        """One event for the whole factory (no project, no id) when the pause flag changes, from the API or the CLI."""
+        state = factory.pause_state(self.projects.cfgdir)
+        was, self.paused = self.paused, state["paused"]
+        if was is None or was == state["paused"]:
+            return
+        text = wire("factory.paused" if state["paused"] else "factory.resumed",
+                    {"id": None, "type": "factory.paused" if state["paused"] else "factory.resumed",
+                     "at": state["paused_at"] or _now(), "project": None, "run": None, "task": None,
+                     "actor": {"kind": "human", "name": None, "channel": None}, "payload": {"paused": state["paused"], "paused_at": state["paused_at"]}})
+        with self.lock:
+            for sub in self.subs:
+                if sub.run is None:
+                    sub.push(text, None)
+
     def _scan(self, initial=False):
+        self._scan_factory()
         known = set()
         for project in self.projects.list():
             known.add(project.id)

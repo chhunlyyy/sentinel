@@ -97,6 +97,8 @@ class Recorder(SV, PD):
         self.save("audit", h.get(f"/api/v1/audit?project=digital-hr"))
         self.save("readiness", h.get(f"{P}/readiness"))
         self.save("factory", h.get(f"{P}/factory"))
+        self.save("factory_state", h.get("/api/v1/factory"))
+        self.save("routing_fix", h.get(f"{P}/routing/fix"))
         self.save("repositories", h.get(f"{P}/repositories"))
         self.save("configuration", h.get(f"{P}/configuration"))
         history = self.save("config_history", h.get(f"{P}/configuration/history"))
@@ -164,7 +166,7 @@ class Recorder(SV, PD):
             cls.same_shape(a[0], b[0], f"{path}[]", out)
 
     # answers whose keys depend on the data (maps keyed by id, state or command name)
-    MAPS = ("approvals", "task_counts", "commands", "agents", "stations")  # keyed by name: values compared, keys not
+    MAPS = ("approvals", "task_counts", "commands", "agents", "stations", "task_usage", "by_model", "by_week", "by_role")  # keyed by name: values compared, keys not
 
     def compare_with_committed(self, names):
         """The fresh recording must have the shapes of the committed fixtures. Regenerate them with SENTINEL_RECORD_FIXTURES=1."""

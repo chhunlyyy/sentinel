@@ -68,6 +68,7 @@ _TASK_NON_FINAL = [s for s in TASK_STATES if s not in ("COMPLETED", "FAILED", "C
 TASK_ROWS = [
     ("", ["CREATED"], ["QUEUED"], [E]),
     ("", ["QUEUED"], ["RUNNING"], [E]),
+    ("", ["RUNNING"], ["QUEUED"], [E]),   # the runner hit a usage limit: the task waits (tasks.retry_at) and starts again
     ("", ["RUNNING"], ["WAITING_FOR_INPUT"], [E]),
     ("", ["WAITING_FOR_INPUT"], ["RUNNING"], [O, H]),
     ("", ["RUNNING", "WAITING_FOR_INPUT"], ["COMPLETED", "FAILED"], [E]),

@@ -25,6 +25,17 @@ from initws import detect_profile, load_profile_driver, update_gitignore  # noqa
 from registry import legacy_statuses  # noqa: E402
 
 
+def _failure_line(text):
+    """The line of a failed tool's output that says why. Node tools (gemini) end with a stack trace, so the last line is
+    useless: take the first line that names an error, else the last line that is not a stack frame."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    for ln in lines:
+        if re.search(r"\bError\b", ln) and not ln.startswith("at "):
+            return ln[:300]
+    frames = [ln for ln in lines if not ln.startswith("at ")]
+    return (frames or lines or ["failed"])[-1][:300]
+
+
 def load_json(name):
     return json.loads((ROOT / name).read_text())
 
@@ -226,21 +237,74 @@ def model_problems(config, stage, route, runner, live):
             close = difflib.get_close_matches(model, known, n=3, cutoff=0.4)
             return [f"routing {stage}: agy does not know model {model!r}; " + (f"did you mean {', '.join(close)}?" if close else "") + f" known: {', '.join(known)}"]
         return []
-    command = shlex.split(runner["command"]) + [runner["model_flag"], model]
+    command = shlex.split(runner["command"]) + list(runner.get("args") or []) + [runner["model_flag"], model]  # args: gemini refuses an untrusted folder without --skip-trust
     command += ([runner["prompt_flag"]] if runner.get("prompt_flag") else []) + ["Reply with ok."]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return [f"routing {stage}: model check for {model!r} timed out"]
     if result.returncode != 0:
-        tail = (result.stderr or result.stdout).strip().splitlines()[-1:] or ["failed"]
-        return [f"routing {stage}: {route['runner']} rejected model {model!r}: {tail[0]}"]
+        return [f"routing {stage}: {route['runner']} rejected model {model!r}: {_failure_line(result.stderr or result.stdout)}"]
     return []
+
+
+def fix_routing(config_path, config):
+    """`sentinel doctor --fix-routing`: print the roles that block engine runs with a suggested runner and model for each and the
+    change to sentinel.config.yaml; write it after a typed yes (human, interactive terminal only)."""
+    import copy
+    import difflib
+    import factory
+    from apiserver import manage
+    fix = factory.routing_fix(config)
+    if not fix["applies"] or not fix["problems"]:
+        print("routing: nothing to fix" if fix["applies"] else "routing: the factory driver is not `engine`, nothing to fix")
+        return
+    print("These roles cannot run in an engine-driven run:")
+    for row in fix["problems"]:
+        sug = row["suggested"]
+        print(f"  {row['role']:<14}{row['text']}\n  {'':<14}suggested: {sug['runner']}" + (f" ({sug['model']})" if sug["model"] else ""))
+    new = copy.deepcopy(config)
+    for change in fix["changes"]:
+        manage._set_path(new, change["path"], change["value"])
+    import jsonschema
+    validator = jsonschema.Draft202012Validator(json.loads((ROOT / "core" / "schema" / "config.schema.json").read_text()))
+    known = {e.message for e in validator.iter_errors(config)}   # problems the file already had are not ours
+    err = next((e for e in validator.iter_errors(new) if e.message not in known), None)
+    if err:
+        raise SentinelError("E_VALIDATION", f"the suggested routing is not valid: {err.message}")
+    old_text, new_text = config_path.read_text(), manage.dump(new)
+    print("\nChange to sentinel.config.yaml:")
+    sys.stdout.writelines(difflib.unified_diff(old_text.splitlines(keepends=True), new_text.splitlines(keepends=True),
+                                               fromfile="sentinel.config.yaml", tofile="sentinel.config.yaml (new)"))
+    err = gate_error("doctor --fix-routing")
+    if err:
+        raise err
+    try:
+        answer = input("\nType yes to write this change (comments in the file are not kept): ")
+    except (EOFError, KeyboardInterrupt):
+        print("\ninput closed; nothing written", file=sys.stderr)
+        sys.exit(1)
+    if answer.strip().lower() != "yes":
+        print("nothing written")
+        sys.exit(1)
+    user, _ = human_identity()
+    engine = open_registry(config_path, config)
+    try:
+        manage.atomic_write(config_path, new_text)
+        with engine.reg.transaction():
+            engine.reg.store_config_version("workspace", new_text, author=user, channel="tty", comment="Fix routing")
+            engine.reg.add_audit(user, "tty", "config_changed", config_path.parent.name, reason="Fix routing")
+    finally:
+        engine.close()
+    print(f"written: {len(fix['problems'])} roles now route to a CLI runner (stored in the config history)")
 
 
 def cmd_doctor(args):
     import health
     config_path, config = load_config(args.dir)
+    if args.fix_routing:
+        fix_routing(config_path, config)
+        return
     found, notes = health.doctor_problems(config_path, config, state_dir_of(config_path, config), args.check_models, model_problems)
     for note in notes:
         print(note)
@@ -273,7 +337,7 @@ def cmd_sync_adapters(args):
 
 
 _HUMAN_SUBCOMMANDS = ["approve", "accept", "resolve", "run export", "run import", "dashboard", "notifications read", "backup restore",
-                      "audit export", "pause", "unpause", "note"]
+                      "audit export", "pause", "unpause", "note", "service pause", "service resume", "doctor --fix-routing"]
 HUMAN_ONLY_COMMANDS = (
     [f"Bash(sentinel {c}:*)" for c in _HUMAN_SUBCOMMANDS]
     # the global --dir option in front of the command, as `--dir X` and as `--dir=X` (an abbreviation such as `--di X` cannot be
@@ -356,9 +420,34 @@ def open_registry(config_path, config):
     return Engine(state_dir_of(config_path, config), config_path.parent, config)
 
 
+def _read_cli_file(path_str, label, scrubber, config):
+    import scrub
+    if path_str == "-":
+        try:
+            raw = sys.stdin.read()
+        except Exception as e:
+            raise SentinelError("E_VALIDATION", f"failed to read {label} from stdin: {e}")
+        if len(raw.encode("utf-8")) > scrub.MAX_BYTES:
+            raise SentinelError("E_VALIDATION", f"{label} is larger than {scrub.MAX_BYTES} bytes")
+    else:
+        p = Path(path_str)
+        if not p.is_file():
+            raise SentinelError("E_VALIDATION", f"{label} file not found: {path_str}")
+        if p.stat().st_size > scrub.MAX_BYTES:
+            raise SentinelError("E_VALIDATION", f"{label} file is larger than {scrub.MAX_BYTES} bytes")
+        try:
+            raw = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raise SentinelError("E_VALIDATION", f"{label} file is not valid UTF-8 text")
+    clean = scrub.clean_text(scrubber, raw, config)
+    return clean.strip() or None if label == "request" else clean
+
+
 def cmd_run_new(args):
     config_path, config = load_config(args.dir)
     legacy = args.legacy or bool(args.tier) or args.adhoc
+    if legacy and (getattr(args, "request_file", None) or getattr(args, "spec_file", None)):
+        raise SentinelError("E_VALIDATION", "--request-file and --spec-file are for version 2 runs")
     directory = claim_run(config_path, config, args.slug, args.adhoc) if legacy else None
     if not legacy:
         return new_v2_run(args, config_path, config)
@@ -392,7 +481,30 @@ def new_v2_run(args, config_path, config):
     unknown = [r for r in only if r not in {c["id"] for c in config["repos"]}]
     if unknown:
         raise SentinelError("E_VALIDATION", f"unknown repo(s): {', '.join(unknown)}")
-    driver, request = getattr(args, "driver", "cli"), (getattr(args, "request", None) or "").strip() or None
+    req_flag = getattr(args, "request", None)
+    req_file_flag = getattr(args, "request_file", None)
+    if req_flag and req_file_flag:
+        raise SentinelError("E_VALIDATION", "choose one of --request, --request-file")
+    spec_file_flag = getattr(args, "spec_file", None)
+    if req_file_flag == "-" and spec_file_flag == "-":
+        raise SentinelError("E_VALIDATION", "cannot read both request and spec from stdin")
+
+    import scrub
+    scrubber = scrub.Scrubber(config_path.parent, scrub.env_values(config_path.parent))
+    request = None
+    if req_file_flag:
+        request = _read_cli_file(req_file_flag, "request", scrubber, config)
+    elif req_flag:
+        request = scrub.clean_text(scrubber, req_flag.strip(), config)
+        if len(request.encode("utf-8")) > scrub.MAX_BYTES:
+            raise SentinelError("E_VALIDATION", f"request is larger than {scrub.MAX_BYTES} bytes")
+        request = request or None
+
+    spec = None
+    if spec_file_flag:
+        spec = _read_cli_file(spec_file_flag, "spec", scrubber, config)
+
+    driver = getattr(args, "driver", "cli")
     if driver == "engine" and not request:
         raise SentinelError("E_VALIDATION", "--driver engine needs --request: the engine's triage agent reads the request text")
     engine = open_registry(config_path, config)
@@ -402,7 +514,7 @@ def new_v2_run(args, config_path, config):
         claim_run(config_path, config, args.slug, False)
         try:
             engine.create_run(args.slug, "orchestrator", type=args.type, baseline=baseline_of(config_path, config, only),
-                              request=request, driver=driver)
+                              request=request, driver=driver, spec=spec)
         except BaseException:
             if not engine.reg.get_run(args.slug):  # row not committed: nothing owns the lock
                 from shared import Shared
@@ -587,6 +699,8 @@ def cmd_run_finish(args):
 def print_review(info, slug):
     print(f"{info['gate']} of {slug}: version {info['version']}, approval {info['approval_state']}, run {info['run_state']}")
     print(f"sha256: {info['sha256']}")
+    if info.get("provenance"):
+        print(f"provenance: {info['provenance']}")
     print()
     if info["gate"] == "specification":
         print(info["text"].rstrip("\n"))
@@ -688,6 +802,8 @@ def print_step(step):
             print(f"  {step['command']}")
     elif kind == "wait":
         print(f"Wait: {step['reason']}" + (f" ({', '.join(step['tasks'])})" if step.get("tasks") else ""))
+        if step.get("command"):
+            print(f"  {step['command']}")
     else:
         print(f"Done: execution {step['execution']}, acceptance {step['acceptance']}")
 
@@ -834,6 +950,11 @@ def cmd_resolve(args):
     try:
         slug = check_slug(args.slug)
         user, _ = human_gate(engine, slug, "resolve")
+        if args.retry_now:
+            ids = engine.retry_limited_now(slug)
+            engine.audit(user, "tty", "retry_limit_now", slug, reason=", ".join(ids) or "no task waits for a usage limit")
+            print(f"{len(ids)} task(s) of run {slug} may start now: {', '.join(ids)}" if ids else f"no task of run {slug} waits for a usage limit")
+            return
         typed = None
         if args.refresh_config:
             info = engine.refresh_config_preview(slug, comment=args.comment)
@@ -1131,7 +1252,7 @@ def cmd_dashboard(args):
 
 
 def cmd_service(args):
-    """sentinel service start|stop|status|run|autostart"""
+    """sentinel service start|stop|status|run|autostart|pause|resume"""
     if os.environ.get("SENTINEL_TASK_ID"):
         raise SentinelError("E_ACTOR", "a task process may not run `sentinel service`",
                             {"task": os.environ["SENTINEL_TASK_ID"], "command": f"service {args.service_cmd}"})
@@ -1162,6 +1283,12 @@ def cmd_service(args):
         sys.exit(service.service_status(as_json=getattr(args, "json", False)))
     elif args.service_cmd == "autostart":
         sys.exit(service.service_autostart(args.action))
+    elif args.service_cmd in ("pause", "resume"):
+        err = gate_error(f"service {args.service_cmd}")
+        if err:
+            raise err
+        user, _ = human_identity()
+        sys.exit(service.factory_pause(args.service_cmd == "pause", user, args.comment))
 
 
 def cmd_stop(args):
@@ -1270,6 +1397,51 @@ def _legacy_in_range(state, start, end):
 
 def cmd_stats(args):
     import analytics
+    if getattr(args, "usage", False):
+        since = args.since or args.from_day
+        end = args.to_day
+        from apiserver import userdir
+        cfgdir = userdir.config_dir()
+        sources = []
+        try:
+            p_data = userdir.load_projects(cfgdir)
+            for p in p_data.get("projects", []):
+                pid = p.get("id")
+                ppath = Path(p.get("path") or "")
+                if ppath.is_dir():
+                    try:
+                        cfg_p, cfg = load_config(ppath)
+                        sdir = state_dir_of(cfg_p, cfg)
+                        if (sdir / "sentinel.db").exists():
+                            sources.append((pid, sdir / "sentinel.db"))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        if not sources or (args.project and not any(s[0] == args.project for s in sources)):
+            try:
+                cfg_p, cfg = load_config(args.dir)
+                sdir = state_dir_of(cfg_p, cfg)
+                pid = cfg.get("project", {}).get("name") or "default"
+                if (sdir / "sentinel.db").exists():
+                    sources.append((pid, sdir / "sentinel.db"))
+            except Exception:
+                pass
+
+        if args.project:
+            matched = [s for s in sources if s[0] == args.project]
+            if not matched:
+                raise SentinelError("E_NOT_FOUND", f"no project named {args.project!r}", {"project": args.project})
+            sources = matched
+
+        usage = analytics.compute_usage(sources, project=args.project, since=since, end=end)
+        if args.format == "md":
+            sys.stdout.write(analytics.markdown_usage(usage))
+        else:
+            print(json.dumps(usage, indent=2))
+        return
+
     start, end = _stats_range(args)
     config_path, config = load_config(args.dir)
     state_dir = state_dir_of(config_path, config)
@@ -1590,6 +1762,7 @@ def main():
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--check-models", action="store_true", help="ask each runner whether it accepts the model set in routing")
+    doctor.add_argument("--fix-routing", action="store_true", help="suggest a runner and model for every role that blocks engine runs and write it after a typed yes (human, interactive terminal only)")
     doctor.set_defaults(func=cmd_doctor)
     routing = sub.add_parser("routing", help="show which runner and model each stage will use")
     routing.add_argument("--stage")
@@ -1615,6 +1788,8 @@ def main():
                      help="who drives a version 2 run: cli (you, or an AI tool with the /sentinel skill; default) or engine "
                           "(the Sentinel service runs it; needs --request and a CLI runner for every role)")
     new.add_argument("--request", help="the request text of a version 2 run (needed by --driver engine)")
+    new.add_argument("--request-file", help="read the request text from a file (- for stdin)")
+    new.add_argument("--spec-file", help="read an imported specification draft v1 from a file (- for stdin)")
     new.set_defaults(func=cmd_run_new)
     update = run_sub.add_parser("update")
     update.add_argument("slug")
@@ -1677,6 +1852,7 @@ def main():
     resolve.add_argument("--approve-security", action="store_true", help="approve the tier 4 security gate")
     resolve.add_argument("--refresh-config", action="store_true", help="re-snapshot sentinel.config.yaml into the run, then resume it")
     resolve.add_argument("--no-resume", action="store_true", help="record the decision but leave the run parked")
+    resolve.add_argument("--retry-now", action="store_true", help="start the tasks that wait for a provider usage limit at once")
     resolve.add_argument("-m", "--comment")
     resolve.set_defaults(func=cmd_resolve)
 
@@ -1723,6 +1899,12 @@ def main():
     svc_status = service_sub.add_parser("status", help="check Sentinel service status")
     svc_status.add_argument("--json", action="store_true", help="output JSON")
     svc_status.set_defaults(func=cmd_service)
+
+    for name, text in (("pause", "pause the whole factory: no new agent task starts in any project; running tasks finish"),
+                       ("resume", "resume the whole factory (runs keep their own pause)")):
+        svc_flow = service_sub.add_parser(name, help=text)
+        svc_flow.add_argument("-m", "--comment", help="why (kept in the audit log)")
+        svc_flow.set_defaults(func=cmd_service)
 
     svc_run = service_sub.add_parser("run", help="run the Sentinel server in the foreground")
     svc_run.add_argument("provider", nargs="?", metavar="provider", help=argparse.SUPPRESS)
@@ -1789,6 +1971,9 @@ def main():
     stats.add_argument("--from", dest="from_day", metavar="YYYY-MM-DD", help="first run creation date (UTC, inclusive)")
     stats.add_argument("--to", dest="to_day", metavar="YYYY-MM-DD", help="last run creation date (UTC, inclusive)")
     stats.add_argument("--format", choices=("json", "md"), default="json", help="json (default) or a Markdown table of the v2 metrics")
+    stats.add_argument("--usage", action="store_true", help="report usage metrics (tokens and cost by project, model, week, and totals)")
+    stats.add_argument("--project", help="filter usage to this project")
+    stats.add_argument("--since", metavar="YYYY-MM-DD", help="alias/start date for usage")
     stats.set_defaults(func=cmd_stats)
 
     notes = sub.add_parser("notifications", help="list local notifications, or mark them read with `read <id>` or `read --all`")

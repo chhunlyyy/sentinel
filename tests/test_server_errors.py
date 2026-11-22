@@ -88,7 +88,9 @@ class Mapping(SV):
         self.assertEqual(set(table), {"approvals", "acceptance", "control", "create_run", "notification_read",
                                      "create_project", "register_project", "add_repository", "provider_test", "pause", "unpause",
                                      "note", "detect", "shared_test", "config_preview", "config_save", "knowledge_ingest",
-                                     "knowledge_snapshot", "knowledge_backfill_estimate", "knowledge_backfill"})
+                                     "knowledge_snapshot", "knowledge_backfill_estimate", "knowledge_backfill", "factory_pause",
+                                     "factory_resume", "retry_now"})
+        self.assertEqual(table["retry_now"].calls, ("Engine.retry_limited_now",))
         for name in ("detect", "shared_test", "config_preview", "knowledge_backfill_estimate"):
             self.assertEqual(table[name].calls, ())  # 2.0 setup: read or probe only, nothing changes
         self.assertEqual(table["config_save"].calls, ("manage.write_config",))  # the same history-keeping save as the YAML editor
@@ -97,6 +99,8 @@ class Mapping(SV):
         for name in ("create_project", "register_project", "add_repository", "provider_test"):
             self.assertEqual(table[name].calls, ())  # dashboard management: files and projects.json, not engine transitions
         self.assertEqual(table["notification_read"].calls, ())  # Phase H: writes only ~/.config/sentinel/user.db
+        self.assertEqual((table["factory_pause"].calls, table["factory_resume"].calls),
+                         (("factory.set_paused",), ("factory.set_paused",)))   # a switch file in the config dir, audited per project
         self.assertEqual(table["approvals"].calls, ("Engine.decide",))
         self.assertEqual(table["acceptance"].calls, ("Engine.accept",))
         self.assertEqual(set(table["control"].calls),

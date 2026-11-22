@@ -1,7 +1,8 @@
 // View-model types for the factory floor screen.
 // Built from WFactory (wire.ts) by floorSnapshot() in Floor.tsx.
+import type * as W from '../../api/wire.ts';
 
-export type StationState = 'done' | 'working' | 'waiting' | 'paused' | 'queued' | 'next' | 'todo';
+export type StationState = 'done' | 'working' | 'waiting' | 'paused' | 'limit' | 'queued' | 'next' | 'todo';
 export type StationKind = 'agent' | 'engine' | 'gate';
 
 export interface LaneView {
@@ -34,12 +35,17 @@ export interface RunView {
   station: string;
   state: string;
   stateLabel: string;
+  /** where the task is, for the task chip: `Build · behavior 2 of 3`, `Waiting for you`, `Triage` */
+  whereLabel: string;
   stationLabel: string;
   stations: Record<string, StationState>;
   nextStation: string | null;
   agents: Record<string, AgentView[]>;
   lanes: LaneView[];
   attention: { kind: 'needs_human' | 'blocked'; reason: string } | null;
+  /** the provider usage limit this run waits for, or null */
+  limit: { task: string; role: string; runner: string; retryAt: string; reason: string | null } | null;
+  task_usage?: Record<string, W.WTaskUsage>;
   pendingNotes: number;
 }
 
@@ -58,13 +64,33 @@ export interface FactoryLimits {
   runningTotal: number;
 }
 
+export interface WhoView {
+  role: string;
+  runner: string;
+  model: string | null;
+}
+
+export interface ActivityView {
+  at: string;
+  run: string;
+  /** station id (triage, gate_spec, build ...) */
+  station: string;
+  text: string;
+}
+
 export interface FloorSnapshot {
   project: string;
+  factoryPaused: boolean;
+  who: Record<string, WhoView>;
+  activity: ActivityView[];
   generatedAt: string;
   stations: string[];
   limits: FactoryLimits;
+  budget?: W.WFactoryBudget;
   runs: RunView[];
   queue: QueueItem[];
+  /** roles that block engine runs; the floor offers "Fix routing" while this is not empty */
+  routingProblems: string[];
 }
 
 /** Fixed station definitions that the layout and edges use */

@@ -10,6 +10,7 @@ import { AgentsPanel } from './Agents.tsx';
 import { KnowledgeScreen } from './Knowledge.tsx';
 import { ReadinessPanel, readinessAllowsTasks } from '../components/ReadinessPanel.tsx';
 import { RunTable } from '../components/RunTable.tsx';
+import { RoutingBanner } from '../components/RoutingFix.tsx';
 import { UnifiedText } from '../components/DiffView.tsx';
 import { formatTime, prefix } from '../format.ts';
 import { Link, enc, navigate, type Route } from '../router.tsx';
@@ -191,16 +192,16 @@ export function ProjectScreen({ pid, tab, rest, route }: { pid: string; tab: str
           }
           return (
             <>
-              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
-                  <h1 style={{ margin: 0 }}>{p.name}</h1>
-                  <span className="chip" style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--text)' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '14px', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
+                  <h1 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: '30px' }}>{p.name}</h1>
+                  <span style={{ fontSize: '12px', fontWeight: 600, padding: '3px 10px', borderRadius: '10px', background: '#173D39', color: '#7FE3D7' }}>
                     {p.status}
                   </span>
-                  <code style={{ fontSize: '0.85rem' }}>{p.path}</code>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)' }}>{p.path}</span>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <Link to={`/tasks/new?project=${enc(pid)}&target=floor`} className="button" style={{ textDecoration: 'none', fontWeight: 600 }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <Link to={`/tasks/new?project=${enc(pid)}&target=floor`} style={{ display: 'inline-flex', alignItems: 'center', minHeight: '44px', padding: '0 20px', borderRadius: '10px', background: '#4FD1C1', color: '#062420', fontWeight: 600, textDecoration: 'none', fontSize: '14px' }}>
                     + New task
                   </Link>
                   <DeleteProject pid={pid} name={p.name} />
@@ -243,58 +244,60 @@ function OverviewTab({ pid }: { pid: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <RoutingBanner pid={pid} problems={factoryRes.data?.routing?.problems ?? []} onFixed={() => void factoryRes.reload()} />
+
       {/* At-a-glance section */}
-      <section aria-label="At a glance" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+      <section aria-label="At a glance" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
         <Link
           to={`/projects/${enc(pid)}/floor`}
-          className="panel"
-          style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderColor: 'var(--accent)' }}
+          style={{ padding: '16px', borderRadius: '14px', border: '1px solid #2E8C81', background: '#122A28', color: '#E6EAEE', textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '4px' }}
         >
-          <span style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600 }}>On the floor</span>
-          <strong style={{ fontSize: '1.6rem' }}>{activeRunsCount} tasks</strong>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#7FE3D7' }}>
+            <span className="pulse" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4FD1C1' }} />
+            On the floor
+          </span>
+          <strong style={{ fontFamily: 'var(--font-heading)', fontSize: '28px' }}>{activeRunsCount} tasks</strong>
+          <span style={{ fontSize: '12px', color: '#C5CDD5' }}>
             {factoryRes.data?.limits ? `${factoryRes.data.limits.running_in_project} working · ${factoryRes.data.queue.length} queued` : 'view factory floor'}
           </span>
         </Link>
 
         <Link
           to="/approvals"
-          className="panel"
-          style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderColor: approvalsCount > 0 ? 'var(--warn)' : 'var(--border)' }}
+          style={{ padding: '16px', borderRadius: '14px', border: '1px solid #B8862F', background: '#2A2212', color: '#E6EAEE', textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '4px' }}
         >
-          <span style={{ fontSize: '0.8rem', color: approvalsCount > 0 ? 'var(--warn)' : 'var(--text-muted)', fontWeight: 600 }}>Needs you</span>
-          <strong style={{ fontSize: '1.6rem' }}>{approvalsCount} {approvalsCount === 1 ? 'review' : 'reviews'}</strong>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <span style={{ fontSize: '12px', color: '#F5C776' }}>Needs you</span>
+          <strong style={{ fontFamily: 'var(--font-heading)', fontSize: '28px' }}>{approvalsCount} {approvalsCount === 1 ? 'review' : 'reviews'}</strong>
+          <span style={{ fontSize: '12px', color: '#C5CDD5' }}>
             {approvalsCount > 0 ? 'awaiting specification or scenarios approval' : 'nothing waiting'}
           </span>
         </Link>
 
         <Link
           to={`/projects/${enc(pid)}/knowledge`}
-          className="panel"
-          style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+          style={{ padding: '16px', borderRadius: '14px', border: '1px solid #26303A', background: '#171D24', color: '#E6EAEE', textDecoration: 'none', display: 'flex', flexDirection: 'column', gap: '4px' }}
         >
-          <span style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600 }}>Knowledge</span>
-          <strong style={{ fontSize: '1.6rem' }}>{kbTotal} records</strong>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            {trackedCount} branches tracked
+          <span style={{ fontSize: '12px', color: '#9DB4FF' }}>Knowledge</span>
+          <strong style={{ fontFamily: 'var(--font-heading)', fontSize: '28px' }}>{kbTotal} records</strong>
+          <span style={{ fontSize: '12px', color: '#C5CDD5' }}>
+            last update 10:31 · {trackedCount} branches tracked
           </span>
         </Link>
 
-        <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Done this week</span>
-          <strong style={{ fontSize: '1.6rem' }}>{acceptedCount} accepted</strong>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+        <div style={{ padding: '16px', borderRadius: '14px', border: '1px solid #26303A', background: '#171D24', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Done this week</span>
+          <strong style={{ fontFamily: 'var(--font-heading)', fontSize: '28px' }}>{acceptedCount} accepted</strong>
+          <span style={{ fontSize: '12px', color: '#C5CDD5' }}>
             <Link to="/reports">see Reports for lead time</Link>
           </span>
         </div>
       </section>
 
       {/* Repositories table with readiness */}
-      <section aria-label="Repositories" className="card" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <section aria-label="Repositories" className="card" style={{ padding: '16px', borderRadius: '14px', border: '1px solid #26303A', background: '#141A21', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Repositories</h2>
-          <Link to={`/projects/${enc(pid)}/repositories`} style={{ fontSize: '0.85rem' }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: '18px' }}>Repositories</h2>
+          <Link to={`/projects/${enc(pid)}/repositories`} style={{ fontSize: '13px' }}>
             Edit
           </Link>
         </div>
@@ -321,10 +324,10 @@ function OverviewTab({ pid }: { pid: string }) {
                           {r.id}
                         </th>
                         <td>{r.profile || 'generic'}</td>
-                        <td style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.8rem' }}>
+                        <td style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '12px' }}>
                           {r.default_branch || 'main'}, develop
                         </td>
-                        <td style={{ color: readyText === 'ready' ? 'var(--ok)' : 'var(--warn)' }}>
+                        <td style={{ color: readyText === 'ready' ? '#7FE3D7' : '#F5C776' }}>
                           {readyText}
                         </td>
                       </tr>
@@ -332,6 +335,23 @@ function OverviewTab({ pid }: { pid: string }) {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </Loaded>
+      </section>
+
+      {/* Recent tasks / Latest runs */}
+      <section aria-label="Recent tasks" className="card" style={{ padding: '16px', borderRadius: '14px', border: '1px solid #26303A', background: '#141A21', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-heading)', fontSize: '18px' }}>Tasks</h2>
+          <Link to={`/projects/${enc(pid)}/floor`} style={{ fontSize: '13px' }}>
+            Factory floor
+          </Link>
+        </div>
+        <Loaded res={runs}>
+          {(page) => (
+            <div data-testid="latest-runs">
+              <RunTable rows={page.items.slice(0, 5).map((r) => ({ ...r, project: pid }))} />
             </div>
           )}
         </Loaded>
@@ -347,16 +367,6 @@ function OverviewTab({ pid }: { pid: string }) {
               Create task
             </button>
           </>
-        )}
-      </Loaded>
-
-      {/* Recent tasks / Latest runs */}
-      <h2>Latest runs</h2>
-      <Loaded res={runs}>
-        {(page) => (
-          <div data-testid="latest-runs">
-            <RunTable rows={page.items.slice(0, 5).map((r) => ({ ...r, project: pid }))} />
-          </div>
         )}
       </Loaded>
     </div>

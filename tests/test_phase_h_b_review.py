@@ -57,7 +57,9 @@ class T(unittest.TestCase):
     def test_restore_works_when_the_live_chain_is_broken(self):
         b = backup.create_backup(self.d, audit=False)
         break_chain(self.d)
-        info = backup.restore(self.d, b["path"], user="dev")
+        # an empty temporary config folder: restore asks it whether a server runs, and the real one may hold a live service
+        with tempfile.TemporaryDirectory() as cfg:
+            info = backup.restore(self.d, b["path"], user="dev", config_dir=Path(cfg))
         self.assertTrue(auditlog.verify_db(self.d / "sentinel.db")["ok"])
         pre = list((self.d / "backups").glob("pre-restore-*.db"))
         self.assertEqual(len(pre), 1)

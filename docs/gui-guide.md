@@ -32,9 +32,16 @@ Open **Tasks** and click **Create task** (or use **New task** in the menu).
 
 - **Kind**: Feature, Bug fix or Docs only.
 - **Request**: what you want, in plain words. Be concrete about who may do what and what must not change.
+- **I already have a spec**: check this option to provide a pre-drafted specification (by pasting text or uploading a file). The spec goes in as draft v1 and the specifier stage is skipped, while triage and human approval remain required.
 - **Priority**, **Tier** and **Ticket** are optional. Leave the tier on "Decided at triage" unless you want more rigor; a tier can only raise the triage result.
 
+As you type the request text, the **Knowledge found** side panel updates (debounced) with related past change records and project invariants from the knowledge base, linking directly to the project's knowledge screen. A slots note ("Slots: N of M busy, position K in the queue") shows current factory floor occupancy from the factory snapshot. You can click **Save as draft** to store your work in progress in the browser (persisted per project across page reloads); drafts are automatically cleared once the task is created.
+
 Click **Create task**. The run joins the factory: it starts at once when a slot is free (two tasks per project and four agents in total by default), otherwise it waits in the queue.
+
+## Pause the whole factory
+
+**Pause factory** in the header (after you confirm) stops every project from starting new agent work: tasks already running finish, nothing new starts. The header then says "Factory paused". **Resume factory** starts work again; runs you paused one by one stay paused. The same switch from a terminal: `sentinel service pause` and `sentinel service resume`.
 
 ## Read the factory floor
 
@@ -51,10 +58,15 @@ Intake > Triage > Spec > [you approve] > Scenarios > [you approve] > Build lanes
 - **Knowledge** sits below the path. Its dotted links show it feeding the agents: repository and module summaries, team rules and recent related changes. The link to the agent working right now glows.
 - Small colored chips on a station show which tasks are there. The chips at the top switch between tasks.
 
+A station whose agent waits for a provider usage limit shows **Waiting for usage limit · retries 14:05** (your local time) with the paused look: it is not failed, and the task starts again by itself. A **Retry now** button in the side panel (or `sentinel resolve <slug> --retry-now` in CLI) starts it at once. A notification tells you when a limit is hit.
+
+If a project has configured a daily budget (`factory.budget`) and reaches its daily token or USD limit, an amber banner appears at the top of the Factory floor: **Daily budget reached: this project will start no new tasks until tomorrow (00:00 UTC). Running tasks finish.** The project also receives an in-app notification `budget.reached`.
+
 Click a station to see it in the side panel:
 
 - **Who**: the role, the AI tool and the model, or "engine" or "you".
 - **This task**: what happened there for this task.
+- **This task used**: when finished, shows the runner, model, input/output tokens, and cost reported by the adapter.
 - **Knowledge**: what that station reads from the knowledge base.
 - **Next**: the station that follows.
 
@@ -72,7 +84,7 @@ Under **Control** in the side panel:
 
 When a task reaches a gate, its station turns amber and **My Approvals** shows a badge. Open the review:
 
-1. Read the specification (or the Gherkin scenarios). The diff shows what changed since the previous version.
+1. Read the specification (or the Gherkin scenarios). The diff shows what changed since the previous version. If the specification was imported from an external AI session, its provenance is displayed next to the version badge (`(imported from a session)`). The **Knowledge used** tab lists the change records, project invariants, and repository/module summaries that the agents read when creating the document.
 2. Choose **Approve**, **Request changes** or **Reject**, and add a comment for the agent if you like.
 3. Type the first 8 characters of the document's hash, shown on the page, and confirm.
 
@@ -84,9 +96,16 @@ When the build and the engine's checks are done, the run waits at **You accept**
 
 - **Report**: what was built, the checks the engine ran itself (tests, lint, typecheck, build, write scopes, no new failing tests), and review findings.
 - **Trace**: each requirement, its acceptance criterion, the cycle that built it and the test that proves it.
+- **Usage**: token usage (input, output, total) and cost per task, grouped by model, with run totals.
 - **Changes**, **TDD cycles** and **Logs**: the diffs, the Red, Green and Refactor evidence, and every agent's output.
 
 Type the report hash prefix and **Accept** (or reject). The changes stay on a branch in each repository with a pull request draft: nothing is merged for you. In the background, Sentinel records the accepted change in the team knowledge base.
+
+## Reports and analytics
+
+Open **Reports** in the menu to see project and team analytics:
+- **Usage**: total token count (with input and output breakdown) and reported cost across agent tasks, plus breakdown tables by model and by calendar week.
+- **Lead time, acceptance rate, approval wait, rework, and cost**.
 
 ## Knowledge
 
@@ -109,9 +128,15 @@ See [the knowledge base guide](knowledge.md) for what a record contains and how 
 
 The bell in the header lists notifications (a gate waiting, a failed task, a failed knowledge update). Opening one only takes you to the page; it never approves anything.
 
+## Fix routing
+
+When the project routing blocks engine-driven runs, a **Fix routing** banner appears on the project home and on the factory floor. **Fix routing** opens a dialog with one row per blocked role, with the runner and model Sentinel suggests (the same suggestion as the Create project wizard); change any of them. **Preview the YAML change** shows the diff of `sentinel.config.yaml`; **Save** writes it through the same path as Project settings, so the change is in the configuration history.
+
 ## When something does not move
 
-- **A run stops right after Intake with a routing message.** A role has no command-line AI tool. Set one under Settings, Agents, then run `sentinel resolve <slug> --refresh-config -m "routing fixed"`, or let the factory pick the new settings up on its next pass.
+- **A run stops right after Intake with a routing message.** A role has no command-line AI tool. Use **Fix routing** on the floor, or `sentinel doctor --fix-routing`.
+- **A station says Waiting for usage limit.** The provider CLI reported a usage limit; the task retries at the time shown. Use `sentinel resolve <slug> --retry-now`, or set `routing.fallback` in the config.
+- **(routing, continued)** A role has no command-line AI tool. Set one under Settings, Agents, then run `sentinel resolve <slug> --refresh-config -m "routing fixed"`, or let the factory pick the new settings up on its next pass.
 - **A task stays in the queue.** All slots are busy, or the task is paused. Change the limits under Project settings (factory).
 - **"Session ended".** The service stopped or the session expired. Run `sentinel dashboard` again.
 - **Knowledge update failed.** A notification says why; the knowledge screen shows the failed job. Nothing is pushed when the secret scrub finds something.

@@ -58,14 +58,14 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 
 | Method | Path | Engine function |
 |---|---|---|
-| GET/POST | `/projects/{pid}/tasks` | `runs.list / create(request, repos, type, priority, ...)` |
+| GET/POST | `/projects/{pid}/tasks` | `runs.list / create(request, repos, type, priority, spec, ...)` |
 | GET | `/tasks/{slug}` | `runs.get` (state, statuses, graph summary) |
 | GET | `/tasks/{slug}/next` | `engine.next` (same as `sentinel next --json`) |
-| GET | `/tasks/{slug}/specification` | current version, hash, validation, diff to previous |
+| GET | `/tasks/{slug}/specification` | current version, hash, validation, diff to previous, `provenance`, `knowledge_used` (records, invariants, summaries read by agents) |
 | GET | `/tasks/{slug}/specification/versions/{v}` | that version |
-| GET | `/tasks/{slug}/gherkin` | features, scenarios, tags, coverage table, hash |
+| GET | `/tasks/{slug}/gherkin` | features, scenarios, tags, coverage table, hash, `knowledge_used` |
 | POST | `/tasks/{slug}/approvals` | body `{gate, sha256, confirmation, decision, comment}` -> `approvals.decide` (human only). `sha256` is the full hash, `confirmation` its first 8 characters as typed |
-| GET | `/tasks/{slug}/workflow` | full graph: nodes (tasks, gates), edges, states |
+| GET | `/tasks/{slug}/workflow` | full graph: nodes (tasks, gates), edges, states; nodes carry `tokens`, `cost`, `input_tokens`, `output_tokens` |
 | GET | `/tasks/{slug}/tdd` | cycles with phases and evidence ids; each cycle has `red_method` (`test_file` or `qa_scenario`) and `exception` (`{rule, replaced, by, repo}` or null) |
 | GET | `/tasks/{slug}/verification` | `cycles` (id, repo, behavior, state, `red_method`, `exception`), evidence list (round, repo, name, verdict), latest finished `round`, `missing` (planned checks without evidence), acceptance computation and `acceptance_record` (decision, approver, channel, at, comment; null while pending) |
 | GET | `/tasks/{slug}/trace` | trace links and gaps |
@@ -84,7 +84,7 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 |---|---|---|
 | GET | `/notifications?project=&unread=&limit=&cursor=` | notifications computed from the events table (event-contracts section 4); answer `{items, next, unread, unavailable}`; each item is `{id, project, run, level, text, link, at, read_at}` |
 | POST | `/notifications/{id}/read` | mark one read in `~/.config/sentinel/user.db` (CSRF; no audit row; the first read time stays) |
-| GET | `/reports/analytics?project=&from=&to=` | analytics (a missing value is `{value: null, reason}`); the same answer as the `v2` key of `sentinel stats` |
+| GET | `/reports/analytics?project=&from=&to=` | analytics (a missing value is `{value: null, reason}`); includes `usage` (`by_model`, `by_week`, `by_role`, `total`); the same answer as the `v2` key of `sentinel stats` |
 | GET | `/audit?project=` | audit log |
 
 ### Added in Phase F
@@ -100,7 +100,10 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/tasks/{slug}/pause` | body `{comment?}`; the dispatcher starts nothing more for the run, running tasks finish. Audit row `pause`, event `run.paused`. A finished or already paused run is `E_TRANSITION` |
+| GET | `/factory` | whole-factory pause state `{paused, paused_at, running_total, max_agents}`; see factory-api.md |
+| POST | `/factory/pause`, `/factory/resume` | body `{comment?}`; idempotent; the dispatcher starts no new agent task in any project. Audit rows `factory_pause`, `factory_resume`; events `factory.paused`, `factory.resumed` |
 | POST | `/tasks/{slug}/unpause` | body `{comment?}`; audit row `unpause`, event `run.unpaused` |
+| POST | `/tasks/{slug}/retry-now` | body `{}`; calls `Engine.retry_limited_now(slug)`. Retries tasks waiting on usage limits at once. Audit row `retry_limit_now` |
 | POST | `/tasks/{slug}/note` | body `{text}` (at most 4000 characters); answer 201 with the run detail and `note`. The next agent task of the run gets the text once. Audit row `note`, event `run.note_added` |
 | GET | `/projects/{pid}/factory` | the factory snapshot, see [factory-api.md](factory-api.md) |
 
@@ -111,12 +114,14 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | POST | `/detect` | `manage.detect_paths` | body `{paths: [...]}`; returns per path: `is_git`, `current_branch`, `default_branch`, `local_branches`, `profile`, `commands`, `tracked_branches` |
 | POST | `/shared/test` | `manage.test_shared` | body `{url}`; tests read access via `shared.verify_remote` and write access via push dry-run (`write`: true, false, or "unknown") |
 | GET | `/routing/suggest` | `manage.suggest_routing` | suggested deterministic role -> {runner, model} routing from installed CLI-capable providers (cheap/fast for triage, gherkin, planner, knowledge; strong for specifier, coder, reviewer) |
+| GET | `/projects/{pid}/routing/fix` | `factory.routing_fix` | roles that block engine runs with `current` and `suggested` {runner, model} and the `changes` ({path, value}) that apply them; save through `config/preview` and `config/save`. `applies` is false unless the project's factory driver is `engine` |
 | GET | `/projects/{pid}/config/form` | `manage.config_form` | returns editable config sections and fields generated from `config.schema.json` with type, enum, default, current value, help |
 | POST | `/projects/{pid}/config/preview` | `manage.config_preview` | body `{changes: [{path, value}, ...]}`; schema validated, returns YAML diff (refuses changes to `state.shared_repo` and repo `path`) |
 | POST | `/projects/{pid}/config/save` | `manage.config_save` | body `{changes: [{path, value}, ...], comment?}`; saves `sentinel.config.yaml`, writes config version history and audit row `config_changed` (refuses changes to `state.shared_repo` and repo `path`) |
 | GET | `/projects/{pid}/knowledge/status` | `readroutes.knowledge_status` | returns knowledge status (cursors, records, by_repo) and kb job summary from `kb_worker` |
 | GET | `/projects/{pid}/knowledge/records?filter=&q=&limit=&cursor=` | `readroutes.knowledge_records` | paginated change records from `index.json`, front matter only, scrubbed text; filter `all|verified|inferred` |
 | GET | `/projects/{pid}/knowledge/records/{key}` | `readroutes.knowledge_record` | single change record body and metadata by key; 404 if not found |
+| GET | `/projects/{pid}/knowledge/related?q=&limit=` | `readroutes.knowledge_related` | related change records and invariants matching query `q` (up to `limit`, default 5), reusing agent search |
 | POST | `/projects/{pid}/knowledge/ingest` | `manage.knowledge_ingest` | queues an ingest job in `kb_jobs`, spawns worker in background, writes audit row `knowledge_ingest`; answers 202 without blocking |
 | POST | `/projects/{pid}/knowledge/snapshot` | `manage.knowledge_snapshot` | queues a snapshot job in `kb_jobs`, spawns worker in background, writes audit row `knowledge_snapshot`; answers 202 without blocking |
 | POST | `/projects/{pid}/knowledge/backfill/estimate` | `manage.knowledge_backfill_estimate` | body `{since?, repo?}`; computes backfill change estimate and returns an estimate token |
@@ -131,7 +136,7 @@ Only Phase F routes exist; every other route above answers `404 E_NOT_FOUND` unt
 
 | Command | Actor | Purpose |
 |---|---|---|
-| `sentinel run new <slug> --type T [--repos a,b] [--legacy]` | O, H | create run (version 2 by default) |
+| `sentinel run new <slug> --type T [--repos a,b] [--request-file F] [--spec-file S] [--legacy]` | O, H | create run (version 2 by default) |
 | `sentinel triage <slug> --factors k=v,...` | O | submit factors; engine sets tier |
 | `sentinel next <slug> [--json]` | O, H | what is allowed now: task to run, human action, or done |
 | `sentinel task run <task-id>` | O | dispatch through the adapter |

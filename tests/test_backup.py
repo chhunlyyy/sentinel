@@ -309,7 +309,7 @@ class VerifyRestore(BackupBase):
             raise sqlite3.OperationalError("disk I/O error")
         with mock.patch.object(backup_mod, "_copy_db", boom):
             with self.assertRaises(Exception):
-                backup_mod.restore(self.ws / ".sentinel", info["path"], user="dev")
+                backup_mod.restore(self.ws / ".sentinel", info["path"], user="dev", config_dir=self.home / "cfg")  # never the real config folder
         self.assertEqual(sha_file(self.db), before)
         self.assertEqual(len(list(self.bdir.glob("pre-restore-*.db"))), 1)
 

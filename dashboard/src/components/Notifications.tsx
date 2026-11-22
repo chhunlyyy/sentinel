@@ -124,7 +124,8 @@ export function NotificationBell() {
   return (
     <div className="bell">
       <button ref={buttonRef} type="button" className="secondary" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((o) => !o)}>
-        Notifications
+        <svg className="bell-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 003.4 0" /></svg>
+        <span className="sr-only">Notifications</span>
         {unread > 0 ? <span className="badge" aria-hidden="true">{unread}</span> : null}
         <span className="sr-only"> {unread} unread</span>
       </button>

@@ -202,6 +202,20 @@
           "type": "integer",
           "minimum": 1,
           "default": 4
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tokens_per_day": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "usd_per_day": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
         }
       }
     },
@@ -394,6 +408,20 @@
     },
     "routing": {
       "type": "object",
+      "properties": {
+        "fallback": {
+          "type": "object",
+          "description": "Runner to use at once when a runner (or a role) hits a usage limit: {claude: agy} or {tdd_green: agy}",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "limit_backoff": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minutes to wait after a usage limit when the message names no reset time (default 30)"
+        }
+      },
       "additionalProperties": {
         "type": "object",
         "required": [

@@ -42,6 +42,14 @@ agents:                      # role -> provider/model; same resolution as `routi
 notifications:
   desktop: true
 
+factory:                     # Sentinel 2.0+
+  driver: engine
+  max_tasks_per_project: 2
+  max_agents: 4
+  budget:
+    tokens_per_day: 1000000
+    usd_per_day: 20.0
+
 limits:                      # existing block, new keys
   red_retries: 2
 ```

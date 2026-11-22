@@ -50,8 +50,8 @@ def doctor_problems(config_path, config, state_dir, check_models=False, model_ch
         for key, command in commands.items():
             if command and not shutil.which(command.split()[0]) and not command.startswith("./") and not command.startswith("npm") and not command.startswith("npx"):
                 problems.append(("repo_access", f"{repo['id']}: {key} command not found: {command.split()[0]}"))
-    from run_stage import all_runners, single_model
-    for stage, route in ({} if single_model(config) else config.get("routing") or {}).items():
+    from run_stage import all_runners, routes, single_model
+    for stage, route in ({} if single_model(config) else routes(config)).items():
         runner = all_runners(config).get(route["runner"])
         if not runner:
             problems.append(("provider", f"routing {stage}: runner not defined: {route['runner']}"))
@@ -120,7 +120,8 @@ def _installed_runner_status(config):
     from run_stage import single_model
     runners = dict(config.get("runners") or {})
     if not single_model(config):
-        for route in (config.get("routing") or {}).values():
+        from run_stage import routes
+        for route in routes(config).values():
             runners.setdefault(route.get("runner"), None)
     if not runners:
         return "not_configured", "no runner is configured"

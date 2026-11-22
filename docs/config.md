@@ -156,6 +156,13 @@ routing:
 - `single_model` (default `true`): one model, one tool. `routing` is ignored completely: every stage runs in the AI tool you opened (Claude Code, Antigravity, Codex, Cursor) with that tool's current model, as a subagent where it has them. Set `single_model: false` to turn `routing` on, so each stage uses its own runner and `model`. `--runner` and `--model` on `sentinel stage run` always work.
 - `sentinel routing` prints what every stage will use and whether the CLI is installed. `sentinel doctor` fails when a routed CLI is missing, a model is set on a runner without a `model_flag`, or a model is written with its flag (`--model sonnet` instead of `sonnet`). `sentinel doctor --check-models` also asks each runner whether it accepts the model, and for `agy` suggests the closest id from `agy models`.
 - Model names: you do not need full IDs. `claude` accepts the aliases `sonnet`, `opus` and `haiku` (always the latest of that family). `agy` uses the ids printed by `agy models`, such as `gemini-3.8-flash-high`; the display names ("Gemini 3.8 Flash (High)") are not accepted.
+- `routing.fallback` (optional): a runner to use at once when a runner hits a usage limit, for example `fallback: { claude: agy }`, or per role `fallback: { tdd_green: agy }` (a role key wins over a runner key). The fallback must be defined, installed and not listed under `providers.disabled`; it is used once per task (a second limit on it waits like any other). `routing.limit_backoff` (minutes, default 30) is how long a task waits when the limit message names no reset time. Both keys are settings, not stages; do not name a stage `fallback`.
+
+  ```yaml
+  routing:
+    fallback: { claude: agy }
+    limit_backoff: 20
+  ```
 - One-off override: `sentinel stage run --stage qa --runner agy --model gemini-3.8-flash-high ...`.
 
 ### runners
@@ -177,7 +184,7 @@ runners:
 - `output: json_response` reads `status`, `response`, and the session id (`session_field`, default `conversation_id`) from the JSON the tool prints.
 - `models`: model ids the dashboard offers for this runner (Settings > Agents). They are listed before the built-in suggestions for `claude` and `gemini`; "Custom" always accepts any id. A runner without `model_flag` offers none.
 - `unsafe_skip_permissions: true` appends `unsafe_args` and prints a warning. Leave it false unless you accept that the tool will act without asking.
-- Only `claude` and `agy` have been run for real in this project. Check the flags of `codex` and `gemini` against their own documentation.
+- Only `claude` and `agy` have been run for real in this project. `gemini` was run for real only as far as a refused account allows: its flags exist in Gemini CLI 0.60.0 and the runner passes `--skip-trust` (headless Gemini refuses a folder it does not trust) and `--approval-mode auto_edit` (so it can edit files without a prompt), but a successful answer has not been seen. Check the flags of `codex` against its own documentation.
 
 ## notifications
 
@@ -322,11 +329,15 @@ factory:
   driver: engine                # default engine; engine | ai-tool, for runs created at the dashboard
   max_tasks_per_project: 2      # default 2; agent tasks running at once in this project
   max_agents: 4                 # default 4; agent tasks running at once over every project of the service
+  budget:                       # optional daily usage budget (per project)
+    tokens_per_day: 1000000     # daily token limit across agent tasks
+    usd_per_day: 20.0           # daily USD cost limit across agent tasks
 ```
 
 - `driver`: `engine` means the Sentinel service runs the run itself: triage and the decisions file are agent tasks (roles `triage` and `planner`), verification is called in the service, and the AI tool is used for the work only. `ai-tool` keeps the earlier behavior: an AI tool runs the `/sentinel` skill loop around `sentinel next`. A run created with `sentinel run new` is driven by you (`cli`) unless you pass `--driver engine --request "<text>"`. One driver owns a run: `sentinel next` on an engine-driven run answers `wait` with `driven_by: engine`.
 - An engine-driven run starts only when every role it may use routes to a CLI runner: set `agents.<role>.runner` (or `routing`) for `triage`, `planner`, `specifier`, `test_designer`, `tdd_red`, `tdd_green`, `tdd_refactor`, `reviewer`, `qa`, `hardener` and `docs`. The native adapter needs an AI tool session and is refused. Otherwise the run is BLOCKED with the roles named; fix the config and run `sentinel resolve <slug> --refresh-config -m "..."`.
 - `max_tasks_per_project` and `max_agents`: the dispatcher starts no further task while either limit is reached; the run waits in the queue the factory view shows. Running tasks are never stopped by a limit.
+- `budget`: optional daily usage ceiling for the project (`tokens_per_day` and/or `usd_per_day`). When reached by finished agent tasks on that calendar day (UTC), the factory dispatcher pauses starting new agent tasks for that project until the next day (00:00 UTC). An in-app notification `budget.reached` is raised once per day and the floor shows a banner. Tasks currently running finish normally.
 - `sentinel pause <slug>` and `sentinel unpause <slug>` stop and resume starting tasks for one run; `sentinel note <slug> "<text>"` adds a note that the next agent task of the run receives in its prompt (section "Note from the owner"), once.
 
 ## limits

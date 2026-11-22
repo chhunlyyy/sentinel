@@ -1,6 +1,8 @@
 // View models of the screens. The answers of the real server are typed in wire.ts (recorded from the
 // Phase F and G server by tests/test_dashboard_fixtures.py); adapt.ts converts them to these types.
 
+import type { WKnowledgeUsed } from './wire.ts';
+
 export interface ErrorEnvelope {
   error: { code: string; message: string; details?: Record<string, unknown> };
 }
@@ -208,6 +210,8 @@ export interface WorkflowNode {
   finished_at: string | null;
   seconds: number | null;
   tokens?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
   cost?: number | null;
   label?: string | null;
   reasons?: Record<string, string>;
@@ -238,6 +242,7 @@ export interface VersionRow {
   channel: string | null;
   at: string | null;
   comment: string | null;
+  provenance?: string;
 }
 
 export interface SpecificationAnswer {
@@ -251,6 +256,8 @@ export interface SpecificationAnswer {
   versions: VersionRow[];
   decision: DecisionRecord | null;
   requested_at: string | null;
+  knowledge_used?: WKnowledgeUsed;
+  provenance?: string;
 }
 
 export interface GherkinScenario {
@@ -285,6 +292,7 @@ export interface GherkinAnswer {
   versions: VersionRow[];
   decision: DecisionRecord | null;
   requested_at: string | null;
+  knowledge_used?: WKnowledgeUsed;
 }
 
 export interface ApprovalListItem {
@@ -424,5 +432,9 @@ export type {
   WKnowledgeJob as KnowledgeJobResult,
   WKnowledgeBackfillEstimate as KnowledgeBackfillEstimateResult,
   WKnowledgeBackfill as KnowledgeBackfillResult,
+  WKnowledgeUsed as KnowledgeUsed,
+  WKnowledgeRelatedRecord as KnowledgeRelatedRecord,
+  WKnowledgeRelatedInvariant as KnowledgeRelatedInvariant,
+  WKnowledgeRelated as KnowledgeRelatedResult,
 } from './wire.ts';
 

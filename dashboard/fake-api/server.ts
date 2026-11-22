@@ -13,8 +13,10 @@ import { summary, twoProjects } from '../fixtures/two-projects.ts';
 import {
   SAMPLE_KNOWLEDGE_RECORDS,
   sampleKnowledgeStatus,
+  sampleKnowledgeRelated,
   sampleKnowledgeCiTemplate,
   sampleRoutingSuggest,
+  routingFix,
   sampleDetect,
   sampleConfigForm,
 } from '../fixtures/knowledge-fixtures.ts';
@@ -47,6 +49,36 @@ let streams = new Set<ServerResponse>();
 let refuseUntil = 0;
 let eventSeq = 100;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+interface FactoryState {
+  paused: boolean;
+  paused_at: string | null;
+  running_total: number;
+  max_agents: number;
+}
+let factoryState: FactoryState = {
+  paused: false,
+  paused_at: null,
+  running_total: 1,
+  max_agents: 4,
+};
+
+function getFactoryStatus() {
+  let maxAgents = 4;
+  let running = 0;
+  if (db.factory) {
+    for (const f of Object.values(db.factory)) {
+      if (f.limits?.max_agents && f.limits.max_agents > maxAgents) maxAgents = f.limits.max_agents;
+      if (typeof f.limits?.running_total === 'number') running = Math.max(running, f.limits.running_total);
+    }
+  }
+  return {
+    paused: factoryState.paused,
+    paused_at: factoryState.paused_at,
+    running_total: running || factoryState.running_total || 1,
+    max_agents: maxAgents || factoryState.max_agents || 4,
+  };
+}
 
 // ---- providers, orchestrator, agents, folders and project creation (state of the fake only) ----
 
@@ -188,6 +220,7 @@ async function control(req: IncomingMessage, res: ServerResponse, path: string) 
     case 'reset': {
       db = b.fixture === 'fresh-install' ? freshInstall() : twoProjects();
       ext = freshExt();
+      factoryState = { paused: false, paused_at: null, running_total: 1, max_agents: 4 };
       for (const p of (b.presets as string[] | undefined) ?? []) applyPreset(db, p);
       rules = [];
       log = [];
@@ -316,15 +349,33 @@ route('GET', `${V}/projects/{pid}/configuration/diff`, (c) => {
   const text = d.diffs[`${a}:${b}`] ?? `--- version ${a}\n+++ version ${b}\n@@ limits @@\n-limits.task_timeout: 900\n+limits.task_timeout: 1200\n limits.max_retries: 3\n`;
   return [200, E.configDiff(a, b, text)];
 });
+route('GET', `${V}/factory`, () => [200, getFactoryStatus()]);
+route('POST', `${V}/factory/pause`, () => {
+  factoryState.paused = true;
+  factoryState.paused_at = new Date().toISOString();
+  pushEvent('factory.paused', {}, false, `factory:${++eventSeq}`);
+  return [200, getFactoryStatus()];
+});
+route('POST', `${V}/factory/resume`, () => {
+  factoryState.paused = false;
+  factoryState.paused_at = null;
+  pushEvent('factory.resumed', {}, false, `factory:${++eventSeq}`);
+  return [200, getFactoryStatus()];
+});
+
 route('GET', `${V}/projects/{pid}/factory`, (c) => {
   const pid = decodeURIComponent(c.params[0]);
   const snap = db.factory?.[pid] ?? {
     project: pid,
+    factory_paused: false,
+    who: {},
+    activity: [],
     generated_at: '2026-11-21T10:15:02.123456Z',
     stations: ['intake', 'triage', 'spec', 'gate_spec', 'gherkin', 'gate_gherkin', 'build', 'verify', 'report', 'gate_accept', 'knowledge'],
     limits: { driver: 'engine', max_tasks_per_project: 2, max_agents: 4, running_in_project: 0, running_total: 0 },
     runs: [],
     queue: [],
+    routing: { problems: [] },
   };
   return [200, snap];
 });
@@ -337,7 +388,7 @@ route('POST', `${V}/projects/{pid}/tasks`, (c) => {
   const pid = decodeURIComponent(c.params[0]);
   const d = proj(pid);
   const b = body(c);
-  const allowed = ['slug', 'request', 'type', 'repos', 'priority', 'tier', 'ticket'];
+  const allowed = ['slug', 'request', 'type', 'repos', 'priority', 'tier', 'ticket', 'spec'];
   for (const k of Object.keys(b)) if (!allowed.includes(k)) throw new ApiErr(400, 'E_VALIDATION', `unknown field ${k}`, { field: k });
   for (const k of ['slug', 'request', 'type']) if (!b[k]) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
   const slug = String(b.slug);
@@ -350,6 +401,38 @@ route('POST', `${V}/projects/{pid}/tasks`, (c) => {
     created_at: now, updated_at: now, task_counts: {},
     approvals: { specification: { gate: 'specification', state: 'NOT_REQUESTED', version: null, sha256: null }, gherkin: { gate: 'gherkin', state: 'NOT_REQUESTED', version: null, sha256: null } },
   };
+  if (b.spec && typeof b.spec === 'string' && b.spec.trim()) {
+    const specSha = createHash('sha256').update(b.spec).digest('hex');
+    template.specification = {
+      ...template.specification,
+      current: {
+        ...template.specification.current,
+        version: 1,
+        sha256: specSha,
+        text: b.spec,
+        state: 'IN_REVIEW',
+        provenance: 'imported from a session',
+      },
+      versions: [
+        {
+          version: 1,
+          sha256: specSha,
+          decision: null,
+          reviewer: null,
+          channel: null,
+          at: null,
+          comment: null,
+          provenance: 'imported from a session',
+        },
+      ],
+    };
+    template.detail.approvals.specification = {
+      gate: 'specification',
+      state: 'IN_REVIEW',
+      version: 1,
+      sha256: specSha,
+    };
+  }
   template.next = { kind: 'orchestrator', label: 'waiting for AI tool', command: `/sentinel resume ${slug}` };
   template.workflow = { nodes: [], edges: [], gates: [] };
   template.tdd = { cycles: [], evidence: [] };
@@ -575,6 +658,18 @@ route('POST', `${V}/tasks/{slug}/unpause`, (c) => {
     }
   }
   pushEvent('run.unpaused', { slug: c.params[0] });
+  return [200, wrun(run)];
+});
+
+route('POST', `${V}/tasks/{slug}/retry-now`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  for (const f of Object.values(db.factory ?? {})) {
+    const r = f.runs.find((x) => x.slug === c.params[0]);
+    if (r && r.limit) {
+      r.limit = null;
+      if (r.stations[r.station] === 'limit') r.stations[r.station] = 'working';
+    }
+  }
   return [200, wrun(run)];
 });
 
@@ -806,6 +901,11 @@ route('POST', `${V}/shared/test`, (c) => {
 
 route('GET', `${V}/routing/suggest`, () => [200, sampleRoutingSuggest()]);
 
+route('GET', `${V}/projects/{pid}/routing/fix`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  return [200, routingFix(pid, db.factory?.[pid]?.routing?.problems ?? [])];
+});
+
 const projectConfigs: Record<string, ReturnType<typeof sampleConfigForm>> = {};
 route('GET', `${V}/projects/{pid}/config/form`, (c) => {
   const pid = decodeURIComponent(c.params[0]);
@@ -839,12 +939,20 @@ route('POST', `${V}/projects/{pid}/config/save`, (c) => {
   }
   const newSha = createHash('sha256').update(JSON.stringify(cfg)).digest('hex');
   cfg.sha256 = newSha;
+  const snap = db.factory?.[pid];
+  if (snap && changes.some((ch) => ch.path === 'single_model' && ch.value === false)) snap.routing = { problems: [] };
   const diff = changes.map((ch) => `+ ${ch.path}: ${JSON.stringify(ch.value)}`).join('\n');
   return [200, { ok: true, project: pid, sha256: newSha, diff }];
 });
 
 route('GET', `${V}/projects/{pid}/knowledge/status`, () => {
   return [200, sampleKnowledgeStatus()];
+});
+
+route('GET', `${V}/projects/{pid}/knowledge/related`, (c) => {
+  const q = (c.query.get('q') || '').trim();
+  const limit = Number(c.query.get('limit') || 5);
+  return [200, sampleKnowledgeRelated(q, limit)];
 });
 
 route('GET', `${V}/projects/{pid}/knowledge/records`, (c) => {

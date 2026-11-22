@@ -32,6 +32,72 @@ TICK = 0.2
 STAGES = ROOT / "core" / "stages"
 
 
+def parse_usage(text):
+    """Parse token usage and cost from runner stdout.
+
+    Claude CLI with `--output-format json` reports:
+      {"usage": {"input_tokens": int, "output_tokens": int}, "total_cost_usd": float}
+    Other runners or non-JSON output return null for every metric (never guess).
+    """
+    empty = {"tokens": None, "cost": None, "input_tokens": None, "output_tokens": None}
+    if not text or not isinstance(text, str):
+        return empty
+    text = text.strip()
+    if not text:
+        return empty
+    data = None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        start = text.rfind("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                data = json.loads(text[start:end + 1])
+            except ValueError:
+                pass
+        if not isinstance(data, dict):
+            for line in reversed(text.splitlines()):
+                line = line.strip()
+                if line.startswith("{") and line.endswith("}"):
+                    try:
+                        data = json.loads(line)
+                        break
+                    except ValueError:
+                        continue
+    if not isinstance(data, dict):
+        return empty
+
+    usage = data.get("usage")
+    total_cost = data.get("total_cost_usd")
+    if total_cost is None:
+        total_cost = data.get("cost")
+    if not isinstance(usage, dict) and total_cost is None:
+        return empty
+
+    input_tokens = None
+    output_tokens = None
+    tokens = None
+    cost = None
+
+    if isinstance(usage, dict):
+        inp = usage.get("input_tokens")
+        out = usage.get("output_tokens")
+        if isinstance(inp, int) and not isinstance(inp, bool):
+            input_tokens = inp
+        if isinstance(out, int) and not isinstance(out, bool):
+            output_tokens = out
+        if input_tokens is not None or output_tokens is not None:
+            tokens = (input_tokens or 0) + (output_tokens or 0)
+        elif isinstance(usage.get("total_tokens"), int) and not isinstance(usage.get("total_tokens"), bool):
+            tokens = usage.get("total_tokens")
+
+    if isinstance(total_cost, (int, float)) and not isinstance(total_cost, bool):
+        cost = float(total_cost)
+
+    return {"tokens": tokens, "cost": cost, "input_tokens": input_tokens, "output_tokens": output_tokens}
+
+
 def check_task_id(task_id):
     if not isinstance(task_id, str) or not TASK_ID.fullmatch(task_id):
         raise SentinelError("E_VALIDATION", f"not a task id: {task_id!r} (expected t- and 12 hex digits)",
@@ -109,6 +175,10 @@ class RuntimeOps:
 
     def _task_start_problem(self, run, t):
         """None when the task may start now, else the SentinelError that says why not."""
+        until = self.limit_wait(t)
+        if until:
+            return SentinelError("E_PRECONDITION", f"task {t['id']} waits for the {t['provider']} usage limit until {until}",
+                                 {"retry_at": until, "runner": t["provider"]})
         open_deps = self.open_dependencies(t["id"])
         if open_deps:
             return SentinelError("E_TRANSITION", f"task {t['id']} has open dependencies: {', '.join(open_deps)}",
@@ -261,8 +331,20 @@ class RuntimeOps:
                 info = json.loads(exit_file.read_text(encoding="utf-8"))
             except ValueError:
                 info = {}
+            usage = {
+                "tokens": info.get("tokens"),
+                "cost": info.get("cost"),
+                "input_tokens": info.get("input_tokens"),
+                "output_tokens": info.get("output_tokens"),
+            }
+            if usage["tokens"] is None and (tdir / "output.log").is_file():
+                try:
+                    usage = parse_usage((tdir / "output.log").read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    pass
             self.finish_task(t["id"], exit_code=info.get("exit_code", 0), seconds=info.get("seconds"),
-                             timed_out=bool(info.get("timed_out")), session_id=info.get("session_id"))
+                             timed_out=bool(info.get("timed_out")), session_id=info.get("session_id"),
+                             **usage)
             return
         age = _seconds_since(t["started_at"])
         timeout = t["timeout_seconds"] or DEFAULT_TIMEOUT
@@ -273,7 +355,8 @@ class RuntimeOps:
                 alive = age is not None and age < PROCESS_GRACE
             owner = bool(t["owner_pid"]) and adapters.process_alive(t["owner_pid"], t["owner_started_at"])
             if not alive and not owner:  # the runner is gone and so is the `task run` that was about to record its exit
-                self.finish_task(t["id"], exit_code=1, lost=True)
+                usage = parse_usage((tdir / "output.log").read_text(encoding="utf-8", errors="replace")) if (tdir / "output.log").is_file() else {}
+                self.finish_task(t["id"], exit_code=1, lost=True, **usage)
             elif alive and age is not None and age > timeout + PROCESS_GRACE:
                 adapters.terminate_groups([(t["pid"], t["pid_started_at"])], grace=2)
                 self.finish_task(t["id"], timed_out=True)
@@ -336,15 +419,17 @@ class RuntimeOps:
             parts.append("## Note from the owner\n\n" + "\n\n".join(n["text"] for n in notes))
         try:
             import kb_context
-            kb_text = kb_context.render_project_knowledge(
+            k_data = kb_context.collect_project_knowledge(
                 workspace=self.workspace,
                 config=cfg,
                 repos=sealed.get("repos") or [],
                 write_scope=sealed.get("permissions", {}).get("write") or [],
                 shared_dir=self.state_dir / "shared",
             )
+            kb_text = kb_context.format_project_knowledge(k_data, shared_dir=self.state_dir / "shared")
             if kb_text:
                 parts.append(kb_text)
+            (tdir / "knowledge.json").write_text(json.dumps(k_data, indent=2), encoding="utf-8")
         except Exception:
             pass
         text = "\n\n".join(p.strip() for p in parts) + "\n"
@@ -503,18 +588,34 @@ class RuntimeOps:
             self._write_exit(tdir, {"exit_code": exit_code, "timed_out": timed_out, "seconds": seconds, "session_id": None,
                                     "pid": handle.pid, "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
         exit_code, stdout, stderr = adapter.result(handle, timed_out=timed_out)
+        usage = parse_usage(stdout)
+        if not cancelled and any(v is not None for v in usage.values()):
+            info = json.loads((tdir / "exit.json").read_text(encoding="utf-8"))
+            self._write_exit(tdir, {**info, **usage})
         if cancelled:
             return self._outcome(task_id, exit_code=exit_code, stderr_tail=self._tail(stderr))
+        if exit_code != 0 and not timed_out:
+            import limits
+            hit = limits.classify(self._task_row(task_id)["provider"], stdout, stderr,
+                                  backoff_minutes=self.limit_backoff_minutes(self._run_config(run)))
+            if hit:
+                try:
+                    row = self.limit_task(task_id, hit)
+                    return self._outcome(task_id, limit=hit["retry_at"], reason=hit["reason"], state=row["state"],
+                                         stderr_tail=self._tail(stderr))
+                except SentinelError as err:
+                    if err.code != "E_TRANSITION":
+                        raise  # a cancel or a recovery finished it first; its state stands
         session = None
         if adapter.runner.get("output") == "json_response":
             from run_stage import parse_output
             session = parse_output(adapter.runner, stdout)[1]
         if session:
             info = json.loads((tdir / "exit.json").read_text(encoding="utf-8"))
-            self._write_exit(tdir, {**info, "session_id": session})
+            self._write_exit(tdir, {**info, "session_id": session, **usage})
         try:
             self.finish_task(task_id, exit_code=0 if timed_out else exit_code, seconds=seconds, timed_out=timed_out,
-                             session_id=session)
+                             session_id=session, **usage)
         except SentinelError as err:
             if err.code != "E_TRANSITION":
                 raise  # a cancel or a recovery finished it first; its state stands
@@ -677,6 +778,12 @@ class RuntimeOps:
         if waiting:
             return {**base, **self._task_step(waiting[0], run)}
         active = [t["id"] for t in tasks if t["state"] in ACTIVE]
+        limited = [t for t in queued if self.limit_wait(t)]
+        if limited and not active:
+            first = min(limited, key=lambda t: t["retry_at"])
+            return {**base, "kind": "wait", "tasks": [t["id"] for t in limited], "retry_at": first["retry_at"],
+                    "reason": f"waiting for the {first['provider']} usage limit until {first['retry_at']}",
+                    "command": f"sentinel resolve {run['slug']} --retry-now"}
         if active or queued:
             return {**base, "kind": "wait", "tasks": active,
                     "reason": "waiting for running tasks" if active else "queued tasks cannot start yet"}
