@@ -126,6 +126,47 @@ function Report({ a }: { a: W.WAnalytics }) {
         {Object.keys(cost.by_provider).length ? <Table head={['Provider', 'Cost']} rows={Object.entries(cost.by_provider).map(([k, v]) => [k, money(v)])} /> : null}
         <p className="hint">Only costs reported by tasks are summed; nothing is estimated from tokens.</p>
       </Section>
+      <Section id="report-usage" title="Usage">
+        {!a.usage || isNull(a.usage.total) ? (
+          <p><NotReported reason={a.usage?.total && isNull(a.usage.total) ? a.usage.total.reason : 'no usage reported'} /></p>
+        ) : (
+          <>
+            <p>
+              Total tokens: <strong>{(a.usage.total.tokens ?? 0).toLocaleString()}</strong>
+              {a.usage.total.input_tokens != null ? ` (${a.usage.total.input_tokens.toLocaleString()} in, ${(a.usage.total.output_tokens ?? 0).toLocaleString()} out)` : ''}
+              {a.usage.total.cost != null ? ` · ${money(a.usage.total.cost)}` : ''}
+            </p>
+            {Object.keys(a.usage.by_model).length ? (
+              <>
+                <h3>By model</h3>
+                <Table
+                  head={['Model', 'Tokens', 'Cost', 'Tasks']}
+                  rows={Object.entries(a.usage.by_model).map(([m, d]) => [
+                    m,
+                    d.tokens ? d.tokens.toLocaleString() : '—',
+                    d.cost ? money(d.cost) : '—',
+                    d.tasks,
+                  ])}
+                />
+              </>
+            ) : null}
+            {Object.keys(a.usage.by_week).length ? (
+              <>
+                <h3>By week</h3>
+                <Table
+                  head={['Week', 'Tokens', 'Cost', 'Tasks']}
+                  rows={Object.entries(a.usage.by_week).map(([w, d]) => [
+                    w,
+                    d.tokens ? d.tokens.toLocaleString() : '—',
+                    d.cost ? money(d.cost) : '—',
+                    d.tasks,
+                  ])}
+                />
+              </>
+            ) : null}
+          </>
+        )}
+      </Section>
     </>
   );
 }

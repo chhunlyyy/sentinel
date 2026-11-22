@@ -35,7 +35,7 @@ LIVE = ("RUNNING", "WAITING_FOR_INPUT")
 
 
 def factory_config(config):
-    """The `factory` block with its defaults: {"driver", "max_tasks_per_project", "max_agents"}."""
+    """The `factory` block with its defaults: {"driver", "max_tasks_per_project", "max_agents", "budget"}."""
     block = (config or {}).get("factory") or {}
     out = {"driver": block.get("driver") or DRIVER_DEFAULT,
            "max_tasks_per_project": block.get("max_tasks_per_project", MAX_TASKS_PER_PROJECT),
@@ -46,7 +46,56 @@ def factory_config(config):
             out[key] = default
     if out["driver"] not in ("engine", "ai-tool"):
         out["driver"] = DRIVER_DEFAULT
+    if "budget" in block:
+        budget = block.get("budget") or {}
+        if not isinstance(budget, dict):
+            budget = {}
+        t_day = budget.get("tokens_per_day")
+        u_day = budget.get("usd_per_day")
+        out["budget"] = {
+            "tokens_per_day": t_day if isinstance(t_day, int) and not isinstance(t_day, bool) and t_day > 0 else None,
+            "usd_per_day": float(u_day) if isinstance(u_day, (int, float)) and not isinstance(u_day, bool) and u_day > 0 else None,
+        }
     return out
+
+
+def budget_status(eng, now=None):
+    """The budget status of a project for today (UTC): {"reached", "tokens_today", "cost_today", "tokens_per_day", "usd_per_day", "reason", "resets_at"}."""
+    now = now or _now()
+    today = now[:10]
+    cfg = factory_config(eng.config)
+    b = cfg.get("budget") or {}
+    t_limit = b.get("tokens_per_day")
+    u_limit = b.get("usd_per_day")
+    row = eng.reg._c.execute(
+        "SELECT SUM(COALESCE(tokens, 0)), SUM(COALESCE(cost, 0.0)) FROM tasks "
+        "WHERE substr(COALESCE(started_at, created_at), 1, 10) = ?", (today,)
+    ).fetchone()
+    tokens_today = int(row[0] or 0)
+    cost_today = round(float(row[1] or 0.0), 4)
+    reached = False
+    reasons = []
+    if t_limit and tokens_today >= t_limit:
+        reached = True
+        reasons.append(f"token limit reached ({tokens_today} >= {t_limit})")
+    if u_limit and cost_today >= u_limit:
+        reached = True
+        reasons.append(f"cost limit reached (${cost_today:.2f} >= ${u_limit:.2f})")
+    from datetime import datetime, timedelta, timezone
+    try:
+        dt = datetime.strptime(today, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+        resets_at = dt.strftime("%Y-%m-%dT00:00:00.000000Z")
+    except Exception:
+        resets_at = None
+    return {
+        "reached": reached,
+        "tokens_today": tokens_today,
+        "cost_today": cost_today,
+        "tokens_per_day": t_limit,
+        "usd_per_day": u_limit,
+        "reason": "; ".join(reasons) if reached else None,
+        "resets_at": resets_at,
+    }
 
 
 # ---- whole-factory pause (stored in the user config dir, read by the service on every pass)
@@ -542,6 +591,24 @@ def running_tasks(reg):
     return reg._c.execute("SELECT COUNT(*) FROM tasks WHERE state='RUNNING'").fetchone()[0]
 
 
+def _task_usage(tasks):
+    out = {}
+    for t in tasks:
+        st = ROLE_STATION.get(t["role"], "build")
+        if t["tokens"] is not None or t["cost"] is not None or t["seconds"] is not None:
+            out[st] = {
+                "tokens": t["tokens"],
+                "cost": t["cost"],
+                "input_tokens": t["input_tokens"],
+                "output_tokens": t["output_tokens"],
+                "seconds": t["seconds"],
+                "role": t["role"],
+                "runner": t["provider"],
+                "model": t["model"],
+            }
+    return out
+
+
 def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False):
     """The factory of one project: every non-final run with its stations, build lanes and agents, plus the queue of runs the
     limits keep from starting. Everything is read from the registry and the engine's own views; nothing is stored for display.
@@ -551,6 +618,7 @@ def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False
     reg = eng.reg
     now = now or _now()
     limits = factory_config(eng.config)
+    b_stat = budget_status(eng, now)
     here = running_tasks(reg)
     total = max(here, total_running if total_running is not None else here)
     full = None
@@ -558,6 +626,8 @@ def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False
         full = f"the project limit of {limits['max_tasks_per_project']} running tasks is reached"
     elif total >= limits["max_agents"]:
         full = f"the limit of {limits['max_agents']} running agents is reached"
+    elif b_stat["reached"]:
+        full = f"daily budget reached: {b_stat['reason']}"
     runs, queue = [], []
     for run in reg.list_runs():
         if run["workflow_version"] != "2" or run["state"] in ("FAILED", "CANCELLED"):
@@ -572,7 +642,7 @@ def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False
                 "state": run["state"], "tier": run["tier"], "station": current, "stations": states,
                 "next_station": STATIONS[STATIONS.index(current) + 1] if current != STATIONS[-1] else None,
                 "agents": _agents(tasks, current, states), "lanes": _lanes(reg, run, tasks, paused), "attention": attention,
-                "limit": _limit(eng, tasks, current, states, now),
+                "limit": _limit(eng, tasks, current, states, now), "task_usage": _task_usage(tasks),
                 "pending_notes": len(eng.unread_notes(run)), "created_at": run["created_at"], "updated_at": run["updated_at"]}
         runs.append(item)
         if full and run["driver"] != "cli" and not paused and run["state"] not in machines.RUN_FINAL \
@@ -581,6 +651,7 @@ def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False
             queue.append({"slug": run["slug"], "title": item["title"], "position": len(queue) + 1, "reason": full})
     return {"project": project_id, "generated_at": now, "stations": list(STATIONS),
             "limits": {**limits, "running_in_project": here, "running_total": total}, "runs": runs, "queue": queue,
+            "budget": b_stat,
             "factory_paused": bool(factory_paused), "who": who(eng.config), "activity": activity(reg, {r["slug"] for r in runs}),
             "routing": {"problems": routing_problems(eng.config) if limits["driver"] == "engine" else []}}
 

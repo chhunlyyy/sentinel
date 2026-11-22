@@ -405,6 +405,14 @@ def h_note(ctx, slug):
         return 201, ctx.clean(project, {"note": note_id, **views.run_detail(eng, project, slug)})
 
 
+def h_retry_now(ctx, slug):
+    project = ctx.locate(slug)
+    with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
+        res = ops.retry_now(eng, slug, ctx.user)
+        return 200, ctx.clean(project, {**res, **views.run_detail(eng, project, slug)})
+
+
+
 def h_factory(ctx, pid):
     if ctx.query:
         extra = sorted(ctx.query)[0]
@@ -534,6 +542,7 @@ ROUTES = [
     Route("POST", "pause", "tasks/{slug}/pause", h_pause, ("Engine.pause_run",)),
     Route("POST", "unpause", "tasks/{slug}/unpause", h_unpause, ("Engine.unpause_run",)),
     Route("POST", "note", "tasks/{slug}/note", h_note, ("Engine.add_note",)),
+    Route("POST", "retry_now", "tasks/{slug}/retry-now", h_retry_now, ("Engine.retry_limited_now",)),
     Route("GET", "factory", "projects/{pid}/factory", h_factory),
     Route("GET", "factory_state", "factory", h_factory_get),
     Route("POST", "factory_pause", "factory/pause", h_factory_pause, ("factory.set_paused",)),

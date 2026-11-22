@@ -629,6 +629,18 @@ route('POST', `${V}/tasks/{slug}/unpause`, (c) => {
   return [200, wrun(run)];
 });
 
+route('POST', `${V}/tasks/{slug}/retry-now`, (c) => {
+  const { run } = resolveRun(c.params[0], c.query);
+  for (const f of Object.values(db.factory ?? {})) {
+    const r = f.runs.find((x) => x.slug === c.params[0]);
+    if (r && r.limit) {
+      r.limit = null;
+      if (r.stations[r.station] === 'limit') r.stations[r.station] = 'working';
+    }
+  }
+  return [200, wrun(run)];
+});
+
 route('POST', `${V}/tasks/{slug}/note`, (c) => {
   const { run } = resolveRun(c.params[0], c.query);
   const b = body(c);

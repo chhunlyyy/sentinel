@@ -166,7 +166,7 @@ class Recorder(SV, PD):
             cls.same_shape(a[0], b[0], f"{path}[]", out)
 
     # answers whose keys depend on the data (maps keyed by id, state or command name)
-    MAPS = ("approvals", "task_counts", "commands", "agents", "stations")  # keyed by name: values compared, keys not
+    MAPS = ("approvals", "task_counts", "commands", "agents", "stations", "task_usage", "by_model", "by_week", "by_role")  # keyed by name: values compared, keys not
 
     def compare_with_committed(self, names):
         """The fresh recording must have the shapes of the committed fixtures. Regenerate them with SENTINEL_RECORD_FIXTURES=1."""

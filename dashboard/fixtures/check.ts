@@ -10,7 +10,7 @@ import { fakeAnswers } from './answers.ts';
 const RECORDED = process.env.SENTINEL_FIXTURES_DIR ?? join(process.cwd(), 'fixtures', 'recorded');
 
 /** Paths whose keys depend on the data (maps), or whose shape depends on a kind field; only their value types are compared. */
-const MAPS = [/\.approvals$/, /\.task_counts$/, /\.commands$/, /^factory\.runs\[\]\.(agents|stations)$/, /^factory\.who$/, /^analytics\.runs\.by_(state|type)$/];
+const MAPS = [/\.approvals$/, /\.task_counts$/, /\.commands$/, /^factory\.runs\[\]\.(agents|stations|task_usage)$/, /^factory\.who$/, /^analytics\.runs\.by_(state|type)$/, /^analytics\.usage\.by_(model|week|role)$/];
 /** The next step has fields that depend on its kind; only the kind is compared. Config values hold any JSON value. */
 const KIND_ONLY = [/\.next$/, /^next$/];
 const ANY = [/\.value$/, /\.overridden\[\]\.value$/, /^report\.report$/, /^analytics\.(?!range$|runs$)[a-z_]+$/];

@@ -259,6 +259,79 @@ function OverviewTab({ run, pid, base, onChanged }: { run: Run; pid: string; bas
       </p>
       <h2>Tasks</h2>
       <p>{Object.entries(run.task_counts).map(([k, v]) => `${v} ${k}`).join(', ') || 'No tasks yet'}</p>
+      <h2>Usage</h2>
+      <div className="panel" data-testid="run-usage">
+        {nodes.some((n) => n.tokens != null || n.cost != null || n.seconds != null) ? (
+          <>
+            <p>
+              <strong>Total:</strong>{' '}
+              {[
+                nodes.reduce((acc, n) => acc + (n.tokens ?? 0), 0) > 0 ? `${nodes.reduce((acc, n) => acc + (n.tokens ?? 0), 0).toLocaleString()} tokens` : null,
+                nodes.reduce((acc, n) => acc + (n.cost ?? 0), 0) > 0 ? `$${nodes.reduce((acc, n) => acc + (n.cost ?? 0), 0).toFixed(2)}` : null,
+                nodes.reduce((acc, n) => acc + (n.seconds ?? 0), 0) > 0 ? `${Math.round(nodes.reduce((acc, n) => acc + (n.seconds ?? 0), 0))}s` : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
+            <h3>By model</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Model</th>
+                  <th scope="col">Tokens</th>
+                  <th scope="col">Cost</th>
+                  <th scope="col">Tasks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(
+                  nodes.reduce<Record<string, { tokens: number; cost: number; tasks: number }>>((acc, n) => {
+                    const m = n.model || 'unspecified';
+                    const cur = acc[m] ?? { tokens: 0, cost: 0, tasks: 0 };
+                    cur.tokens += n.tokens ?? 0;
+                    cur.cost += n.cost ?? 0;
+                    cur.tasks += 1;
+                    acc[m] = cur;
+                    return acc;
+                  }, {})
+                ).map(([m, d]) => (
+                  <tr key={m}>
+                    <th scope="row">{m}</th>
+                    <td>{d.tokens ? d.tokens.toLocaleString() : '—'}</td>
+                    <td>{d.cost ? `$${d.cost.toFixed(2)}` : '—'}</td>
+                    <td>{d.tasks}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <h3>Per task</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Task</th>
+                  <th scope="col">Role</th>
+                  <th scope="col">Model</th>
+                  <th scope="col">Tokens</th>
+                  <th scope="col">Cost</th>
+                  <th scope="col">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nodes.filter((n) => n.tokens != null || n.cost != null || n.seconds != null).map((n) => (
+                  <tr key={n.id}>
+                    <th scope="row">{n.id}</th>
+                    <td>{n.role}</td>
+                    <td>{n.model || '—'}</td>
+                    <td>{n.tokens != null ? n.tokens.toLocaleString() : '—'}</td>
+                    <td>{n.cost != null ? `$${n.cost.toFixed(2)}` : '—'}</td>
+                    <td>{n.seconds != null ? `${Math.round(n.seconds)}s` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <p className="hint">No usage reported for this run.</p>
+        )}
+      </div>
       <h2>Changes</h2>
       <div data-testid="changes-summary">
         {changes.data ? (

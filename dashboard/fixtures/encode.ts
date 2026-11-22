@@ -142,6 +142,7 @@ export const workflow = (w: T.Workflow, d: T.Run): W.WWorkflow => ({
   nodes: w.nodes.map((n) => ({
     id: n.id, role: n.role, repo: n.repo, state: n.state, adapter: n.adapter, provider: n.provider, model: n.model, attempt: n.attempt, retry_of: n.retry_of,
     error_code: n.error_code, started_at: n.started_at, finished_at: n.finished_at, seconds: n.seconds, label: n.label ?? null,
+    tokens: n.tokens ?? null, cost: n.cost ?? null, input_tokens: n.input_tokens ?? null, output_tokens: n.output_tokens ?? null,
   })),
   edges: w.edges,
   gates: w.gates.map((g) => ({ gate: g.gate, state: g.state, version: g.version ?? 0, sha256: d.approvals[g.gate].sha256 ?? '' })),

@@ -99,6 +99,7 @@ export const calls = {
   pause: (c: Client, slug: string, pid: string, comment?: string) => c.post<W.WRun>(buildPath('pause', { slug }, { project: pid }), { ...(comment ? { comment } : {}) }),
   unpause: (c: Client, slug: string, pid: string, comment?: string) => c.post<W.WRun>(buildPath('unpause', { slug }, { project: pid }), { ...(comment ? { comment } : {}) }),
   sendNote: (c: Client, slug: string, pid: string, text: string) => c.post<W.WRun>(buildPath('note', { slug }, { project: pid }), { text }),
+  retryNow: async (c: Client, slug: string, pid: string) => A.run(await c.post<W.WRun>(buildPath('retryNow', { slug }, proj(pid)), {})),
   detect: (c: Client, paths: string[]) => c.post<W.WDetect>(buildPath('detect'), { paths }),
   sharedTest: (c: Client, url: string) => c.post<W.WSharedTest>(buildPath('sharedTest'), { url }),
   routingSuggest: (c: Client) => c.get<W.WRoutingSuggest>(buildPath('routingSuggest')),

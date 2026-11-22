@@ -1,128 +1,137 @@
 {
   "activity": [
     {
-      "at": "2026-11-22T01:10:46.704419Z",
+      "at": "2026-11-22T02:22:35.204449Z",
       "run": "gherkin-run",
       "station": "gate_gherkin",
       "text": "Gherkin is waiting for you"
     },
     {
-      "at": "2026-11-22T01:10:46.701917Z",
+      "at": "2026-11-22T02:22:35.200478Z",
       "run": "gherkin-run",
       "station": "gherkin",
       "text": "Gherkin agent finished"
     },
     {
-      "at": "2026-11-22T01:10:46.694912Z",
+      "at": "2026-11-22T02:22:35.191057Z",
       "run": "gherkin-run",
       "station": "gherkin",
       "text": "Gherkin agent started"
     },
     {
-      "at": "2026-11-22T01:10:46.682133Z",
+      "at": "2026-11-22T02:22:35.177842Z",
       "run": "gherkin-run",
       "station": "gate_spec",
       "text": "You approved the specification"
     },
     {
-      "at": "2026-11-22T01:10:46.680860Z",
+      "at": "2026-11-22T02:22:35.175527Z",
       "run": "gherkin-run",
       "station": "gate_spec",
       "text": "Specification is waiting for you"
     },
     {
-      "at": "2026-11-22T01:10:46.678696Z",
+      "at": "2026-11-22T02:22:35.172354Z",
       "run": "gherkin-run",
       "station": "spec",
       "text": "Specification agent finished"
     },
     {
-      "at": "2026-11-22T01:10:46.668802Z",
+      "at": "2026-11-22T02:22:35.162308Z",
       "run": "gherkin-run",
       "station": "spec",
       "text": "Specification agent started"
     },
     {
-      "at": "2026-11-22T01:10:46.656215Z",
+      "at": "2026-11-22T02:22:35.151776Z",
       "run": "gherkin-run",
       "station": "intake",
       "text": "Task created"
     },
     {
-      "at": "2026-11-22T01:10:46.651781Z",
+      "at": "2026-11-22T02:22:35.147067Z",
       "run": "spec-run",
       "station": "gate_spec",
       "text": "Specification is waiting for you"
     },
     {
-      "at": "2026-11-22T01:10:46.649682Z",
+      "at": "2026-11-22T02:22:35.144961Z",
       "run": "spec-run",
       "station": "spec",
       "text": "Specification agent finished"
     },
     {
-      "at": "2026-11-22T01:10:46.639972Z",
+      "at": "2026-11-22T02:22:35.137165Z",
       "run": "spec-run",
       "station": "spec",
       "text": "Specification agent started"
     },
     {
-      "at": "2026-11-22T01:10:46.628950Z",
+      "at": "2026-11-22T02:22:35.126777Z",
       "run": "spec-run",
       "station": "intake",
       "text": "Task created"
     },
     {
-      "at": "2026-11-22T01:10:46.597296Z",
+      "at": "2026-11-22T02:22:35.093885Z",
       "run": "leave-balance",
       "station": "gate_gherkin",
       "text": "You approved the Gherkin"
     },
     {
-      "at": "2026-11-22T01:10:46.595023Z",
+      "at": "2026-11-22T02:22:35.091800Z",
       "run": "leave-balance",
       "station": "gate_gherkin",
       "text": "Gherkin is waiting for you"
     },
     {
-      "at": "2026-11-22T01:10:46.592038Z",
+      "at": "2026-11-22T02:22:35.089070Z",
       "run": "leave-balance",
       "station": "gherkin",
       "text": "Gherkin agent finished"
     },
     {
-      "at": "2026-11-22T01:10:46.582818Z",
+      "at": "2026-11-22T02:22:35.080051Z",
       "run": "leave-balance",
       "station": "gherkin",
       "text": "Gherkin agent started"
     },
     {
-      "at": "2026-11-22T01:10:46.570600Z",
+      "at": "2026-11-22T02:22:35.066868Z",
       "run": "leave-balance",
       "station": "gate_spec",
       "text": "You approved the specification"
     },
     {
-      "at": "2026-11-22T01:10:46.569311Z",
+      "at": "2026-11-22T02:22:35.065538Z",
       "run": "leave-balance",
       "station": "gate_spec",
       "text": "Specification is waiting for you"
     },
     {
-      "at": "2026-11-22T01:10:46.565695Z",
+      "at": "2026-11-22T02:22:35.061996Z",
       "run": "leave-balance",
       "station": "spec",
       "text": "Specification agent finished"
     },
     {
-      "at": "2026-11-22T01:10:46.557206Z",
+      "at": "2026-11-22T02:22:35.051222Z",
       "run": "leave-balance",
       "station": "spec",
       "text": "Specification agent started"
     }
   ],
+  "budget": {
+    "cost_today": 0.0,
+    "reached": false,
+    "reason": null,
+    "resets_at": "2026-11-23T00:00:00.000000Z",
+    "tokens_per_day": null,
+    "tokens_today": 0,
+    "usd_per_day": null
+  },
   "factory_paused": false,
-  "generated_at": "2026-11-22T01:10:46.801698Z",
+  "generated_at": "2026-11-22T02:22:35.310299Z",
   "limits": {
     "driver": "engine",
     "max_agents": 4,
@@ -148,11 +157,11 @@
     {
       "agents": {},
       "attention": null,
-      "created_at": "2026-11-22T01:10:46.521413Z",
+      "created_at": "2026-11-22T02:22:35.012293Z",
       "driver": "cli",
       "lanes": [
         {
-          "cycle": "c-6cb7478fc4c8",
+          "cycle": "c-f418cf4f39cd",
           "green": "todo",
           "name": "features/balance.feature :: Rule Remaining balance",
           "red": "queued",
@@ -161,7 +170,7 @@
           "state": "PLANNED"
         },
         {
-          "cycle": "c-31b7592ca07a",
+          "cycle": "c-49b73eaf1475",
           "green": "todo",
           "name": "features/balance.feature :: Rule Carry-over",
           "red": "queued",
@@ -170,7 +179,7 @@
           "state": "PLANNED"
         },
         {
-          "cycle": "c-c1dc1fab7a2c",
+          "cycle": "c-9919123dd86f",
           "green": "todo",
           "name": "features/request_form.feature",
           "red": "queued",
@@ -199,15 +208,37 @@
         "triage": "done",
         "verify": "next"
       },
+      "task_usage": {
+        "gherkin": {
+          "cost": null,
+          "input_tokens": null,
+          "model": null,
+          "output_tokens": null,
+          "role": "test_designer",
+          "runner": "native",
+          "seconds": 0.009,
+          "tokens": null
+        },
+        "spec": {
+          "cost": null,
+          "input_tokens": null,
+          "model": null,
+          "output_tokens": null,
+          "role": "specifier",
+          "runner": "native",
+          "seconds": 0.011,
+          "tokens": null
+        }
+      },
       "tier": 3,
       "title": "leave-balance",
       "type": "feature",
-      "updated_at": "2026-11-22T01:10:46.603236Z"
+      "updated_at": "2026-11-22T02:22:35.099620Z"
     },
     {
       "agents": {},
       "attention": null,
-      "created_at": "2026-11-22T01:10:46.625275Z",
+      "created_at": "2026-11-22T02:22:35.121623Z",
       "driver": "cli",
       "lanes": [],
       "limit": null,
@@ -230,15 +261,27 @@
         "triage": "done",
         "verify": "todo"
       },
+      "task_usage": {
+        "spec": {
+          "cost": null,
+          "input_tokens": null,
+          "model": null,
+          "output_tokens": null,
+          "role": "specifier",
+          "runner": "native",
+          "seconds": 0.008,
+          "tokens": null
+        }
+      },
       "tier": 3,
       "title": "spec-run",
       "type": "feature",
-      "updated_at": "2026-11-22T01:10:46.651978Z"
+      "updated_at": "2026-11-22T02:22:35.147252Z"
     },
     {
       "agents": {},
       "attention": null,
-      "created_at": "2026-11-22T01:10:46.652257Z",
+      "created_at": "2026-11-22T02:22:35.147500Z",
       "driver": "cli",
       "lanes": [],
       "limit": null,
@@ -261,10 +304,32 @@
         "triage": "done",
         "verify": "todo"
       },
+      "task_usage": {
+        "gherkin": {
+          "cost": null,
+          "input_tokens": null,
+          "model": null,
+          "output_tokens": null,
+          "role": "test_designer",
+          "runner": "native",
+          "seconds": 0.009,
+          "tokens": null
+        },
+        "spec": {
+          "cost": null,
+          "input_tokens": null,
+          "model": null,
+          "output_tokens": null,
+          "role": "specifier",
+          "runner": "native",
+          "seconds": 0.01,
+          "tokens": null
+        }
+      },
       "tier": 3,
       "title": "gherkin-run",
       "type": "feature",
-      "updated_at": "2026-11-22T01:10:46.704500Z"
+      "updated_at": "2026-11-22T02:22:35.204597Z"
     }
   ],
   "stations": [

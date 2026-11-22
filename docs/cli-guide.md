@@ -69,7 +69,17 @@ sentinel resolve leave-export --refresh-config -m "routing fixed"          # pic
 sentinel resolve leave-export --retry-now                                  # start tasks that wait for a usage limit at once
 ```
 
-When a provider CLI stops because of a usage or rate limit, the task is not failed: it goes back to the queue with a retry time read from the message (or `routing.limit_backoff`, default 30 minutes), and the dispatcher starts it again after that time. `sentinel next <slug>` then answers `Wait: waiting for the claude usage limit until <time>` with the `--retry-now` command. If `routing.fallback` names an installed runner, the task runs there at once instead. `--retry-now` is for a human at a terminal.
+When a provider CLI stops because of a usage or rate limit, the task is not failed: it goes back to the queue with a retry time read from the message (or `routing.limit_backoff`, default 30 minutes), and the dispatcher starts it again after that time. `sentinel next <slug>` then answers `Wait: waiting for the claude usage limit until <time>` with the `--retry-now` command. If `routing.fallback` names an installed runner, the task runs there at once instead. `--retry-now` is for a human at a terminal (or via the dashboard floor "Retry now" button).
+
+### Usage analytics
+
+```bash
+sentinel stats --usage                                  # usage across all models and weeks
+sentinel stats --usage --project digital-hr             # filtered by project
+sentinel stats --usage --since 2026-11-01 --format md   # filtered by date, as Markdown
+```
+
+Prints token counts (input, output, total), cost estimates from adapters, seconds, and task counts broken down by model, week, and role.
 
 ### Fix routing
 

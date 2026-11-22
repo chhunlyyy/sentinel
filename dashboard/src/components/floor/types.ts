@@ -1,5 +1,6 @@
 // View-model types for the factory floor screen.
 // Built from WFactory (wire.ts) by floorSnapshot() in Floor.tsx.
+import type * as W from '../../api/wire.ts';
 
 export type StationState = 'done' | 'working' | 'waiting' | 'paused' | 'limit' | 'queued' | 'next' | 'todo';
 export type StationKind = 'agent' | 'engine' | 'gate';
@@ -44,6 +45,7 @@ export interface RunView {
   attention: { kind: 'needs_human' | 'blocked'; reason: string } | null;
   /** the provider usage limit this run waits for, or null */
   limit: { task: string; role: string; runner: string; retryAt: string; reason: string | null } | null;
+  task_usage?: Record<string, W.WTaskUsage>;
   pendingNotes: number;
 }
 
@@ -84,6 +86,7 @@ export interface FloorSnapshot {
   generatedAt: string;
   stations: string[];
   limits: FactoryLimits;
+  budget?: W.WFactoryBudget;
   runs: RunView[];
   queue: QueueItem[];
   /** roles that block engine runs; the floor offers "Fix routing" while this is not empty */

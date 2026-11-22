@@ -43,6 +43,7 @@ export const ROUTES = {
   pause: { method: 'POST', pattern: '/api/v1/tasks/{slug}/pause' },
   unpause: { method: 'POST', pattern: '/api/v1/tasks/{slug}/unpause' },
   note: { method: 'POST', pattern: '/api/v1/tasks/{slug}/note' },
+  retryNow: { method: 'POST', pattern: '/api/v1/tasks/{slug}/retry-now' },
   audit: { method: 'GET', pattern: '/api/v1/audit' },
   events: { method: 'GET', pattern: '/api/v1/events' },
   notifications: { method: 'GET', pattern: '/api/v1/notifications' },
