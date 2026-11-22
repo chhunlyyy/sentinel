@@ -146,3 +146,20 @@ Item 4 (desktop notifications) dropped by the owner.
   `test_phase_h_b_review::test_restore_works_when_the_live_chain_is_broken` fail on main whenever the owner's real
   Sentinel service is running (`E_LOCKED: ... a Sentinel server is running (pid ..., port 34441)`): the tests read the
   real user config dir. Point them at a temp config dir.
+
+## H. Send an idea from any AI session to Sentinel (owner: "yes implement it")
+
+- `sentinel run new <slug> --request-file <path>`: the whole file is the request (same limits and scrubbing as
+  `--request`; `-` reads stdin). Mutually exclusive with `--request`.
+- `sentinel run new <slug> --spec-file <path>`: a spec written in an AI session goes in as specification draft v1.
+  Triage still runs; the specifier stage is skipped for v1 (the factory moves to the spec gate); the spec gate still needs
+  the human's approval with the typed hash, exactly as for an agent-written spec. Request changes sends it to the
+  specifier for v2 as usual. The spec is validated like an agent spec (same required sections; a clear error lists what
+  is missing). Provenance recorded ("imported from a session") and shown on the review page.
+- Dashboard: Create task gets an optional "I already have a spec" file/textarea field doing the same through the API.
+- Skill `/sentinel-send` (skills/ folder, same format as the other sentinel-* skills, installed by `npx skills add`):
+  in any session, summarize the conversation into a request (and a spec when one was produced), pick the project and
+  kind, write them to temp files, run `sentinel run new ... --driver engine --request-file ... [--spec-file ...]`, print
+  the floor link. It never approves anything.
+- Docs: cli-guide, gui-guide, skills table in cli-guide, README skills mention if fitting; tests for CLI, engine path,
+  API and the skill file's presence/format (see existing skill tests).
