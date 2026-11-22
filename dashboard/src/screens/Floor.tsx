@@ -2,15 +2,17 @@
 // Route: /floor  and  /projects/{pid}/floor
 import { useState, useMemo, useEffect } from 'react';
 import { calls } from '../api/calls.ts';
-import { useResource } from '../state/app.tsx';
+import { useApp, useResource } from '../state/app.tsx';
 import { floorSnapshot, laneState, initials } from '../components/floor/adapt.ts';
 import { STATIONS, buildLanePositions, MAX_LANES, stationById } from '../components/floor/layout.ts';
 import { NeuronButton } from '../components/floor/NeuronButton.tsx';
 import { EdgeLayer } from '../components/floor/EdgeLayer.tsx';
 import { SidePanel } from '../components/floor/SidePanel.tsx';
-import { Loaded } from '../components/common.tsx';
+import { Loaded, ConfirmDialog, useAction, useControlsEnabled } from '../components/common.tsx';
 import { RoutingBanner } from '../components/RoutingFix.tsx';
-import type { ActivityView, FloorSnapshot, RunView, StationState, StationDef } from '../components/floor/types.ts';
+import type * as T from '../api/types.ts';
+import type * as O from '../api/orchestration.ts';
+import type { ActivityView, FloorSnapshot, RunView, StationState, StationDef, WhoView } from '../components/floor/types.ts';
 import { Link, enc, navigate, useRoute } from '../router.tsx';
 
 // Factory-level event types that trigger a snapshot refetch
@@ -257,14 +259,177 @@ function ActivityPanel({ snap }: { snap: FloorSnapshot }) {
   );
 }
 
+interface RoutingSwitchProps {
+  pid: string;
+  config: { data?: T.Configuration | null; reload: () => Promise<unknown> };
+  providers: { data?: O.ProvidersAnswer | null; reload: () => Promise<unknown> };
+  snapWho?: Record<string, WhoView>;
+  onSaved: () => void;
+}
+
+function RoutingSwitch({ pid, config, providers, onSaved }: RoutingSwitchProps) {
+  const client = useApp().client;
+  const enabled = useControlsEnabled();
+  const saveAction = useAction();
+  const [confirmSwitch, setConfirmSwitch] = useState<'per_role' | 'orchestrator' | null>(null);
+
+  const routingMode = (config.data?.values.find((v) => v.path === 'routing_mode')?.value as string | undefined) ?? 'per_role';
+  const isOrchestrator = routingMode === 'orchestrator';
+
+  const orchVal = config.data?.values.find((v) => v.path === 'orchestrator')?.value as { runner?: string; model?: string | null } | undefined;
+  const currentRunner = orchVal?.runner ?? (config.data?.values.find((v) => v.path === 'orchestrator.runner')?.value as string | undefined);
+  const currentModel = orchVal?.model ?? (config.data?.values.find((v) => v.path === 'orchestrator.model')?.value as string | undefined);
+
+  const installedProviders = providers.data?.items.filter((p) => p.installed) ?? [];
+  const defaultRunner = currentRunner || installedProviders[0]?.id || 'claude';
+  const defaultModel = currentModel ?? '';
+
+  const [selectedRunner, setSelectedRunner] = useState<string>(defaultRunner);
+  const [typedModel, setTypedModel] = useState<string>(defaultModel);
+
+  const openOrchDialog = () => {
+    setSelectedRunner(currentRunner || installedProviders[0]?.id || 'claude');
+    setTypedModel(currentModel ?? '');
+    setConfirmSwitch('orchestrator');
+  };
+
+  const activeRunner = currentRunner || defaultRunner;
+  const activeModel = currentModel !== undefined ? currentModel : defaultModel;
+  const orchLabel = [activeRunner, activeModel].filter(Boolean).join(' · ');
+
+  const hint = isOrchestrator
+    ? `Every agent role uses ${orchLabel}`
+    : 'Each role uses its runner and model from agents';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div role="group" aria-label="Model routing" className="floor-routing-switch">
+        <button
+          type="button"
+          className="floor-routing-btn"
+          aria-pressed={!isOrchestrator}
+          disabled={!enabled || saveAction.pending}
+          onClick={() => {
+            if (isOrchestrator) {
+              setConfirmSwitch('per_role');
+            }
+          }}
+        >
+          Per-role routing
+        </button>
+        <button
+          type="button"
+          className="floor-routing-btn"
+          aria-pressed={isOrchestrator}
+          disabled={!enabled || saveAction.pending}
+          onClick={() => {
+            if (!isOrchestrator) {
+              openOrchDialog();
+            }
+          }}
+        >
+          Orchestrator model only
+        </button>
+      </div>
+      <span className="floor-routing-hint" style={{ fontSize: 11, color: 'var(--floor-text-muted)' }}>
+        {hint}
+      </span>
+      {confirmSwitch === 'per_role' && (
+        <ConfirmDialog
+          text="Switch to per-role routing? Each role uses its runner and model from agents."
+          confirmLabel="Switch to per-role"
+          cancelLabel="Cancel"
+          pending={saveAction.pending}
+          onConfirm={() => {
+            void saveAction.run(
+              async () => {
+                const res = await calls.configSave(client, pid, [{ path: 'routing_mode', value: 'per_role' }]);
+                setConfirmSwitch(null);
+                onSaved();
+                return res;
+              },
+              () => 'Routing mode updated',
+            );
+          }}
+          onCancel={() => setConfirmSwitch(null)}
+        />
+      )}
+      {confirmSwitch === 'orchestrator' && (
+        <ConfirmDialog
+          text="Switch to orchestrator model only? Every agent role uses the orchestrator runner and model."
+          confirmLabel="Switch to orchestrator"
+          cancelLabel="Cancel"
+          pending={saveAction.pending}
+          onConfirm={() => {
+            void saveAction.run(
+              async () => {
+                const res = await calls.configSave(client, pid, [
+                  { path: 'routing_mode', value: 'orchestrator' },
+                  { path: 'orchestrator', value: { runner: selectedRunner, model: typedModel.trim() || null } },
+                ]);
+                setConfirmSwitch(null);
+                onSaved();
+                return res;
+              },
+              () => 'Routing mode updated',
+            );
+          }}
+          onCancel={() => setConfirmSwitch(null)}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '14px 0' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 500 }}>
+              Runner
+              <select
+                aria-label="Orchestrator runner"
+                value={selectedRunner}
+                onChange={(e) => setSelectedRunner(e.target.value)}
+                style={{
+                  minHeight: 36, padding: '0 10px', borderRadius: 8,
+                  border: '1px solid var(--border-strong)', background: 'var(--surface)',
+                  color: 'var(--text)', fontSize: 13,
+                }}
+              >
+                {installedProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label || p.id}
+                  </option>
+                ))}
+                {!installedProviders.some((p) => p.id === selectedRunner) && (
+                  <option value={selectedRunner}>{selectedRunner}</option>
+                )}
+              </select>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, fontWeight: 500 }}>
+              Model
+              <input
+                type="text"
+                aria-label="Orchestrator model"
+                value={typedModel}
+                onChange={(e) => setTypedModel(e.target.value)}
+                placeholder="e.g. sonnet-4.6 (optional)"
+                style={{
+                  minHeight: 36, padding: '0 10px', borderRadius: 8,
+                  border: '1px solid var(--border-strong)', background: 'var(--surface)',
+                  color: 'var(--text)', fontSize: 13,
+                }}
+              />
+            </label>
+          </div>
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+}
+
 interface FloorContentProps {
   snap: FloorSnapshot;
   pid: string;
+  singleModel?: boolean;
   initialTaskSlug?: string;
   reload: () => void;
 }
 
-function FloorContent({ snap, pid, initialTaskSlug, reload }: FloorContentProps) {
+function FloorContent({ snap, pid, singleModel, initialTaskSlug, reload }: FloorContentProps) {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(() => {
     if (initialTaskSlug && snap.runs.some((r) => r.slug === initialTaskSlug)) {
       return initialTaskSlug;
@@ -382,6 +547,7 @@ function FloorContent({ snap, pid, initialTaskSlug, reload }: FloorContentProps)
           who={snap.who}
           run={selectedRun}
           pid={pid}
+          singleModel={singleModel}
           onChanged={reload}
         />
       </div>
@@ -401,6 +567,9 @@ export function FloorScreen({ pid }: FloorScreenProps) {
   const resolvedPid = pid ?? projects.data?.items.find((p) => p.status === 'available')?.id ?? '';
   const projectName = projects.data?.items.find((p) => p.id === resolvedPid)?.name ?? resolvedPid;
 
+  const config = useResource(`floor-config-${resolvedPid}`, (c) => calls.configuration(c, resolvedPid), { project: resolvedPid }, !!resolvedPid);
+  const providers = useResource(`floor-providers-${resolvedPid}`, (c) => calls.providers(c, resolvedPid), { project: resolvedPid }, !!resolvedPid);
+
   const factory = useResource(
     `factory-${resolvedPid}`,
     (c) => calls.factory(c, resolvedPid),
@@ -412,6 +581,8 @@ export function FloorScreen({ pid }: FloorScreenProps) {
   );
 
   const available = projects.data?.items.filter((p) => p.status === 'available') ?? [];
+  const routingMode = (config.data?.values.find((v) => v.path === 'routing_mode')?.value as string | undefined) ?? 'per_role';
+  const isOrchestrator = routingMode === 'orchestrator';
 
   if (!resolvedPid && !projects.loading) {
     return (
@@ -424,13 +595,28 @@ export function FloorScreen({ pid }: FloorScreenProps) {
 
   return (
     <section className="floor-root">
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-        <h1 style={{ margin: 0 }}>Factory floor</h1>
-        {resolvedPid ? (
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
+          <h1 style={{ margin: 0 }}>Factory floor</h1>
+          {resolvedPid ? (
             <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-muted)' }}>
               {projectName}
             </h2>
+          ) : null}
+        </div>
+        {resolvedPid ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+            <RoutingSwitch
+              pid={resolvedPid}
+              config={config}
+              providers={providers}
+              snapWho={factory.data ? floorSnapshot(factory.data).who : undefined}
+              onSaved={() => {
+                void factory.reload();
+                void config.reload();
+                void providers.reload();
+              }}
+            />
             {available.length > 1 && (
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-muted)' }}>
                 Project
@@ -461,6 +647,7 @@ export function FloorScreen({ pid }: FloorScreenProps) {
               key={resolvedPid}
               snap={snap}
               pid={resolvedPid}
+              singleModel={isOrchestrator}
               initialTaskSlug={taskSlug}
               reload={() => void factory.reload()}
             />

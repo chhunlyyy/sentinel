@@ -591,6 +591,25 @@ def running_tasks(reg):
     return reg._c.execute("SELECT COUNT(*) FROM tasks WHERE state='RUNNING'").fetchone()[0]
 
 
+def _station_tasks(tasks):
+    """{station_id: [{"id", "role", "state", "started_at", "finished_at"}]} of the latest attempt per role."""
+    latest_by_role = {}
+    for t in tasks:
+        latest_by_role[t["role"]] = t
+    out = {}
+    for t in tasks:
+        if latest_by_role.get(t["role"]) is t:
+            st = ROLE_STATION.get(t["role"], "build")
+            out.setdefault(st, []).append({
+                "id": t["id"],
+                "role": t["role"],
+                "state": t["state"],
+                "started_at": t["started_at"],
+                "finished_at": t["finished_at"],
+            })
+    return out
+
+
 def _task_usage(tasks):
     out = {}
     for t in tasks:
@@ -643,6 +662,7 @@ def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False
                 "next_station": STATIONS[STATIONS.index(current) + 1] if current != STATIONS[-1] else None,
                 "agents": _agents(tasks, current, states), "lanes": _lanes(reg, run, tasks, paused), "attention": attention,
                 "limit": _limit(eng, tasks, current, states, now), "task_usage": _task_usage(tasks),
+                "station_tasks": _station_tasks(tasks),
                 "pending_notes": len(eng.unread_notes(run)), "created_at": run["created_at"], "updated_at": run["updated_at"]}
         runs.append(item)
         if full and run["driver"] != "cli" and not paused and run["state"] not in machines.RUN_FINAL \

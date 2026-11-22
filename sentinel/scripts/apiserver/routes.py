@@ -1,5 +1,7 @@
 """The route table: the only operations the server offers (plan/v1.1/phaseF/README.md point 3)."""
 import re
+import threading
+import uuid
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
@@ -7,6 +9,7 @@ from errors import SentinelError
 from paths import slug_problem
 
 import analytics
+import chat
 import factory
 import notifications
 import providers
@@ -412,6 +415,55 @@ def h_retry_now(ctx, slug):
         return 200, ctx.clean(project, {**res, **views.run_detail(eng, project, slug)})
 
 
+def h_chat(ctx, slug):
+    project = ctx.locate(slug)
+    config = ctx.projects.require(project)
+    runner, model = chat.orchestrator_target(config, ctx.api)
+    with ctx.projects.engine(project) as eng:
+        eng._open_run(slug)
+        items = chat.read_chat(eng.run_dir(slug))
+        return 200, ctx.clean(project, {"items": items, "orchestrator": {"runner": runner, "model": model}})
+
+
+def h_chat_send(ctx, slug):
+    ops.check_fields(ctx.body, ("text",), ("text",))
+    text = ops.text_field(ctx.body, "text")
+    if not text or not text.strip():
+        raise SentinelError("E_VALIDATION", "a chat message needs text", {"field": "text"})
+    text = text.strip()
+    if len(text) > chat.USER_MAX:
+        raise SentinelError("E_VALIDATION", f"chat message text exceeds {chat.USER_MAX} characters", {"field": "text"})
+
+    project = ctx.locate(slug)
+    config = ctx.projects.require(project)
+    runner, model = chat.orchestrator_target(config, ctx.api)
+
+    with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
+        eng._open_run(slug)
+        rdir = eng.run_dir(slug)
+        if chat.has_pending_reply(rdir):
+            raise SentinelError("E_PRECONDITION", "another orchestrator reply is already pending for this run")
+
+        user_id = f"u-{uuid.uuid4().hex[:12]}"
+        orch_id = f"o-{uuid.uuid4().hex[:12]}"
+        user_item = {"id": user_id, "role": "user", "text": text, "at": chat._now(), "status": "done"}
+        orch_item = {"id": orch_id, "role": "orchestrator", "text": "", "at": chat._now(), "status": "pending"}
+
+        chat.append_chat(rdir, user_item)
+        chat.append_chat(rdir, orch_item)
+        eng.audit(ctx.user, ops.CHANNEL, "chat", slug, reason=text[:64])
+
+    t = threading.Thread(
+        target=chat.reply_worker,
+        args=(ctx.projects, project, slug, orch_id, runner, model, ctx.api),
+        name=f"chat-worker-{slug}-{orch_id}",
+        daemon=True,
+    )
+    t.start()
+
+    return 202, ctx.clean(project, {"user": user_item, "orchestrator": orch_item, "items": [user_item, orch_item]})
+
+
 
 def h_factory(ctx, pid):
     if ctx.query:
@@ -543,6 +595,10 @@ ROUTES = [
     Route("POST", "unpause", "tasks/{slug}/unpause", h_unpause, ("Engine.unpause_run",)),
     Route("POST", "note", "tasks/{slug}/note", h_note, ("Engine.add_note",)),
     Route("POST", "retry_now", "tasks/{slug}/retry-now", h_retry_now, ("Engine.retry_limited_now",)),
+    Route("GET", "chat", "runs/{slug}/chat", h_chat),
+    Route("POST", "chat_send", "runs/{slug}/chat", h_chat_send),
+    Route("GET", "chat_alias", "tasks/{slug}/chat", h_chat),
+    Route("POST", "chat_send_alias", "tasks/{slug}/chat", h_chat_send),
     Route("GET", "factory", "projects/{pid}/factory", h_factory),
     Route("GET", "factory_state", "factory", h_factory_get),
     Route("POST", "factory_pause", "factory/pause", h_factory_pause, ("factory.set_paused",)),

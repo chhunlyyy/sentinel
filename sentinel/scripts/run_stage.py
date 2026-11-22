@@ -56,7 +56,21 @@ def routes(config):
     return {k: v for k, v in (config.get("routing") or {}).items() if k not in ROUTING_SETTINGS and isinstance(v, dict)}
 
 
+def orchestrator_route(config):
+    """If routing_mode == "orchestrator" and orchestrator.runner is set, return {"runner": ..., "model": ...}, else None."""
+    if not isinstance(config, dict):
+        return None
+    if config.get("routing_mode") == "orchestrator":
+        orch = config.get("orchestrator")
+        if isinstance(orch, dict) and orch.get("runner"):
+            return {"runner": orch["runner"], "model": orch.get("model")}
+    return None
+
+
 def find_route(config, stage, repo=None):
+    orch = orchestrator_route(config)
+    if orch:
+        return orch
     if single_model(config):
         return None
     routing = routes(config)
@@ -78,7 +92,11 @@ def pick_runner(config, stage, override, repo=None, model_override=None):
     runner = all_runners(config).get(runner_id)
     if not runner:
         sys.exit(f"runner not defined in config: {runner_id}")
-    configured = route.get("model") if not single_model(config) and (not override or override == route.get("runner")) else None
+    orch = orchestrator_route(config)
+    if orch:
+        configured = route.get("model") if (not override or override == route.get("runner")) else None
+    else:
+        configured = route.get("model") if not single_model(config) and (not override or override == route.get("runner")) else None
     model = model_override or configured
     if model and not runner.get("model_flag"):
         sys.exit(f"runner {runner_id} has no model_flag, so model {model} cannot be set; add model_flag to runners.{runner_id}")

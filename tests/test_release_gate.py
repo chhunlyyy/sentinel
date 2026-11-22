@@ -395,7 +395,7 @@ class Results(unittest.TestCase):
     def test_AC_TST_01k_the_evidence_holds_counts_durations_and_the_commit(self):
         ev = gate.new_evidence()
         self.assertRegex(ev["commit"], r"^[0-9a-f]{40}$")
-        self.assertEqual(ev["version"], "2.1.0")
+        self.assertEqual(ev["version"], "2.2.0")
         gate.record_stage(ev, "unittest", ok=True, seconds=1.5, counts={"passed": 3, "failed": 0, "skipped": 0})
         self.assertEqual(ev["stages"]["unittest"]["counts"]["passed"], 3)
         self.assertEqual(ev["stages"]["unittest"]["seconds"], 1.5)

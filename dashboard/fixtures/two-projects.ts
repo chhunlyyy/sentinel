@@ -232,6 +232,39 @@ const oldFix = (): RunData => {
   };
 };
 
+const payrollRounding = (): RunData => {
+  const base = withPhaseNodes(leaveBalance());
+  return {
+    ...base,
+    detail: runDetail('payroll-rounding', 'digital-hr', {
+      type: 'bug',
+      state: 'WAITING_FOR_DECISION',
+      execution_status: 'executing',
+      acceptance_status: 'pending',
+      tier: 3,
+      request: 'Fix payroll rounding',
+      task_counts: { COMPLETED: 2, WAITING: 1 },
+      approvals: {
+        ...base.detail.approvals,
+        specification: {
+          gate: 'specification',
+          state: 'IN_REVIEW',
+          version: 2,
+          sha256: H2,
+        },
+      },
+    }),
+    next: { kind: 'human', label: 'Specification decision needed', command: null },
+    specification: {
+      ...base.specification,
+      current: {
+        ...base.specification.current,
+        state: 'IN_REVIEW',
+      },
+    },
+  };
+};
+
 export const summary = (d: T.Run): T.RunSummary => ({
   slug: d.slug, type: d.type, tier: d.tier, state: d.state, execution_status: d.execution_status, acceptance_status: d.acceptance_status,
   workflow_version: d.workflow_version, updated_at: d.updated_at,
@@ -255,6 +288,10 @@ const config = (): T.Configuration => ({
     { path: 'verification.required', value: ['test'], category: 'Verification', source: 'project' },
     { path: 'limits.max_retries', value: 3, category: 'Limits', source: 'default' },
     { path: 'notifications.desktop', value: true, category: 'Other', source: 'default' },
+    { path: 'routing_mode', value: 'per_role', category: 'Other', source: 'default' },
+    { path: 'orchestrator', value: { runner: 'claude', model: 'sonnet-4.6' }, category: 'Other', source: 'default' },
+    { path: 'orchestrator.runner', value: 'claude', category: 'Other', source: 'default' },
+    { path: 'orchestrator.model', value: 'sonnet-4.6', category: 'Other', source: 'default' },
     { path: 'limits.task_timeout', value: 1200, category: 'Limits', source: 'project', overrides: { source: 'global', value: 900 } },
   ],
 });
@@ -344,7 +381,7 @@ export function digitalHrFactory(): W.WFactory {
         },
         next_station: 'verify',
         agents: {
-          build: [{ task: 't-0123456789ab', role: 'tdd_green', runner: 'claude', model: 'sonnet-4.6', adapter: 'cli', started_at: '2026-11-21T10:41:40.000000Z' }],
+          build: [{ task: 't-green1', role: 'tdd_green', runner: 'claude', model: 'sonnet-4.6', adapter: 'cli', started_at: '2026-11-21T10:41:40.000000Z' }],
         },
         lanes: [
           lane('c-0123456789aa', 'Export as CSV', 'DONE', 'done', 'done', 'done'),
@@ -354,6 +391,12 @@ export function digitalHrFactory(): W.WFactory {
         attention: null,
         limit: null,
         task_usage: {},
+        station_tasks: {
+          triage: [{ id: 't-0123456789aa', role: 'triage', state: 'COMPLETED', started_at: '2026-11-21T09:58:10.000000Z', finished_at: '2026-11-21T09:59:00.000000Z' }],
+          spec: [{ id: 't-0123456789ab', role: 'specifier', state: 'COMPLETED', started_at: '2026-11-21T09:59:10.000000Z', finished_at: '2026-11-21T10:05:00.000000Z' }],
+          gherkin: [{ id: 't-0123456789ac', role: 'test_designer', state: 'COMPLETED', started_at: '2026-11-21T10:15:00.000000Z', finished_at: '2026-11-21T10:20:00.000000Z' }],
+          build: [{ id: 't-green1', role: 'tdd_green', state: 'RUNNING', started_at: '2026-11-21T10:41:40.000000Z', finished_at: null }],
+        },
         pending_notes: 0,
         created_at: '2026-11-21T09:58:00.000000Z',
         updated_at: '2026-11-21T10:45:14.000000Z',
@@ -378,6 +421,9 @@ export function digitalHrFactory(): W.WFactory {
         attention: null,
         limit: null,
         task_usage: {},
+        station_tasks: {
+          triage: [{ id: 't-0123456789ad', role: 'triage', state: 'RUNNING', started_at: '2026-11-21T10:44:31.000000Z', finished_at: null }],
+        },
         pending_notes: 0,
         created_at: '2026-11-21T10:10:00.000000Z',
         updated_at: '2026-11-21T10:24:52.000000Z',
@@ -404,6 +450,9 @@ export function digitalHrFactory(): W.WFactory {
         attention: null,
         limit: null,
         task_usage: {},
+        station_tasks: {
+          triage: [{ id: 't-0123456789ad', role: 'triage', state: 'RUNNING', started_at: '2026-11-21T10:44:31.000000Z', finished_at: null }],
+        },
         pending_notes: 0,
         created_at: '2026-11-21T10:44:20.000000Z',
         updated_at: '2026-11-21T10:44:58.000000Z',
@@ -445,4 +494,4 @@ export function twoProjects(): Db {
   };
 }
 
-export { runDetail, leaveBalance, digitalHrData, readyReadiness, repo };
+export { runDetail, leaveBalance, digitalHrData, readyReadiness, repo, payrollRounding };

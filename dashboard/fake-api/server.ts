@@ -9,7 +9,7 @@ import type { Db, RunData } from '../fixtures/db.ts';
 import { freshInstall } from '../fixtures/fresh-install.ts';
 import * as E from '../fixtures/encode.ts';
 import { applyPreset } from '../fixtures/presets.ts';
-import { summary, twoProjects } from '../fixtures/two-projects.ts';
+import { summary, twoProjects, payrollRounding } from '../fixtures/two-projects.ts';
 import {
   SAMPLE_KNOWLEDGE_RECORDS,
   sampleKnowledgeStatus,
@@ -48,6 +48,8 @@ let sentEvents: { id: string; t: number }[] = [];
 let streams = new Set<ServerResponse>();
 let refuseUntil = 0;
 let eventSeq = 100;
+let chatFail = false;
+let runChats: Record<string, { id: string; role: 'user' | 'orchestrator'; text: string; at: string; status: 'done' | 'pending' | 'failed'; error?: string }[]> = {};
 let heartbeat: ReturnType<typeof setInterval> | null = null;
 
 interface FactoryState {
@@ -205,7 +207,16 @@ function setPath(root: unknown, path: (string | number)[], value: unknown) {
 
 function pushEvent(event: string, data: unknown, raw = false, id?: string) {
   const eid = id ?? `digital-hr:${++eventSeq}`;
-  const payload = raw ? String(data) : JSON.stringify(data);
+  let payloadData = data;
+  if (!raw && typeof data === 'object' && data !== null && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+    payloadData = {
+      project: obj.project ?? 'digital-hr',
+      run: obj.run ?? obj.slug ?? null,
+      ...obj,
+    };
+  }
+  const payload = raw ? String(payloadData) : JSON.stringify(payloadData);
   const frame = `id: ${eid}\nevent: ${event}\ndata: ${payload}\n\n`;
   sentEvents.push({ id: eid, t: Date.now() });
   for (const s of streams) s.write(frame);
@@ -226,10 +237,15 @@ async function control(req: IncomingMessage, res: ServerResponse, path: string) 
       log = [];
       sentEvents = [];
       refuseUntil = 0;
+      chatFail = false;
+      runChats = {};
       for (const s of streams) s.end();
       streams = new Set();
       return send(res, 200, { ok: true });
     }
+    case 'chat-fail':
+      chatFail = b.fail !== false;
+      return send(res, 200, { ok: true });
     case 'preset':
       applyPreset(db, String(b.name));
       return send(res, 200, { ok: true });
@@ -279,10 +295,15 @@ function resolveRun(slug: string, query: URLSearchParams): { key: string; run: R
   const project = query.get('project');
   if (project) {
     const key = `${project}/${slug}`;
+    if (!db.runs[key] && slug === 'payroll-rounding') db.runs[key] = payrollRounding();
     if (!db.runs[key]) throw new ApiErr(404, 'E_NOT_FOUND', 'run not found');
     return { key, run: db.runs[key] };
   }
-  const hits = Object.keys(db.runs).filter((k) => k.endsWith(`/${slug}`));
+  let hits = Object.keys(db.runs).filter((k) => k.endsWith(`/${slug}`));
+  if (!hits.length && slug === 'payroll-rounding') {
+    db.runs['digital-hr/payroll-rounding'] = payrollRounding();
+    hits = ['digital-hr/payroll-rounding'];
+  }
   if (hits.length > 1) throw new ApiErr(400, 'E_VALIDATION', 'slug exists in more than one project', { projects: hits.map((k) => k.split('/')[0]) });
   if (!hits.length) throw new ApiErr(404, 'E_NOT_FOUND', 'run not found');
   return { key: hits[0], run: db.runs[hits[0]] };
@@ -692,6 +713,65 @@ route('POST', `${V}/tasks/{slug}/note`, (c) => {
   return [201, { ...wrun(run), note: { text: b.text } }];
 });
 
+const handleChatGet = (c: Ctx): [number, unknown] => {
+  const { key } = resolveRun(c.params[0], c.query);
+  const items = runChats[key] ?? [];
+  const runner = ext.orchestrator ?? 'claude';
+  return [200, { items, orchestrator: { runner, model: null } }];
+};
+
+const handleChatPost = (c: Ctx): [number, unknown] => {
+  const { run, key } = resolveRun(c.params[0], c.query);
+  const b = body(c) as { text?: string };
+  if (typeof b.text !== 'string' || !b.text.trim()) {
+    throw new ApiErr(400, 'E_VALIDATION', 'text is required', { field: 'text' });
+  }
+  if (b.text.length > 4000) {
+    throw new ApiErr(400, 'E_VALIDATION', 'text exceeds 4000 characters', { field: 'text' });
+  }
+  const items = (runChats[key] ??= []);
+  if (items.some((it) => it.status === 'pending')) {
+    throw new ApiErr(412, 'E_PRECONDITION', 'another orchestrator reply is already pending');
+  }
+  const userId = 'u-' + Date.now();
+  const userItem: { id: string; role: 'user' | 'orchestrator'; text: string; at: string; status: 'done' | 'pending' | 'failed'; error?: string } = {
+    id: userId,
+    role: 'user',
+    text: b.text.trim(),
+    at: new Date().toISOString(),
+    status: 'done',
+  };
+  const orchId = 'o-' + (Date.now() + 1);
+  const orchItem: { id: string; role: 'user' | 'orchestrator'; text: string; at: string; status: 'done' | 'pending' | 'failed'; error?: string } = {
+    id: orchId,
+    role: 'orchestrator',
+    text: '',
+    at: new Date().toISOString(),
+    status: 'pending',
+  };
+  items.push(userItem, orchItem);
+
+  const slug = c.params[0];
+  setTimeout(() => {
+    if (chatFail) {
+      orchItem.status = 'failed';
+      orchItem.error = 'orchestrator runner failed';
+      pushEvent('chat.message', { slug, id: orchId, role: 'orchestrator', status: 'failed' });
+    } else {
+      orchItem.status = 'done';
+      orchItem.text = `Run ${slug} is currently in state ${run.detail.state}. Actions stay with the human operator.`;
+      pushEvent('chat.message', { slug, id: orchId, role: 'orchestrator', status: 'done' });
+    }
+  }, 100);
+
+  return [202, { user: userItem, orchestrator: orchItem, items: [userItem, orchItem] }];
+};
+
+route('GET', `${V}/runs/{slug}/chat`, handleChatGet);
+route('POST', `${V}/runs/{slug}/chat`, handleChatPost);
+route('GET', `${V}/tasks/{slug}/chat`, handleChatGet);
+route('POST', `${V}/tasks/{slug}/chat`, handleChatPost);
+
 // ---- providers, orchestrator, agents, folders, project creation ----
 
 const installedIds = () => PROVIDERS.filter((p) => ext.installed[p.id]).map((p) => p.id);
@@ -937,10 +1017,52 @@ route('POST', `${V}/projects/{pid}/config/save`, (c) => {
       }
     }
   }
+  const p = proj(pid);
+  if (p?.configuration) {
+    for (const ch of changes) {
+      const existing = p.configuration.values.find((v: { path: string }) => v.path === ch.path);
+      if (existing) {
+        existing.value = ch.value;
+      } else {
+        p.configuration.values.push({
+          path: ch.path,
+          value: ch.value,
+          category: 'Other',
+          source: 'project',
+        });
+      }
+      if (ch.path === 'orchestrator' && typeof ch.value === 'object' && ch.value !== null) {
+        const orchObj = ch.value as { runner?: string; model?: string | null };
+        if (orchObj.runner) {
+          const exRunner = p.configuration.values.find((v: { path: string }) => v.path === 'orchestrator.runner');
+          if (exRunner) exRunner.value = orchObj.runner;
+          else p.configuration.values.push({ path: 'orchestrator.runner', value: orchObj.runner, category: 'Other', source: 'project' });
+        }
+        const exModel = p.configuration.values.find((v: { path: string }) => v.path === 'orchestrator.model');
+        if (exModel) exModel.value = orchObj.model ?? null;
+        else p.configuration.values.push({ path: 'orchestrator.model', value: orchObj.model ?? null, category: 'Other', source: 'project' });
+      }
+    }
+  }
+  const snap = db.factory?.[pid];
+  if (snap) {
+    const isOrch = changes.some((ch) => ch.path === 'routing_mode' && ch.value === 'orchestrator');
+    if (isOrch) {
+      const orchCh = changes.find((ch) => ch.path === 'orchestrator')?.value as { runner?: string; model?: string | null } | undefined;
+      const runner = orchCh?.runner ?? 'claude';
+      const model = orchCh?.model ?? null;
+      for (const st of Object.keys(snap.who)) {
+        snap.who[st].runner = runner;
+        snap.who[st].model = model;
+      }
+      snap.routing = { problems: [] };
+    }
+    if (changes.some((ch) => ch.path === 'single_model' && ch.value === false)) {
+      snap.routing = { problems: [] };
+    }
+  }
   const newSha = createHash('sha256').update(JSON.stringify(cfg)).digest('hex');
   cfg.sha256 = newSha;
-  const snap = db.factory?.[pid];
-  if (snap && changes.some((ch) => ch.path === 'single_model' && ch.value === false)) snap.routing = { problems: [] };
   const diff = changes.map((ch) => `+ ${ch.path}: ${JSON.stringify(ch.value)}`).join('\n');
   return [200, { ok: true, project: pid, sha256: newSha, diff }];
 });

@@ -1,4 +1,4 @@
-import { test, expect, open, heading, nav } from './helpers.ts';
+import { test, expect, open, heading, nav, decide } from './helpers.ts';
 
 test.describe('Factory floor screen', () => {
   test('Factory floor is first in main navigation and default landing when projects exist', async ({ page }) => {
@@ -97,8 +97,11 @@ test.describe('Factory floor screen', () => {
     const taskGroup = page.getByRole('group', { name: 'Tasks on the floor' });
     await taskGroup.getByRole('button', { name: /Fix payroll rounding/ }).click();
     const sidePanel = page.getByRole('complementary', { name: 'Selected station' });
+    // Waiting gate opens Review tab in place
+    await expect(sidePanel.getByRole('button', { name: /Review/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(sidePanel.getByRole('button', { name: /Expand/i })).toBeVisible();
+    await sidePanel.getByRole('button', { name: 'Station' }).click();
     await expect(sidePanel.getByRole('heading', { level: 2, name: 'You approve spec' })).toBeVisible();
-    await expect(sidePanel.getByRole('link', { name: 'Review specification' })).toBeVisible();
     await expect(sidePanel.getByText('Needs you')).toBeVisible();
     const bg = await page.getByRole('region', { name: 'Factory network' }).evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(bg).toBe('rgb(14, 20, 25)');
@@ -114,7 +117,8 @@ test.describe('Factory floor screen', () => {
     await page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Fix payroll rounding/ }).click();
     const sidePanel = page.getByRole('complementary', { name: 'Selected station' });
     await expect(sidePanel.getByTestId('floor-attention')).toHaveText('Needs you: imported specification invalid for tier 3');
-    await expect(sidePanel.getByRole('link', { name: 'Open the run to fix and resume' })).toHaveAttribute('href', /runs\/payroll-rounding$/);
+    await expect(sidePanel.getByRole('button', { name: 'Resume' })).toBeVisible();
+    await expect(sidePanel.getByRole('link', { name: /Open the full run/i })).toHaveAttribute('href', /runs\/payroll-rounding$/);
     await expect(sidePanel.getByRole('link', { name: 'Review specification' })).toHaveCount(0);
   });
 
@@ -195,5 +199,217 @@ test.describe('Factory floor screen', () => {
     await api.set(['factory', 'digital-hr', 'routing'], { problems: ['triage routes to the native adapter'] });
     await open(page, '/projects/digital-hr');
     await expect(page.getByTestId('fix-routing-banner')).toBeVisible();
+  });
+
+  test('review in the panel: approve spec from the floor and URL stays on /floor', async ({ page, api }) => {
+    await open(page, '/floor');
+    await page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Fix payroll rounding/ }).click();
+    const sidePanel = page.getByRole('complementary', { name: 'Selected station' });
+    await expect(sidePanel.getByRole('button', { name: /Review/ })).toHaveAttribute('aria-pressed', 'true');
+    await decide(page, 'Approve', '3f9a0c12', 'Approve version 2');
+    await expect(sidePanel.getByTestId('action-result')).toContainText('approved');
+    const posts = await api.posts(/\/approvals/);
+    expect(posts.length).toBeGreaterThan(0);
+    expect(page.url()).toContain('#/floor');
+  });
+
+  test('full-screen review dialog opens, closes on Escape or button, and returns focus to Expand button', async ({ page }) => {
+    await open(page, '/floor');
+    await page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Fix payroll rounding/ }).click();
+    const sidePanel = page.getByRole('complementary', { name: 'Selected station' });
+    const expandBtn = sidePanel.getByRole('button', { name: /Expand/i });
+    await expect(expandBtn).toBeVisible();
+    await expandBtn.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    expect(page.url()).toContain('#/floor');
+    await expect(dialog.getByRole('navigation', { name: 'Sections' })).toBeVisible();
+    await dialog.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(expandBtn).toBeFocused();
+    await expandBtn.click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Exit full screen' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(expandBtn).toBeFocused();
+  });
+
+  test('inline Resume button opens comment dialog and sends control action resume', async ({ page, api }) => {
+    await api.set(['factory', 'digital-hr', 'runs', 1, 'state'], 'NEEDS_HUMAN');
+    await api.set(['factory', 'digital-hr', 'runs', 1, 'attention'], { kind: 'needs_human', reason: 'imported specification invalid' });
+    await open(page, '/floor');
+    await page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Fix payroll rounding/ }).click();
+    const sidePanel = page.getByRole('complementary', { name: 'Selected station' });
+    const resumeBtn = sidePanel.getByRole('button', { name: 'Resume' });
+    await expect(resumeBtn).toBeVisible();
+    await resumeBtn.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('textbox').fill('Fixed manually');
+    await dialog.getByRole('button', { name: 'Resume', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    const posts = await api.posts(/\/control/);
+    expect(posts.length).toBeGreaterThan(0);
+    const body = posts[0].body as { action: string; comment?: string };
+    expect(body.action).toBe('resume');
+    expect(body.comment).toBe('Fixed manually');
+  });
+
+function parseRgb(color: string): [number, number, number] {
+  const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!m) return [0, 0, 0];
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function relativeLuminance(r: number, g: number, b: number): number {
+  const srgb = [r, g, b].map((val) => {
+    const c = val / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+}
+
+function contrastRatio(fg: string, bg: string): number {
+  const [r1, g1, b1] = parseRgb(fg);
+  const [r2, g2, b2] = parseRgb(bg);
+  const l1 = relativeLuminance(r1, g1, b1);
+  const l2 = relativeLuminance(r2, g2, b2);
+  const lighter = Math.max(l1, l2);
+  const darker = Math.min(l1, l2);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+  test('spec body text has contrast ratio >= 4.5 in side panel and full screen', async ({ page }) => {
+    await open(page, '/floor');
+    await page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Fix payroll rounding/ }).click();
+    const sidePanel = page.getByRole('complementary', { name: 'Selected station' });
+    const specPre = sidePanel.getByTestId('spec-text');
+    await expect(specPre).toBeVisible();
+
+    const panelColors = await specPre.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      let bg = style.backgroundColor;
+      let cur: HTMLElement | null = el.parentElement;
+      while ((!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') && cur) {
+        bg = window.getComputedStyle(cur).backgroundColor;
+        cur = cur.parentElement;
+      }
+      return { color: style.color, bg };
+    });
+    expect(contrastRatio(panelColors.color, panelColors.bg)).toBeGreaterThanOrEqual(4.5);
+
+    // Expand to full screen
+    const expandBtn = sidePanel.getByRole('button', { name: /Expand/i });
+    await expandBtn.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    const fullSpecPre = dialog.locator('.floor-fullscreen-center pre').first();
+    await expect(fullSpecPre).toBeVisible();
+
+    const fullColors = await fullSpecPre.evaluate((el) => {
+      const style = window.getComputedStyle(el);
+      let bg = style.backgroundColor;
+      let cur: HTMLElement | null = el.parentElement;
+      while ((!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') && cur) {
+        bg = window.getComputedStyle(cur).backgroundColor;
+        cur = cur.parentElement;
+      }
+      return { color: style.color, bg };
+    });
+    expect(contrastRatio(fullColors.color, fullColors.bg)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test('routing switch opens ConfirmDialog and saves routing_mode and orchestrator via configSave', async ({ page, api }) => {
+    await open(page, '/projects/digital-hr/floor');
+    const routingGroup = page.getByRole('group', { name: 'Model routing' });
+    await expect(routingGroup).toBeVisible();
+    const perRoleBtn = routingGroup.getByRole('button', { name: 'Per-role routing' });
+    const orchBtn = routingGroup.getByRole('button', { name: 'Orchestrator model only' });
+    await expect(perRoleBtn).toHaveAttribute('aria-pressed', 'true');
+    await orchBtn.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Switch to orchestrator model only?');
+    await expect(dialog.getByLabel('Orchestrator runner')).toBeVisible();
+    await expect(dialog.getByLabel('Orchestrator model')).toBeVisible();
+    await dialog.getByLabel('Orchestrator model').fill('claude-sonnet-4-6');
+    await dialog.getByRole('button', { name: 'Switch to orchestrator' }).click();
+    await expect(dialog).toBeHidden();
+    const posts = await api.posts(/\/config\/save$/);
+    expect(posts.length).toBeGreaterThan(0);
+    const saveCall = posts.find((p) => (p.body as { changes?: { path: string }[] }).changes?.some((c) => c.path === 'routing_mode'));
+    expect(saveCall).toBeDefined();
+    const body = saveCall!.body as { changes: { path: string; value: unknown }[] };
+    expect(body.changes).toContainEqual({ path: 'routing_mode', value: 'orchestrator' });
+    expect(body.changes).toContainEqual({
+      path: 'orchestrator',
+      value: { runner: 'claude', model: 'claude-sonnet-4-6' },
+    });
+  });
+
+  test('clicking a station shows its work log box with Live work or What happened', async ({ page }) => {
+    await open(page, '/floor');
+    await page.getByRole('button', { name: /^Triage:/ }).click();
+    const sidePanel = page.getByRole('complementary', { name: 'Selected station' });
+    await expect(sidePanel.getByRole('button', { name: 'Station' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(sidePanel.getByRole('heading', { name: /Live work|What happened/i })).toBeVisible();
+    const logBox = sidePanel.getByTestId('station-log');
+    await expect(logBox).toBeVisible();
+    await expect(logBox.locator('li').first()).toBeVisible();
+  });
+
+  test('station icon tiles: svg inside button, waiting breathe and ! badge, done check badge, and reduced-motion disables animation', async ({ page }) => {
+    await open(page, '/floor');
+
+    // 1. Each station renders its icon (svg inside the button)
+    const stations = [
+      'Intake', 'Triage', 'Specification', 'You approve spec', 'Scenarios',
+      'You approve scenarios', 'Export as CSV', 'Filter by dept', 'HR only',
+      'Verify', 'Report', 'You accept', 'Knowledge',
+    ];
+    for (const name of stations) {
+      const btn = page.getByRole('button', { name: new RegExp(`^${name}:`) });
+      await expect(btn).toBeVisible();
+      const svg = btn.locator('svg[data-station-icon]');
+      await expect(svg).toBeVisible();
+      await expect(svg).toHaveAttribute('aria-hidden', 'true');
+    }
+
+    // 2. A done station has the check badge
+    // On digital-hr default run (leave-balance), intake is done
+    const doneNeuron = page.getByRole('button', { name: /^Intake: Done/ });
+    await expect(doneNeuron).toBeVisible();
+    await expect(doneNeuron.locator('[data-badge="done"]')).toBeVisible();
+
+    // Working station on leave-balance has .spin ring and working dot
+    const workingNeuron = page.getByRole('button', { name: 'Filter by dept: Working' });
+    await expect(workingNeuron).toBeVisible();
+    const spinRing = workingNeuron.locator('.spin');
+    await expect(spinRing).toBeVisible();
+    await expect(workingNeuron.locator('[data-badge="working"]')).toBeVisible();
+    const spinAnimBefore = await spinRing.evaluate((el) => window.getComputedStyle(el).animationName);
+    expect(spinAnimBefore).toBe('spin');
+
+    // Build lanes keep their number: small number badge top-left (1, 2, 3)
+    await expect(page.locator('.floor-lane-num')).toHaveText(['1', '2', '3']);
+
+    // 3. Switch to run with waiting gate ("Fix payroll rounding" has gate_spec waiting)
+    await page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Fix payroll rounding/ }).click();
+    const waitingGate = page.getByRole('button', { name: /^You approve spec: Needs you/ });
+    await expect(waitingGate).toBeVisible();
+
+    // The waiting gate has the breathe ring and "!" badge
+    const breatheRing = waitingGate.locator('.breathe');
+    await expect(breatheRing).toBeVisible();
+    await expect(waitingGate.locator('[data-badge="waiting"]')).toContainText('!');
+
+    // Normal motion: computed animation-name is 'breathe'
+    const animBefore = await breatheRing.evaluate((el) => window.getComputedStyle(el).animationName);
+    expect(animBefore).toBe('breathe');
+
+    // 4. Reduced-motion disables the animation (computed animation-name is 'none')
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const animAfter = await breatheRing.evaluate((el) => window.getComputedStyle(el).animationName);
+    expect(animAfter).toBe('none');
   });
 });

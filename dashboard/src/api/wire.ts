@@ -460,6 +460,14 @@ export interface WFactoryLane {
   refactor: WStationState;
 }
 
+export interface WStationTask {
+  id: string;
+  role: string;
+  state: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 export interface WFactoryRun {
   slug: string;
   title: string;
@@ -477,6 +485,7 @@ export interface WFactoryRun {
   /** set while the current station waits for a provider usage limit to end (station state `limit`) */
   limit?: WFactoryLimitWait | null;
   task_usage?: Record<string, WTaskUsage>;
+  station_tasks?: Record<string, WStationTask[]>;
   pending_notes: number;
   created_at: string;
   updated_at: string;
@@ -724,5 +733,29 @@ export interface WKnowledgeRelated {
   invariants: WKnowledgeRelatedInvariant[];
   records: WKnowledgeRelatedRecord[];
 }
+
+export interface WChatItem {
+  id: string;
+  role: 'user' | 'orchestrator';
+  text: string;
+  at: string;
+  status: 'done' | 'pending' | 'failed';
+  error?: string;
+}
+
+export interface WChatAnswer {
+  items: WChatItem[];
+  orchestrator: {
+    runner: string;
+    model: string | null;
+  };
+}
+
+export interface WSendChatAnswer {
+  user: WChatItem;
+  orchestrator: WChatItem;
+  items?: WChatItem[];
+}
+
 
 

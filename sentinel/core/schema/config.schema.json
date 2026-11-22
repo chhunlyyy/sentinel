@@ -406,6 +406,34 @@
       "type": "boolean",
       "default": true
     },
+    "routing_mode": {
+      "type": "string",
+      "enum": [
+        "per_role",
+        "orchestrator"
+      ],
+      "default": "per_role",
+      "description": "Routing strategy: per_role uses agents.<role> or routing, orchestrator uses the orchestrator runner for all roles"
+    },
+    "orchestrator": {
+      "type": "object",
+      "description": "Default runner and optional model when routing_mode is orchestrator",
+      "required": [
+        "runner"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "runner": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
     "routing": {
       "type": "object",
       "properties": {

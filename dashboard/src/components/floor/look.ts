@@ -1,6 +1,29 @@
 // Look-up table for station state → visual properties used by neuron buttons and edges.
 import type { StationState } from './types.ts';
 
+export type StationIconKey =
+  | 'intake'
+  | 'triage'
+  | 'spec'
+  | 'gate'
+  | 'gherkin'
+  | 'build'
+  | 'verify'
+  | 'report'
+  | 'knowledge';
+
+export const HUES: Record<StationIconKey, [string, string]> = {
+  intake: ['#5A9BFF', '#2B4FD8'],
+  triage: ['#A57CFF', '#6237D6'],
+  spec: ['#6C86FF', '#3240C2'],
+  gate: ['#FFC65E', '#E37E24'],
+  gherkin: ['#FF83BC', '#C93A80'],
+  build: ['#3FE3CB', '#0F8F7E'],
+  verify: ['#64E688', '#1F9445'],
+  report: ['#4CCDF4', '#1477AA'],
+  knowledge: ['#CF93FF', '#7E43D6'],
+};
+
 export interface StateLook {
   label: string;
   ring: string;

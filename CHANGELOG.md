@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.2.0
+
+### Added
+
+- Factory floor: every gate is decided on the floor. The side panel has Station, Review and Orchestrator chat tabs; specification, scenarios and acceptance are reviewed and decided in place without leaving `#/floor`, and Expand opens a full-screen review with a section list, the full text and the decision panel beside it.
+- Factory floor: click a station to see its work: who runs it (with a routed or orchestrator tag), usage, and the latest task log, refreshed every 2 seconds while the task runs. The factory snapshot gains `station_tasks`.
+- Orchestrator model only: new project config `routing_mode` (`per_role` | `orchestrator`) and `orchestrator` (`{runner, model}`). In orchestrator mode every role runs on that runner and model. A switch on the floor header sets it.
+- Chat with the orchestrator about a run (`GET`/`POST /api/v1/runs/{slug}/chat`, `chat.message` events). The orchestrator only answers; it runs once per question in an empty temporary folder, never with permission-skipping flags, with a 180 second timeout, and replies are scrubbed. Each reply can be sent as a note to the next agent. The conversation is kept in the run's `chat.jsonl`.
+- Factory floor: stations are colour tiles with icons instead of letters; working, needs-you, done, paused and not-reached states each have their own look. Animations stop when the system asks for reduced motion.
+
+### Fixed
+
+- Factory floor: a run that needs you (NEEDS_HUMAN) or is blocked shows the reason and an inline Resume. Before, the panel showed no reason and its only link led to a review page with no decision while the specification was a draft.
+- Review screens are readable on the dark floor (contrast checked in the browser tests).
+
+### Upgrade
+
+- No registry migration. The new config keys are optional; without them routing works as in 2.1.
+
 ## 2.1.0
 
 ### Added
