@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sentinel 2.0.0 release gate (release.feature, AC-TST-01k to AC-TST-04b).
+"""Sentinel 2.1.0 release gate (release.feature, AC-TST-01k to AC-TST-04b).
 
     python3 tools/release_gate.py [--evidence FILE] [--wheel-env DIR] [--skip-dashboard] [--skip-wheel] [--allow-dirty]
     python3 tools/release_gate.py wheel-env DIR      build the release wheel and install it offline into DIR
@@ -28,7 +28,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 PHASES = ["phaseA", "phaseB", "phaseC", "phaseD", "phaseE", "phaseF", "phaseG", "phaseH", "phaseI", "phaseJ"]
 ID_RE = re.compile(r"AC[-_]([A-Z]+)[-_](\d+)([a-z]+)(?![A-Za-z0-9])")
 FEATURE_ID_RE = re.compile(r"@(AC-[A-Z]+-\d+[a-z]+)\b")

@@ -25,7 +25,7 @@ The server listens on the loopback address only and accepts only requests for it
 
 ## Docker
 
-The image `ghcr.io/chhunlyyy/sentinel` (tags `2.0.0` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
+The image `ghcr.io/chhunlyyy/sentinel` (tags `2.1.0` and `latest`) serves only the dashboard. The CLI your AI tool runs stays on the host (`uv tool install sentinel-pipeline`); the image has no AI tool CLI, no Node and no secret. One command, run in the workspace folder:
 
 ```bash
 docker run --rm -it --init -p 127.0.0.1:8765:8765 -v "$PWD":/work -v sentinel-config:/home/sentinel/.config/sentinel ghcr.io/chhunlyyy/sentinel
