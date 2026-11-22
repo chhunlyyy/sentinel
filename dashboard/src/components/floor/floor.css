@@ -72,6 +72,37 @@
 @keyframes floor-breathe-gate { 0%, 100% { transform: rotate(45deg) scale(.86); } 50% { transform: rotate(45deg) scale(.93); } }
 @keyframes floor-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
 
+/* Phase 3 keyframes ported from Main.dc.html */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1.8s linear infinite; }
+
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .55; transform: scale(1.06); }
+}
+.breathe { animation: breathe 1.8s ease-in-out infinite; }
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(79, 209, 193, .45); }
+  100% { box-shadow: 0 0 0 14px rgba(79, 209, 193, 0); }
+}
+.pulse { animation: pulse 1.6s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .spin,
+  .breathe,
+  .pulse,
+  .floor-spin,
+  .floor-breathe,
+  .floor-pulse,
+  .floor-e-active,
+  .floor-e-wait,
+  .floor-e-feed,
+  .floor-e-feed-on {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .floor-e-active { animation: floor-flow .8s linear infinite; }
   .floor-e-wait   { animation: floor-flow 1.8s linear infinite; }
@@ -97,26 +128,22 @@
 
 /* ---- Station button shapes ---- */
 .floor-neuron {
-  width: 56px;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 66px;
+  height: 66px;
+  display: block;
   padding: 0;
-  outline-offset: 4px;
   cursor: pointer;
-  border-width: 2px;
-  border-style: solid;
+  background: transparent;
+  border: 0;
+  position: relative;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 700;
   font-size: 15px;
 }
-.floor-neuron:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.floor-neuron:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: 18px; }
 .floor-neuron-agent  { border-radius: 50%; }
-.floor-neuron-engine { border-radius: 12px; }
-.floor-neuron-gate   { border-radius: 12px; transform: rotate(45deg) scale(.86); }
-.floor-neuron-gate .floor-neuron-label { transform: rotate(-45deg); }
-.floor-neuron-label::before { content: attr(data-glyph); }
+.floor-neuron-engine { border-radius: 50%; }
+.floor-neuron-gate   { border-radius: 18px; }
 
 /* ---- Task chips ---- */
 .floor-task-chip {
@@ -191,6 +218,9 @@
   padding: 2px 4px 3px;
   border-radius: 8px;
   background: var(--floor-chip-bg);
+  /* under every station tile: a neighbour's label chip never covers a tile */
+  position: relative;
+  z-index: 1;
 }
 .floor-label-name { font-size: 12px; font-weight: 600; text-align: center; line-height: 1.25; }
 .floor-label-sub {

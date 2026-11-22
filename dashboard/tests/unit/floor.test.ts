@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { floorSnapshot, laneState } from '../../src/components/floor/adapt.ts';
 import { buildLanePositions, stationById, STATIONS, MAX_LANES } from '../../src/components/floor/layout.ts';
-import { stateLook, feedEdgeCls } from '../../src/components/floor/look.ts';
+import { stateLook, feedEdgeCls, HUES } from '../../src/components/floor/look.ts';
+import { getStationIconKey } from '../../src/components/floor/StationIcon.tsx';
 import { stationsOf } from '../../src/screens/Floor.tsx';
 import { parseSpecDoc } from '../../src/screens/Approvals.tsx';
 import type * as W from '../../src/api/wire.ts';
@@ -371,4 +372,36 @@ A requester never decides their own step.
     expect(doc.sections.some((s) => s.title === 'Overview')).toBe(false);
   });
 });
+
+describe('phase 3 station icons and hues', () => {
+  test('HUES defines exact color pairs from mock for all 9 icon keys', () => {
+    expect(HUES.intake).toEqual(['#5A9BFF', '#2B4FD8']);
+    expect(HUES.triage).toEqual(['#A57CFF', '#6237D6']);
+    expect(HUES.spec).toEqual(['#6C86FF', '#3240C2']);
+    expect(HUES.gate).toEqual(['#FFC65E', '#E37E24']);
+    expect(HUES.gherkin).toEqual(['#FF83BC', '#C93A80']);
+    expect(HUES.build).toEqual(['#3FE3CB', '#0F8F7E']);
+    expect(HUES.verify).toEqual(['#64E688', '#1F9445']);
+    expect(HUES.report).toEqual(['#4CCDF4', '#1477AA']);
+    expect(HUES.knowledge).toEqual(['#CF93FF', '#7E43D6']);
+  });
+
+  test('getStationIconKey maps gate kind to gate, build lanes to build, and otherwise station id', () => {
+    expect(getStationIconKey('gate_spec', 'gate')).toBe('gate');
+    expect(getStationIconKey('gate_gherkin', 'gate')).toBe('gate');
+    expect(getStationIconKey('gate_accept', 'gate')).toBe('gate');
+    expect(getStationIconKey('build', 'agent')).toBe('build');
+    expect(getStationIconKey('build-0', 'agent')).toBe('build');
+    expect(getStationIconKey('build-1', 'agent')).toBe('build');
+    expect(getStationIconKey('build-2', 'agent')).toBe('build');
+    expect(getStationIconKey('intake', 'engine')).toBe('intake');
+    expect(getStationIconKey('triage', 'agent')).toBe('triage');
+    expect(getStationIconKey('spec', 'agent')).toBe('spec');
+    expect(getStationIconKey('gherkin', 'agent')).toBe('gherkin');
+    expect(getStationIconKey('verify', 'engine')).toBe('verify');
+    expect(getStationIconKey('report', 'engine')).toBe('report');
+    expect(getStationIconKey('knowledge', 'engine')).toBe('knowledge');
+  });
+});
+
 

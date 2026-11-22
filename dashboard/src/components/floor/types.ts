@@ -115,4 +115,6 @@ export interface StationDef {
   does: string;
   /** knowledge text for this kind */
   knowledgeText: string;
+  /** index of this build lane when build fans out (0, 1, ...) */
+  laneIdx?: number;
 }

@@ -357,4 +357,59 @@ function contrastRatio(fg: string, bg: string): number {
     await expect(logBox).toBeVisible();
     await expect(logBox.locator('li').first()).toBeVisible();
   });
+
+  test('station icon tiles: svg inside button, waiting breathe and ! badge, done check badge, and reduced-motion disables animation', async ({ page }) => {
+    await open(page, '/floor');
+
+    // 1. Each station renders its icon (svg inside the button)
+    const stations = [
+      'Intake', 'Triage', 'Specification', 'You approve spec', 'Scenarios',
+      'You approve scenarios', 'Export as CSV', 'Filter by dept', 'HR only',
+      'Verify', 'Report', 'You accept', 'Knowledge',
+    ];
+    for (const name of stations) {
+      const btn = page.getByRole('button', { name: new RegExp(`^${name}:`) });
+      await expect(btn).toBeVisible();
+      const svg = btn.locator('svg[data-station-icon]');
+      await expect(svg).toBeVisible();
+      await expect(svg).toHaveAttribute('aria-hidden', 'true');
+    }
+
+    // 2. A done station has the check badge
+    // On digital-hr default run (leave-balance), intake is done
+    const doneNeuron = page.getByRole('button', { name: /^Intake: Done/ });
+    await expect(doneNeuron).toBeVisible();
+    await expect(doneNeuron.locator('[data-badge="done"]')).toBeVisible();
+
+    // Working station on leave-balance has .spin ring and working dot
+    const workingNeuron = page.getByRole('button', { name: 'Filter by dept: Working' });
+    await expect(workingNeuron).toBeVisible();
+    const spinRing = workingNeuron.locator('.spin');
+    await expect(spinRing).toBeVisible();
+    await expect(workingNeuron.locator('[data-badge="working"]')).toBeVisible();
+    const spinAnimBefore = await spinRing.evaluate((el) => window.getComputedStyle(el).animationName);
+    expect(spinAnimBefore).toBe('spin');
+
+    // Build lanes keep their number: small number badge top-left (1, 2, 3)
+    await expect(page.locator('.floor-lane-num')).toHaveText(['1', '2', '3']);
+
+    // 3. Switch to run with waiting gate ("Fix payroll rounding" has gate_spec waiting)
+    await page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Fix payroll rounding/ }).click();
+    const waitingGate = page.getByRole('button', { name: /^You approve spec: Needs you/ });
+    await expect(waitingGate).toBeVisible();
+
+    // The waiting gate has the breathe ring and "!" badge
+    const breatheRing = waitingGate.locator('.breathe');
+    await expect(breatheRing).toBeVisible();
+    await expect(waitingGate.locator('[data-badge="waiting"]')).toContainText('!');
+
+    // Normal motion: computed animation-name is 'breathe'
+    const animBefore = await breatheRing.evaluate((el) => window.getComputedStyle(el).animationName);
+    expect(animBefore).toBe('breathe');
+
+    // 4. Reduced-motion disables the animation (computed animation-name is 'none')
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const animAfter = await breatheRing.evaluate((el) => window.getComputedStyle(el).animationName);
+    expect(animAfter).toBe('none');
+  });
 });
