@@ -84,9 +84,9 @@ export function NeuronButton({ station, state, taskDots, sub, selected, onClick 
             color: L.ink,
           }}
         >
-          <span className="floor-neuron-label" style={{ display: 'block' }}>
-            {station.glyph}
-          </span>
+          {/* the glyph is drawn by CSS (generated content), not text: the button's name is the label above, and a visible
+              text that the name does not contain would break WCAG 2.5.3 (label in name) */}
+          <span className="floor-neuron-label" style={{ display: 'block' }} aria-hidden="true" data-glyph={station.glyph} />
         </button>
         {/* task dots in top-right corner */}
         {taskDots.length > 0 && (

@@ -99,6 +99,6 @@ Upgrading from 1.x? Read [migrating to 2.0](docs/migration-2.0.md).
 
 ## Status
 
-Version 2.0.0, beta. Every part has unit, integration, browser and security tests, but 2.0 has not yet run with whole teams over weeks of real work. Known limits are in [security](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md). The PyPI name is `sentinel-pipeline` because `sentinel` is taken; the command is still `sentinel`.
+Version 2.0.0, beta. Every part has unit, integration, browser and security tests, but 2.0 has not yet run with whole teams over weeks of real work. A manual screen-reader pass of the dashboard has not been done; accessibility is covered by automated axe-core checks only. Known limits are in [security](docs/security.md#residual-risks) and the [changelog](CHANGELOG.md). The PyPI name is `sentinel-pipeline` because `sentinel` is taken; the command is still `sentinel`.
 
 MIT licensed. See [LICENSE](LICENSE).

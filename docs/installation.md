@@ -135,7 +135,7 @@ Sentinel runs every stage in its own clean context, so the reviewer never review
 | Claude Code | the Agent tool with a general-purpose agent | tested in this project |
 | Antigravity CLI | `invoke_subagent` with the built-in `self` subagent (a clean clone of the calling agent with the same tools) | Antigravity's documentation; not yet confirmed in a Sentinel run |
 | Codex, Cursor, OpenCode and others | the tool's own subagent or task feature, if it has one | not verified |
-| any tool | a fresh headless session: `sentinel stage run --runner <claude\|agy\|codex\|gemini>` | tested with a stand-in runner and a real `claude` and `agy` call |
+| any tool | a fresh headless session: `sentinel stage run --runner <claude\|agy\|codex\|gemini>` | tested with a stand-in runner and a real `claude` and `agy` call; `gemini` only as far as a refused account allows (flags and failure output checked, no successful answer seen) |
 
 If a tool offers none of these, the agent has to run a stage inline, must say so, and may not review or test its own work. After a run, `sentinel stats` shows how many stages ran as subagents, headless, or inline, and the final report names every inline stage. If you see inline stages and expected subagents, update the skills (`npx skills@latest update`): versions before 0.1.0b2 let the agent skip subagents too easily.
 

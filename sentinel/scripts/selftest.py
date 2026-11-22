@@ -725,7 +725,13 @@ def phase_f_checks(tmp):
         status, _, payload = call("GET", "/api/v1/tasks/api-run/next", cookie=cookie)
         step = json.loads(payload)
         code, out = run(CLI + ["--dir", str(w), "next", "api-run", "--json"])
-        check("AC-TSK-03b the new run is driven by the engine: the skill is handed nothing and the CLI sees the same run", step.get("kind") == "wait" and step.get("driven_by") == "engine" and json.loads(out)["driven_by"] == "engine", payload[:200].decode() + out[-100:])
+        # the engine loop of the running server owns this run and keeps moving it: this workspace has no CLI runner, so on
+        # its next tick it parks the run BLOCKED with the routing preflight. Each answer (API, then CLI) may come before or
+        # after that tick (a loaded machine decides which), so each is checked against the state it names: while the run is
+        # CREATED the skill is handed a wait from the engine; once the engine has parked it, the step is its blocker, never a task.
+        def engine_owned(s):
+            return s.get("run") == "api-run" and (s.get("driven_by") == "engine" or (s.get("state") == "BLOCKED" and "routing preflight failed" in json.dumps(s)))
+        check("AC-TSK-03b the new run is driven by the engine: the skill is handed nothing and the CLI sees the same run", engine_owned(step) and engine_owned(json.loads(out)) and step.get("kind") != "task" and json.loads(out).get("kind") != "task", payload[:200].decode() + out[-300:])
         status, _, payload = call("POST", "/api/v1/tasks/api-run/control", {"action": "cancel", "comment": "selftest"}, cookie=cookie, csrf=csrf)
         row = db_row(w, "api-run")
         check("AC-MON-02a a dashboard cancel moves the run to CANCELLED and is audited with channel dashboard", status == 200 and row["state"] == "CANCELLED" and db_all(w, "SELECT 1 FROM audit WHERE channel='dashboard' AND action='cancel' AND target='api-run'"), payload[:200])

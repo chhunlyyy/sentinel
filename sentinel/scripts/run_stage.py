@@ -36,7 +36,7 @@ def stage_group(stage):
 DEFAULT_RUNNERS = {
     "claude": {"command": "claude", "prompt_flag": "-p", "model_flag": "--model", "add_dir_flag": "--add-dir", "args": ["--permission-mode", "acceptEdits"]},
     "codex": {"command": "codex exec", "model_flag": "-m"},
-    "gemini": {"command": "gemini", "prompt_flag": "-p", "model_flag": "-m"},
+    "gemini": {"command": "gemini", "prompt_flag": "-p", "model_flag": "-m", "add_dir_flag": "--include-directories", "args": ["--approval-mode", "auto_edit", "--skip-trust"], "unsafe_args": ["--yolo"]},
     "agy": {"command": "agy", "prompt_flag": "-p", "model_flag": "--model", "resume_flag": "--conversation", "add_dir_flag": "--add-dir", "output": "json_response", "args": ["--output-format", "json", "--mode", "accept-edits"], "unsafe_args": ["--dangerously-skip-permissions"]},
 }
 

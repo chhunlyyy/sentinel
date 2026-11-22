@@ -116,6 +116,7 @@
 .floor-neuron-engine { border-radius: 12px; }
 .floor-neuron-gate   { border-radius: 12px; transform: rotate(45deg) scale(.86); }
 .floor-neuron-gate .floor-neuron-label { transform: rotate(-45deg); }
+.floor-neuron-label::before { content: attr(data-glyph); }
 
 /* ---- Task chips ---- */
 .floor-task-chip {
