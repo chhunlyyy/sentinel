@@ -15,6 +15,7 @@ import {
   sampleKnowledgeStatus,
   sampleKnowledgeCiTemplate,
   sampleRoutingSuggest,
+  routingFix,
   sampleDetect,
   sampleConfigForm,
 } from '../fixtures/knowledge-fixtures.ts';
@@ -373,6 +374,7 @@ route('GET', `${V}/projects/{pid}/factory`, (c) => {
     limits: { driver: 'engine', max_tasks_per_project: 2, max_agents: 4, running_in_project: 0, running_total: 0 },
     runs: [],
     queue: [],
+    routing: { problems: [] },
   };
   return [200, snap];
 });
@@ -854,6 +856,11 @@ route('POST', `${V}/shared/test`, (c) => {
 
 route('GET', `${V}/routing/suggest`, () => [200, sampleRoutingSuggest()]);
 
+route('GET', `${V}/projects/{pid}/routing/fix`, (c) => {
+  const pid = decodeURIComponent(c.params[0]);
+  return [200, routingFix(pid, db.factory?.[pid]?.routing?.problems ?? [])];
+});
+
 const projectConfigs: Record<string, ReturnType<typeof sampleConfigForm>> = {};
 route('GET', `${V}/projects/{pid}/config/form`, (c) => {
   const pid = decodeURIComponent(c.params[0]);
@@ -887,6 +894,8 @@ route('POST', `${V}/projects/{pid}/config/save`, (c) => {
   }
   const newSha = createHash('sha256').update(JSON.stringify(cfg)).digest('hex');
   cfg.sha256 = newSha;
+  const snap = db.factory?.[pid];
+  if (snap && changes.some((ch) => ch.path === 'single_model' && ch.value === false)) snap.routing = { problems: [] };
   const diff = changes.map((ch) => `+ ${ch.path}: ${JSON.stringify(ch.value)}`).join('\n');
   return [200, { ok: true, project: pid, sha256: newSha, diff }];
 });

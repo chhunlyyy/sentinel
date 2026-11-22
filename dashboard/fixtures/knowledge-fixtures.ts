@@ -115,6 +115,16 @@ jobs:
   };
 }
 
+export function routingFix(pid: string, problems: string[]) {
+  const rows = problems.map((text) => {
+    const role = text.split(' ')[0];
+    return { role, text, current: { runner: null as string | null, model: null as string | null }, suggested: { runner: 'claude', model: 'claude-sonnet-5-5' as string | null } };
+  });
+  const changes: { path: string; value: unknown }[] = rows.length ? [{ path: 'single_model', value: false }] : [];
+  for (const r of rows) changes.push({ path: `agents.${r.role}.runner`, value: r.suggested.runner }, { path: `agents.${r.role}.model`, value: r.suggested.model });
+  return { project: pid, applies: true, problems: rows, changes };
+}
+
 export function sampleRoutingSuggest(): RoutingSuggestResult {
   const allRoles = [
     'triage', 'planner', 'specifier', 'test_designer', 'gherkin', 'coder',

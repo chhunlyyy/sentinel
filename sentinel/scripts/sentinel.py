@@ -238,9 +238,63 @@ def model_problems(config, stage, route, runner, live):
     return []
 
 
+def fix_routing(config_path, config):
+    """`sentinel doctor --fix-routing`: print the roles that block engine runs with a suggested runner and model for each and the
+    change to sentinel.config.yaml; write it after a typed yes (human, interactive terminal only)."""
+    import copy
+    import difflib
+    import factory
+    from apiserver import manage
+    fix = factory.routing_fix(config)
+    if not fix["applies"] or not fix["problems"]:
+        print("routing: nothing to fix" if fix["applies"] else "routing: the factory driver is not `engine`, nothing to fix")
+        return
+    print("These roles cannot run in an engine-driven run:")
+    for row in fix["problems"]:
+        sug = row["suggested"]
+        print(f"  {row['role']:<14}{row['text']}\n  {'':<14}suggested: {sug['runner']}" + (f" ({sug['model']})" if sug["model"] else ""))
+    new = copy.deepcopy(config)
+    for change in fix["changes"]:
+        manage._set_path(new, change["path"], change["value"])
+    import jsonschema
+    validator = jsonschema.Draft202012Validator(json.loads((ROOT / "core" / "schema" / "config.schema.json").read_text()))
+    known = {e.message for e in validator.iter_errors(config)}   # problems the file already had are not ours
+    err = next((e for e in validator.iter_errors(new) if e.message not in known), None)
+    if err:
+        raise SentinelError("E_VALIDATION", f"the suggested routing is not valid: {err.message}")
+    old_text, new_text = config_path.read_text(), manage.dump(new)
+    print("\nChange to sentinel.config.yaml:")
+    sys.stdout.writelines(difflib.unified_diff(old_text.splitlines(keepends=True), new_text.splitlines(keepends=True),
+                                               fromfile="sentinel.config.yaml", tofile="sentinel.config.yaml (new)"))
+    err = gate_error("doctor --fix-routing")
+    if err:
+        raise err
+    try:
+        answer = input("\nType yes to write this change (comments in the file are not kept): ")
+    except (EOFError, KeyboardInterrupt):
+        print("\ninput closed; nothing written", file=sys.stderr)
+        sys.exit(1)
+    if answer.strip().lower() != "yes":
+        print("nothing written")
+        sys.exit(1)
+    user, _ = human_identity()
+    engine = open_registry(config_path, config)
+    try:
+        manage.atomic_write(config_path, new_text)
+        with engine.reg.transaction():
+            engine.reg.store_config_version("workspace", new_text, author=user, channel="tty", comment="Fix routing")
+            engine.reg.add_audit(user, "tty", "config_changed", config_path.parent.name, reason="Fix routing")
+    finally:
+        engine.close()
+    print(f"written: {len(fix['problems'])} roles now route to a CLI runner (stored in the config history)")
+
+
 def cmd_doctor(args):
     import health
     config_path, config = load_config(args.dir)
+    if args.fix_routing:
+        fix_routing(config_path, config)
+        return
     found, notes = health.doctor_problems(config_path, config, state_dir_of(config_path, config), args.check_models, model_problems)
     for note in notes:
         print(note)
@@ -273,7 +327,7 @@ def cmd_sync_adapters(args):
 
 
 _HUMAN_SUBCOMMANDS = ["approve", "accept", "resolve", "run export", "run import", "dashboard", "notifications read", "backup restore",
-                      "audit export", "pause", "unpause", "note", "service pause", "service resume"]
+                      "audit export", "pause", "unpause", "note", "service pause", "service resume", "doctor --fix-routing"]
 HUMAN_ONLY_COMMANDS = (
     [f"Bash(sentinel {c}:*)" for c in _HUMAN_SUBCOMMANDS]
     # the global --dir option in front of the command, as `--dir X` and as `--dir=X` (an abbreviation such as `--di X` cannot be
@@ -688,6 +742,8 @@ def print_step(step):
             print(f"  {step['command']}")
     elif kind == "wait":
         print(f"Wait: {step['reason']}" + (f" ({', '.join(step['tasks'])})" if step.get("tasks") else ""))
+        if step.get("command"):
+            print(f"  {step['command']}")
     else:
         print(f"Done: execution {step['execution']}, acceptance {step['acceptance']}")
 
@@ -834,6 +890,11 @@ def cmd_resolve(args):
     try:
         slug = check_slug(args.slug)
         user, _ = human_gate(engine, slug, "resolve")
+        if args.retry_now:
+            ids = engine.retry_limited_now(slug)
+            engine.audit(user, "tty", "retry_limit_now", slug, reason=", ".join(ids) or "no task waits for a usage limit")
+            print(f"{len(ids)} task(s) of run {slug} may start now: {', '.join(ids)}" if ids else f"no task of run {slug} waits for a usage limit")
+            return
         typed = None
         if args.refresh_config:
             info = engine.refresh_config_preview(slug, comment=args.comment)
@@ -1596,6 +1657,7 @@ def main():
 
     doctor = sub.add_parser("doctor")
     doctor.add_argument("--check-models", action="store_true", help="ask each runner whether it accepts the model set in routing")
+    doctor.add_argument("--fix-routing", action="store_true", help="suggest a runner and model for every role that blocks engine runs and write it after a typed yes (human, interactive terminal only)")
     doctor.set_defaults(func=cmd_doctor)
     routing = sub.add_parser("routing", help="show which runner and model each stage will use")
     routing.add_argument("--stage")
@@ -1683,6 +1745,7 @@ def main():
     resolve.add_argument("--approve-security", action="store_true", help="approve the tier 4 security gate")
     resolve.add_argument("--refresh-config", action="store_true", help="re-snapshot sentinel.config.yaml into the run, then resume it")
     resolve.add_argument("--no-resume", action="store_true", help="record the decision but leave the run parked")
+    resolve.add_argument("--retry-now", action="store_true", help="start the tasks that wait for a provider usage limit at once")
     resolve.add_argument("-m", "--comment")
     resolve.set_defaults(func=cmd_resolve)
 

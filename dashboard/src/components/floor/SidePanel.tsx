@@ -7,6 +7,7 @@ import { Link, enc } from '../../router.tsx';
 import type { RunView, StationDef, StationState, WhoView } from './types.ts';
 import { stateLook } from './look.ts';
 import { stationById } from './layout.ts';
+import { limitText } from './adapt.ts';
 
 interface SidePanelProps {
   station: StationDef | null;
@@ -70,6 +71,8 @@ export function SidePanel({ station, state, run, who, pid, onChanged }: SidePane
   let thisTaskText = '—';
   if (state === 'todo' || state === 'next') {
     thisTaskText = 'Not reached yet';
+  } else if (state === 'limit' && run.limit) {
+    thisTaskText = `${limitText(run.limit.retryAt)} (${run.limit.runner})`;
   } else if (currentLane) {
     const laneState = currentLane.state.toLowerCase().replace(/_/g, ' ');
     thisTaskText = `${currentLane.name} · ${laneState}`;

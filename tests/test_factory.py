@@ -597,7 +597,7 @@ class Served(SV):
         self.assertEqual(r.status, 200, r.text)
         snap = r.json
         self.assertEqual(set(snap), {"project", "generated_at", "stations", "limits", "runs", "queue", "factory_paused", "who",
-                                     "activity"})
+                                     "activity", "routing"})
         self.assertIs(snap["factory_paused"], False)
         self.assertEqual(snap["stations"], list(factory.STATIONS))
         self.assertEqual(snap["limits"], {"driver": "engine", "max_tasks_per_project": 2, "max_agents": 4,
@@ -605,7 +605,7 @@ class Served(SV):
         runs = {x["slug"]: x for x in snap["runs"]}
         gate = runs["gate-run"]
         self.assertEqual(set(gate), {"slug", "title", "type", "driver", "paused", "state", "tier", "station", "stations",
-                                     "next_station", "agents", "lanes", "attention", "pending_notes", "created_at", "updated_at"})
+                                     "next_station", "agents", "lanes", "attention", "limit", "pending_notes", "created_at", "updated_at"})
         self.assertEqual((gate["state"], gate["station"], gate["next_station"], gate["driver"]),
                          ("SPECIFICATION_REVIEW", "gate_spec", "gherkin", "engine"))
         self.assertEqual(gate["stations"], {"intake": "done", "triage": "done", "spec": "done", "gate_spec": "waiting",

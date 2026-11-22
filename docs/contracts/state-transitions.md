@@ -42,6 +42,7 @@ Docs-only runs skip R8 to R11: `SPECIFICATION_APPROVED -> EXECUTING` (R12d) with
 |---|---|---|---|
 | CREATED | QUEUED | E | dependencies complete |
 | QUEUED | RUNNING | E | no write-scope overlap with running tasks; parallel limit |
+| RUNNING | QUEUED | E | the runner hit a usage limit (`task.limit_reached`): `tasks.retry_at` is set and the task does not start before it; not a failure |
 | RUNNING | WAITING_FOR_INPUT | E | native adapter, or agent asked a question |
 | WAITING_FOR_INPUT | RUNNING | O, H | answer supplied, or orchestrator picked the native task up |
 | RUNNING, WAITING_FOR_INPUT | COMPLETED | E | process ended (or `task complete` called); result.json valid; no scope violation |

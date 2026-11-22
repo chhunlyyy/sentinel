@@ -102,6 +102,7 @@ export const calls = {
   detect: (c: Client, paths: string[]) => c.post<W.WDetect>(buildPath('detect'), { paths }),
   sharedTest: (c: Client, url: string) => c.post<W.WSharedTest>(buildPath('sharedTest'), { url }),
   routingSuggest: (c: Client) => c.get<W.WRoutingSuggest>(buildPath('routingSuggest')),
+  routingFix: (c: Client, pid: string) => c.get<W.WRoutingFix>(buildPath('routingFix', { pid })),
   configForm: (c: Client, pid: string) => c.get<W.WConfigForm>(buildPath('configForm', { pid })),
   configPreview: (c: Client, pid: string, changes: { path: string; value: unknown }[]) => c.post<W.WConfigPreview>(buildPath('configPreview', { pid }), { changes }),
   configSave: (c: Client, pid: string, changes: { path: string; value: unknown }[], comment?: string) => c.post<W.WConfigSave>(buildPath('configSave', { pid }), { changes, ...(comment ? { comment } : {}) }),

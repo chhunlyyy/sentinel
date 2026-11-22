@@ -48,10 +48,18 @@ def all_runners(config):
     return merged
 
 
+ROUTING_SETTINGS = ("fallback", "limit_backoff")   # keys of `routing` that are settings, not routes
+
+
+def routes(config):
+    """{key: route} of the `routing` block without its settings (fallback, limit_backoff)."""
+    return {k: v for k, v in (config.get("routing") or {}).items() if k not in ROUTING_SETTINGS and isinstance(v, dict)}
+
+
 def find_route(config, stage, repo=None):
     if single_model(config):
         return None
-    routing = config.get("routing") or {}
+    routing = routes(config)
     group = stage_group(stage)
     keys = ([f"{repo}-{group}", f"{repo}-{stage}"] if repo else []) + [group, stage]
     for key in keys:

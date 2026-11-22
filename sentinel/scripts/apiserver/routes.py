@@ -9,6 +9,7 @@ from paths import slug_problem
 import analytics
 import factory
 import notifications
+import providers
 
 from . import manage, ops, readroutes, views
 from .projects import scrub_obj
@@ -285,6 +286,17 @@ def h_routing_suggest(ctx):
     return 200, manage.suggest_routing()
 
 
+@_project_read
+def h_routing_fix(ctx, project):
+    """The "Fix routing" dialog: the roles that block engine runs, a suggested runner and model for each, and the config
+    changes that apply the suggestion (saved through the config preview and save routes)."""
+    if ctx.query:
+        extra = sorted(ctx.query)[0]
+        raise views.validation(f"unknown query parameter {extra}", extra)
+    _, config = manage.read_project_config(project)
+    return {"project": project.id, **factory.routing_fix(config, providers.suggest_routing(config))}
+
+
 # ---- Config Form
 @_project_read
 def h_config_form(ctx, project):
@@ -551,6 +563,7 @@ ROUTES = [
     Route("POST", "detect", "detect", h_detect),
     Route("POST", "shared_test", "shared/test", h_shared_test),
     Route("GET", "routing_suggest", "routing/suggest", h_routing_suggest),
+    Route("GET", "routing_fix", "projects/{pid}/routing/fix", h_routing_fix),
     Route("GET", "config_form", "projects/{pid}/config/form", h_config_form),
     Route("POST", "config_preview", "projects/{pid}/config/preview", h_config_preview),
     Route("POST", "config_save", "projects/{pid}/config/save", h_config_save, ("manage.write_config",)),

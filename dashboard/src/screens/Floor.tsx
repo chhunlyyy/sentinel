@@ -9,6 +9,7 @@ import { NeuronButton } from '../components/floor/NeuronButton.tsx';
 import { EdgeLayer } from '../components/floor/EdgeLayer.tsx';
 import { SidePanel } from '../components/floor/SidePanel.tsx';
 import { Loaded } from '../components/common.tsx';
+import { RoutingBanner } from '../components/RoutingFix.tsx';
 import type { ActivityView, FloorSnapshot, RunView, StationState, StationDef } from '../components/floor/types.ts';
 import { Link, enc, navigate, useRoute } from '../router.tsx';
 
@@ -18,7 +19,7 @@ const FACTORY_EVENT_TYPES = [
   'run.state_changed', 'task.state_changed', 'task.started', 'task.finished',
   'run.cancelled', 'run.completed', 'run.created',
   'approval.requested', 'approval.decided', 'task.failed',
-  'knowledge.failed', 'knowledge.updated', 'factory.paused', 'factory.resumed',
+  'knowledge.failed', 'knowledge.updated', 'factory.paused', 'factory.resumed', 'task.limit_reached', 'task.queued',
 ] as const;
 
 /** Choose a stable default task to show when the floor loads */
@@ -31,8 +32,8 @@ function defaultTaskSlug(snap: FloorSnapshot): string | null {
 /** The station node to select for a run: its current station, or the busiest lane when build fans out. */
 export function nodeOfRun(run: RunView): string {
   if (run.station !== 'build' || run.lanes.length < 2) return run.station;
-  const states = run.lanes.map((l) => laneState(l, run.paused));
-  let i = states.findIndex((x) => x === 'working' || x === 'waiting' || x === 'paused');
+  const states = run.lanes.map((l) => laneState(l, run.paused, run.stations.build === 'limit'));
+  let i = states.findIndex((x) => x === 'working' || x === 'waiting' || x === 'paused' || x === 'limit');
   if (i < 0) i = states.findIndex((x) => x !== 'done');
   return `build-${Math.max(i, 0)}`;
 }
@@ -112,7 +113,7 @@ function FloorNetwork({ snap, selectedSlug, selectedNodeId, onSelectRun, onSelec
   const buildLaneCount = run?.lanes.length ?? 0;
   const lanePositions = buildLanePositions(buildLaneCount);
   const buildLaneYs = lanePositions.map((p) => p.y);
-  const laneStates: StationState[] = (run?.lanes ?? []).slice(0, MAX_LANES).map((l) => laneState(l, run?.paused ?? false));
+  const laneStates: StationState[] = (run?.lanes ?? []).slice(0, MAX_LANES).map((l) => laneState(l, run?.paused ?? false, run?.stations.build === 'limit'));
   const extraLanes = buildLaneCount > MAX_LANES ? buildLaneCount - MAX_LANES : 0;
 
   // Build task dots: map station id → list of tasks here
@@ -311,7 +312,7 @@ function FloorContent({ snap, pid, initialTaskSlug, reload }: FloorContentProps)
     ? selectedRun.lanes[parseInt(selectedNodeId.slice('build-'.length), 10)]
     : undefined;
   const selectedState: StationState = selectedLane && selectedRun
-    ? laneState(selectedLane, selectedRun.paused)
+    ? laneState(selectedLane, selectedRun.paused, selectedRun.stations.build === 'limit')
     : selectedStation
     ? (selectedStates[selectedStation.id.startsWith('build') ? 'build' : selectedStation.id] ?? 'todo')
     : 'todo';
@@ -323,6 +324,8 @@ function FloorContent({ snap, pid, initialTaskSlug, reload }: FloorContentProps)
 
   return (
     <>
+      <RoutingBanner pid={pid} problems={snap.routingProblems} onFixed={reload} />
+
       {snap.factoryPaused && (
         <p role="status" className="floor-paused-note">
           The factory is paused: no new agent starts until you resume it. Tasks already running finish.

@@ -33,6 +33,7 @@ Events are rows in the append-only `events` table (`docs/architecture/data-archi
 | `approval.decided` | gate, version, sha256, decision, comment |
 | `approval.invalidated` | gate, version, reason |
 | `task.created` / `task.queued` / `task.started` | role, repo, provider, model, adapter (`task.started` adds `fallback` {from, to} when a fallback provider took over) |
+| `task.limit_reached` | role, repo, provider, model, adapter, runner, retry_at (null when a fallback took over), reason, parsed (false when `retry_at` is the backoff), fallback ({from, to} or null). The task went RUNNING to QUEUED |
 | `task.progress` | elapsed_seconds, output_bytes, changed_files (from the heartbeat) |
 | `task.waiting` | waiting_on (orchestrator, human), question |
 | `task.finished` | state, error_code, seconds, tokens, reason, details, exit_code |

@@ -156,6 +156,13 @@ routing:
 - `single_model` (default `true`): one model, one tool. `routing` is ignored completely: every stage runs in the AI tool you opened (Claude Code, Antigravity, Codex, Cursor) with that tool's current model, as a subagent where it has them. Set `single_model: false` to turn `routing` on, so each stage uses its own runner and `model`. `--runner` and `--model` on `sentinel stage run` always work.
 - `sentinel routing` prints what every stage will use and whether the CLI is installed. `sentinel doctor` fails when a routed CLI is missing, a model is set on a runner without a `model_flag`, or a model is written with its flag (`--model sonnet` instead of `sonnet`). `sentinel doctor --check-models` also asks each runner whether it accepts the model, and for `agy` suggests the closest id from `agy models`.
 - Model names: you do not need full IDs. `claude` accepts the aliases `sonnet`, `opus` and `haiku` (always the latest of that family). `agy` uses the ids printed by `agy models`, such as `gemini-3.8-flash-high`; the display names ("Gemini 3.8 Flash (High)") are not accepted.
+- `routing.fallback` (optional): a runner to use at once when a runner hits a usage limit, for example `fallback: { claude: agy }`, or per role `fallback: { tdd_green: agy }` (a role key wins over a runner key). The fallback must be defined, installed and not listed under `providers.disabled`; it is used once per task (a second limit on it waits like any other). `routing.limit_backoff` (minutes, default 30) is how long a task waits when the limit message names no reset time. Both keys are settings, not stages; do not name a stage `fallback`.
+
+  ```yaml
+  routing:
+    fallback: { claude: agy }
+    limit_backoff: 20
+  ```
 - One-off override: `sentinel stage run --stage qa --runner agy --model gemini-3.8-flash-high ...`.
 
 ### runners

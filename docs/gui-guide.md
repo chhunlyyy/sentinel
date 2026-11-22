@@ -55,6 +55,8 @@ Intake > Triage > Spec > [you approve] > Scenarios > [you approve] > Build lanes
 - **Knowledge** sits below the path. Its dotted links show it feeding the agents: repository and module summaries, team rules and recent related changes. The link to the agent working right now glows.
 - Small colored chips on a station show which tasks are there. The chips at the top switch between tasks.
 
+A station whose agent waits for a provider usage limit shows **Waiting for usage limit · retries 14:05** (your local time) with the paused look: it is not failed, and the task starts again by itself. `sentinel resolve <slug> --retry-now` starts it at once. A notification tells you when a limit is hit.
+
 Click a station to see it in the side panel:
 
 - **Who**: the role, the AI tool and the model, or "engine" or "you".
@@ -113,9 +115,15 @@ See [the knowledge base guide](knowledge.md) for what a record contains and how 
 
 The bell in the header lists notifications (a gate waiting, a failed task, a failed knowledge update). Opening one only takes you to the page; it never approves anything.
 
+## Fix routing
+
+When the project routing blocks engine-driven runs, a **Fix routing** banner appears on the project home and on the factory floor. **Fix routing** opens a dialog with one row per blocked role, with the runner and model Sentinel suggests (the same suggestion as the Create project wizard); change any of them. **Preview the YAML change** shows the diff of `sentinel.config.yaml`; **Save** writes it through the same path as Project settings, so the change is in the configuration history.
+
 ## When something does not move
 
-- **A run stops right after Intake with a routing message.** A role has no command-line AI tool. Set one under Settings, Agents, then run `sentinel resolve <slug> --refresh-config -m "routing fixed"`, or let the factory pick the new settings up on its next pass.
+- **A run stops right after Intake with a routing message.** A role has no command-line AI tool. Use **Fix routing** on the floor, or `sentinel doctor --fix-routing`.
+- **A station says Waiting for usage limit.** The provider CLI reported a usage limit; the task retries at the time shown. Use `sentinel resolve <slug> --retry-now`, or set `routing.fallback` in the config.
+- **(routing, continued)** A role has no command-line AI tool. Set one under Settings, Agents, then run `sentinel resolve <slug> --refresh-config -m "routing fixed"`, or let the factory pick the new settings up on its next pass.
 - **A task stays in the queue.** All slots are busy, or the task is paused. Change the limits under Project settings (factory).
 - **"Session ended".** The service stopped or the session expired. Run `sentinel dashboard` again.
 - **Knowledge update failed.** A notification says why; the knowledge screen shows the failed job. Nothing is pushed when the secret scrub finds something.

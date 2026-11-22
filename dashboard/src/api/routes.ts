@@ -64,6 +64,7 @@ export const ROUTES = {
   detect: { method: 'POST', pattern: '/api/v1/detect' },
   sharedTest: { method: 'POST', pattern: '/api/v1/shared/test' },
   routingSuggest: { method: 'GET', pattern: '/api/v1/routing/suggest' },
+  routingFix: { method: 'GET', pattern: '/api/v1/projects/{pid}/routing/fix' },
   configForm: { method: 'GET', pattern: '/api/v1/projects/{pid}/config/form' },
   configPreview: { method: 'POST', pattern: '/api/v1/projects/{pid}/config/preview' },
   configSave: { method: 'POST', pattern: '/api/v1/projects/{pid}/config/save' },

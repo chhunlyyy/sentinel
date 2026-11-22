@@ -23,10 +23,23 @@ function stationLabel(run: W.WFactoryRun): string {
   return labels[st] ?? st;
 }
 
+/** "14:05" in the viewer's time zone */
+export function retryClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** `Waiting for usage limit · retries 14:05` */
+export function limitText(retryAt: string): string {
+  return `Waiting for usage limit · retries ${retryClock(retryAt)}`;
+}
+
 function stateLabel(run: W.WFactoryRun): string {
   if (run.paused) return 'Paused';
   const s = run.station;
   const st = run.stations[s];
+  if (st === 'limit' && run.limit) return limitText(run.limit.retry_at);
   if (st === 'waiting') return 'Waiting for you';
   if (st === 'working') return 'Working';
   if (st === 'queued') return 'Queued';
@@ -34,22 +47,23 @@ function stateLabel(run: W.WFactoryRun): string {
 }
 
 /** State of one build lane: a working or waiting step wins; otherwise done when all steps are, queued when none started. */
-export function laneState(l: Pick<LaneView, 'red' | 'green' | 'refactor'>, paused: boolean): StationState {
+export function laneState(l: Pick<LaneView, 'red' | 'green' | 'refactor'>, paused: boolean, limit = false): StationState {
   const steps = [l.red, l.green, l.refactor];
-  if (steps.includes('working')) return paused ? 'paused' : 'working';
+  if (steps.includes('working')) return paused ? 'paused' : limit ? 'limit' : 'working';
   if (steps.includes('waiting')) return 'waiting';
   if (steps.every((x) => x === 'done')) return 'done';
   if (steps.every((x) => x === 'todo' || x === 'queued' || x === 'next')) return 'queued';
-  return paused ? 'paused' : 'working';
+  return paused ? 'paused' : limit ? 'limit' : 'working';
 }
 
 function whereLabel(run: W.WFactoryRun): string {
   if (run.paused) return 'Paused';
   const st = run.stations[run.station];
   if (st === 'waiting') return 'Waiting for you';
+  if (st === 'limit' && run.limit) return limitText(run.limit.retry_at);
   if (run.station === 'build' && run.lanes.length > 1) {
-    const states = run.lanes.map((l) => laneState(l, false));
-    let i = states.findIndex((x) => x === 'working' || x === 'waiting');
+    const states = run.lanes.map((l) => laneState(l, false, run.stations.build === 'limit'));
+    let i = states.findIndex((x) => x === 'working' || x === 'waiting' || x === 'limit');
     if (i < 0) i = states.findIndex((x) => x !== 'done');
     return `Build · behavior ${Math.max(i, 0) + 1} of ${run.lanes.length}`;
   }
@@ -100,6 +114,9 @@ function adaptRun(run: W.WFactoryRun, idx: number): RunView {
     agents: adaptAgents(run.agents),
     lanes: adaptLanes(run.lanes),
     attention: run.attention,
+    limit: run.limit
+      ? { task: run.limit.task, role: run.limit.role, runner: run.limit.runner, retryAt: run.limit.retry_at, reason: run.limit.reason }
+      : null,
     pendingNotes: run.pending_notes,
   };
 }
@@ -131,5 +148,6 @@ export function floorSnapshot(w: W.WFactory): FloorSnapshot {
     limits,
     runs: w.runs.map(adaptRun),
     queue,
+    routingProblems: w.routing?.problems ?? [],
   };
 }

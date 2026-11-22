@@ -411,7 +411,7 @@ class TaskOps:
                     raise problem
             text, digest = self._before_snapshot(run, self.task_dir(run["slug"], task_id))
             extra = {"started_at": _now(), "pid": pid, "pid_started_at": pid_started_at, "waiting_on": None,
-                     "before_snapshot": text, "before_sha256": digest}
+                     "before_snapshot": text, "before_sha256": digest, "retry_at": None, "limit_reason": None}
             if owner:
                 extra.update(owner_pid=os.getpid(), owner_started_at=adapters.process_start_time(os.getpid()))
             payload = None
@@ -431,6 +431,65 @@ class TaskOps:
         return self._in_task_tx(task_id, lambda run, t: self._set_state(
             run, t, "WAITING_FOR_INPUT", machines.ENGINE, "task.waiting", {"waiting_on": waiting_on},
             {"waiting_on": waiting_on, "question": question}))
+
+    # ---- usage limits (Sentinel 2.1)
+    def fallback_runner(self, cfg, runner_id, role):
+        """The installed runner `routing.fallback` names for this role (first) or runner, else None."""
+        import run_stage
+        from runtime import runner_installed
+        table = (cfg.get("routing") or {}).get("fallback") or {}
+        runners = run_stage.all_runners(cfg)
+        disabled = set((cfg.get("providers") or {}).get("disabled") or [])
+        for key in (role, runner_id):
+            name = table.get(key) if isinstance(table, dict) else None
+            if isinstance(name, str) and name != runner_id and name not in disabled and name in runners \
+                    and runner_installed(runners[name]):
+                return name
+        return None
+
+    def limit_task(self, task_id, hit):
+        """A runner hit a usage limit (`limits.classify` gave `hit`). RUNNING goes back to QUEUED, not FAILED. With
+        `routing.fallback` naming an installed runner the task is re-queued on it at once (once per task); otherwise it waits
+        until `hit["retry_at"]`. The recovery file of the dead process is removed so nothing finishes the task as failed."""
+        def go(run, t):
+            machines.check_task(t["state"], "QUEUED", machines.ENGINE)
+            cfg = self._run_config(run)
+            alt = self.fallback_runner(cfg, t["provider"], t["role"]) if not t["limit_hits"] else None
+            payload = {"runner": t["provider"], "retry_at": None if alt else hit["retry_at"], "reason": hit["reason"],
+                       "parsed": hit["parsed"], "fallback": {"from": t["provider"], "to": alt} if alt else None}
+            extra = {"pid": None, "pid_started_at": None, "owner_pid": None, "owner_started_at": None, "waiting_on": None,
+                     "retry_at": None if alt else hit["retry_at"], "limit_reason": hit["reason"],
+                     "limit_hits": (t["limit_hits"] or 0) + 1}
+            if alt:
+                extra.update(provider=alt, model=None)
+            self._set_state(run, t, "QUEUED", machines.ENGINE, "task.limit_reached", extra, payload)
+        row = self._in_task_tx(task_id, go)
+        try:
+            (self.task_dir(self.reg.get_run_by_id(row["run_id"])["slug"], task_id) / "exit.json").unlink()
+        except OSError:
+            pass
+        return row
+
+    def limit_backoff_minutes(self, cfg):
+        value = (cfg.get("routing") or {}).get("limit_backoff")
+        return value if _int(value) and value >= 1 else 30
+
+    def retry_limited_now(self, slug):
+        """`sentinel resolve --retry-now`: every task of the run that waits for a usage limit may start at once. Returns ids."""
+        run = self._get_v2(slug)
+        ids = [t["id"] for t in self.reg.rows("tasks", run_id=run["id"]) if t["state"] == "QUEUED" and t["retry_at"]]
+        if ids:
+            with self.reg.transaction():
+                for tid in ids:
+                    self.reg.update_row("tasks", tid, retry_at=None)
+        return ids
+
+    @staticmethod
+    def limit_wait(task, now=None):
+        """The retry time of a QUEUED task that waits for a usage limit, else None (a past time is not waiting)."""
+        if task["state"] != "QUEUED" or not task["retry_at"]:
+            return None
+        return task["retry_at"] if task["retry_at"] > (now or _now()) else None
 
     def _cancel_in_tx(self, run, t, actor, reason, cascade=True, root=None):
         """Inside a transaction: CANCELLED, queue the process kill for after the commit, cancel dependents."""

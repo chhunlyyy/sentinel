@@ -10,6 +10,7 @@ import { AgentsPanel } from './Agents.tsx';
 import { KnowledgeScreen } from './Knowledge.tsx';
 import { ReadinessPanel, readinessAllowsTasks } from '../components/ReadinessPanel.tsx';
 import { RunTable } from '../components/RunTable.tsx';
+import { RoutingBanner } from '../components/RoutingFix.tsx';
 import { UnifiedText } from '../components/DiffView.tsx';
 import { formatTime, prefix } from '../format.ts';
 import { Link, enc, navigate, type Route } from '../router.tsx';
@@ -243,6 +244,8 @@ function OverviewTab({ pid }: { pid: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <RoutingBanner pid={pid} problems={factoryRes.data?.routing?.problems ?? []} onFixed={() => void factoryRes.reload()} />
+
       {/* At-a-glance section */}
       <section aria-label="At a glance" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
         <Link

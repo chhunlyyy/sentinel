@@ -106,9 +106,9 @@ def max_agents_over(projects):
 
 
 # ---- routing preflight
-def routing_problems(config):
-    """[text] for every role an engine-driven run may use that does not route to a CLI runner (the native adapter needs an
-    AI tool session). Empty when the run can start."""
+def routing_problem_roles(config):
+    """[(role, text)] for every role an engine-driven run may use that does not route to a CLI runner (the native adapter
+    needs an AI tool session). Empty when the run can start."""
     import run_stage
     from tasks import select_adapter
     roles = list(ENGINE_ROLES)
@@ -132,8 +132,41 @@ def routing_problems(config):
             if found:
                 break
         if found:
-            problems.append(found)
+            problems.append((role, found))
     return problems
+
+
+def routing_problems(config):
+    """[text] for every role that blocks an engine-driven run (see routing_problem_roles)."""
+    return [text for _, text in routing_problem_roles(config)]
+
+
+def routing_fix(config, suggestion=None):
+    """What the "Fix routing" dialog and `sentinel doctor --fix-routing` show: {"applies", "problems": [{"role", "text",
+    "current", "suggested"}], "changes": [{"path", "value"}]}. `applies` is false unless the project's driver is `engine`
+    (an AI tool session may use the native adapter). `suggestion` is `providers.suggest_routing()`; `changes` are config
+    paths for the suggested runners (`agents.<role>.runner`, `agents.<role>.model`, and `single_model: false`)."""
+    if suggestion is None:
+        import providers
+        suggestion = providers.suggest_routing(config)
+    from tasks import select_adapter
+    applies = factory_config(config)["driver"] == "engine"
+    problems = routing_problem_roles(config) if applies else []
+    roles = suggestion.get("roles") or {}
+    rows, changes = [], []
+    for role, text in problems:
+        _, runner, model = select_adapter(config, role)
+        pick = roles.get(role) or {"runner": "claude", "model": None}
+        rows.append({"role": role, "text": text, "current": {"runner": None if runner == "native" else runner, "model": model},
+                     "suggested": {"runner": pick["runner"], "model": pick.get("model")}})
+        changes.extend(role_changes(role, pick["runner"], pick.get("model")))
+    if changes:
+        changes.insert(0, {"path": "single_model", "value": False})
+    return {"applies": applies, "problems": rows, "changes": changes}
+
+
+def role_changes(role, runner, model):
+    return [{"path": f"agents.{role}.runner", "value": runner}, {"path": f"agents.{role}.model", "value": model or None}]
 
 
 def preflight_message(slug, problems):
@@ -359,7 +392,12 @@ def _knowledge(reg, slug):
     return jobs[-1]["state"] if jobs else None
 
 
-def _station_states(eng, run, tasks, paused):
+def _limit_waits(eng, tasks, now):
+    """The QUEUED tasks that wait for a provider usage limit (retry_at in the future), earliest first."""
+    return sorted((t for t in tasks if eng.limit_wait(t, now)), key=lambda t: t["retry_at"])
+
+
+def _station_states(eng, run, tasks, paused, now=None):
     """(current station, {station: state}, attention) from the run state, its tasks and its verification and knowledge rows."""
     reg = eng.reg
     state = run["state"]
@@ -384,9 +422,11 @@ def _station_states(eng, run, tasks, paused):
             rounds = reg.rows("verification_rounds", run_id=run["id"]) if current == "verify" else []
             if any(t["state"] in LIVE for t in mine) or any(not r["finished_at"] and not r["interrupted"] for r in rounds):
                 here = "working"
+            elif any(ROLE_STATION.get(t["role"], "build") == current for t in _limit_waits(eng, mine, now)):
+                here = "limit"   # every agent here waits for a usage limit to end: a paused look, not a failure
             else:
                 here = "queued"
-        if paused and here in ("working", "queued"):
+        if paused and here in ("working", "queued", "limit"):
             here = "paused"
     index = STATIONS.index(current)
     states = {}
@@ -395,6 +435,15 @@ def _station_states(eng, run, tasks, paused):
     if current == "knowledge" and here == "done":
         states["knowledge"] = "done"
     return current, states, attention
+
+
+def _limit(eng, tasks, current, states, now):
+    """None, or what the run waits for: {"station", "task", "role", "runner", "retry_at", "reason"} of the earliest wait."""
+    if states.get(current) != "limit":
+        return None
+    t = _limit_waits(eng, [t for t in tasks if ROLE_STATION.get(t["role"], "build") == current], now)[0]
+    return {"station": current, "task": t["id"], "role": t["role"], "runner": t["provider"], "retry_at": t["retry_at"],
+            "reason": t["limit_reason"]}
 
 
 def _agents(tasks, current, states):
@@ -445,6 +494,9 @@ def _activity_text(type_, p, station):
     state = p.get("state")
     if type_ == "task.started":
         return f"{label} agent started"
+    if type_ == "task.limit_reached":
+        return f"{label} agent waits for the {p.get('runner') or 'provider'} usage limit" if not p.get("fallback") else \
+            f"{label} agent switched to {p['fallback'].get('to')} (usage limit)"
     if type_ == "task.finished":
         return {"COMPLETED": f"{label} agent finished", "FAILED": f"{label} agent failed"}.get(state)
     if type_ == "approval.requested":
@@ -458,7 +510,7 @@ def _activity_text(type_, p, station):
             "run.note_added": "Note added", "knowledge.failed": "Knowledge job failed"}.get(type_)
 
 
-ACTIVITY_TYPES = ("task.started", "task.finished", "approval.requested", "approval.decided", "acceptance.decided", "run.created",
+ACTIVITY_TYPES = ("task.started", "task.finished", "task.limit_reached", "approval.requested", "approval.decided", "acceptance.decided", "run.created",
                   "run.paused", "run.unpaused", "run.note_added", "knowledge.failed")
 
 
@@ -497,6 +549,7 @@ def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False
     running tasks over all projects (the global limit); it defaults to this project's own count. `factory_paused` is the
     whole-factory pause flag; `who` and `activity` are built from the routing config and the registry."""
     reg = eng.reg
+    now = now or _now()
     limits = factory_config(eng.config)
     here = running_tasks(reg)
     total = max(here, total_running if total_running is not None else here)
@@ -514,20 +567,22 @@ def snapshot(eng, project_id, total_running=None, now=None, factory_paused=False
             continue
         tasks = reg.rows("tasks", run_id=run["id"])
         paused = bool(run["paused"])
-        current, states, attention = _station_states(eng, run, tasks, paused)
+        current, states, attention = _station_states(eng, run, tasks, paused, now)
         item = {"slug": run["slug"], "title": title_of(run), "type": run["type"], "driver": run["driver"], "paused": paused,
                 "state": run["state"], "tier": run["tier"], "station": current, "stations": states,
                 "next_station": STATIONS[STATIONS.index(current) + 1] if current != STATIONS[-1] else None,
                 "agents": _agents(tasks, current, states), "lanes": _lanes(reg, run, tasks, paused), "attention": attention,
+                "limit": _limit(eng, tasks, current, states, now),
                 "pending_notes": len(eng.unread_notes(run)), "created_at": run["created_at"], "updated_at": run["updated_at"]}
         runs.append(item)
         if full and run["driver"] != "cli" and not paused and run["state"] not in machines.RUN_FINAL \
                 and not any(t["state"] in LIVE for t in tasks) \
                 and any(t["state"] == "QUEUED" and t["adapter"] == "cli" for t in tasks):
             queue.append({"slug": run["slug"], "title": item["title"], "position": len(queue) + 1, "reason": full})
-    return {"project": project_id, "generated_at": now or _now(), "stations": list(STATIONS),
+    return {"project": project_id, "generated_at": now, "stations": list(STATIONS),
             "limits": {**limits, "running_in_project": here, "running_total": total}, "runs": runs, "queue": queue,
-            "factory_paused": bool(factory_paused), "who": who(eng.config), "activity": activity(reg, {r["slug"] for r in runs})}
+            "factory_paused": bool(factory_paused), "who": who(eng.config), "activity": activity(reg, {r["slug"] for r in runs}),
+            "routing": {"problems": routing_problems(eng.config) if limits["driver"] == "engine" else []}}
 
 
 def _now():

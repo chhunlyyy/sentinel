@@ -145,4 +145,44 @@ test.describe('Factory floor screen', () => {
     await expect(heading(page, 'Overview')).toBeVisible();
     await expect(page.getByTestId('installation-summary')).toBeVisible();
   });
+
+  test('a task waiting for a usage limit shows the paused look with the retry time', async ({ page, api }) => {
+    await api.set(['factory', 'digital-hr', 'runs', 2, 'stations', 'triage'], 'limit');
+    await api.set(['factory', 'digital-hr', 'runs', 2, 'agents'], {});
+    await api.set(['factory', 'digital-hr', 'runs', 2, 'limit'], {
+      station: 'triage', task: 't-0123456789ad', role: 'triage', runner: 'agy', retry_at: '2026-11-21T14:05:00.000000Z', reason: 'quota exceeded',
+    });
+    await open(page, '/projects/digital-hr/floor?task=audit-log-filter');
+    const chip = page.getByRole('group', { name: 'Tasks on the floor' }).getByRole('button', { name: /Audit log filter/ });
+    await expect(chip).toContainText(/Waiting for usage limit · retries \d\d:\d\d/);
+    await expect(page.getByRole('button', { name: 'Triage: Waiting for usage limit' })).toBeVisible();
+    await page.getByRole('button', { name: /^Triage:/ }).click();
+    await expect(page.getByRole('complementary', { name: 'Selected station' })).toContainText('Waiting for usage limit');
+  });
+
+  test('Fix routing: banner, suggestion, preview, save', async ({ page, api }) => {
+    await api.set(['factory', 'digital-hr', 'routing'], { problems: ['triage routes to the native adapter', 'qa routes to the native adapter'] });
+    await open(page, '/projects/digital-hr/floor');
+    const banner = page.getByTestId('fix-routing-banner');
+    await expect(banner).toBeVisible();
+    await banner.getByRole('button', { name: 'Fix routing' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByLabel('Runner for triage')).toHaveValue('claude');
+    await dialog.getByLabel('Model for qa').fill('claude-haiku-5-5');
+    await dialog.getByRole('button', { name: 'Preview the YAML change' }).click();
+    await expect(dialog.getByTestId('unified-diff')).toContainText('agents.qa.model');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(banner).toBeHidden();
+    const posts = await api.posts(/\/config\/save$/);
+    const body = posts[0].body as { changes: { path: string; value: unknown }[]; comment: string };
+    expect(body.comment).toBe('Fix routing');
+    expect(body.changes).toContainEqual({ path: 'single_model', value: false });
+    expect(body.changes).toContainEqual({ path: 'agents.qa.model', value: 'claude-haiku-5-5' });
+  });
+
+  test('the project home shows the Fix routing banner too', async ({ page, api }) => {
+    await api.set(['factory', 'digital-hr', 'routing'], { problems: ['triage routes to the native adapter'] });
+    await open(page, '/projects/digital-hr');
+    await expect(page.getByTestId('fix-routing-banner')).toBeVisible();
+  });
 });

@@ -15,6 +15,7 @@ Everyday commands for running Sentinel 1.1.0: notifications, statistics, the aud
 | A task failed, or a provider is unavailable | warning |
 | A verification check failed | warning |
 | Knowledge harvest failed | warning |
+| A provider usage limit was reached (`task.limit_reached`) | warning, with the retry time and `sentinel resolve <slug> --retry-now`; info when `routing.fallback` took over |
 | Run completed and waiting for acceptance | action: `sentinel accept` |
 | Run accepted, rejected or failed | info or warning |
 
@@ -29,6 +30,12 @@ sentinel notifications read --all
 Which notifications you have read is kept only in `~/.config/sentinel/user.db` (project, registry id, event id and times; no text). Reading does not write to the registry or the audit. The file is created by the first "mark read", not by a fresh install. Text is scrubbed before it is shown. The dashboard bell shows the same list. Desktop notifications are raised by your browser after you press "Enable desktop notifications" and the browser grants permission; `notifications.desktop: false` in the config hides the option (see [config](config.md#notifications)). Sentinel uses no operating system notification tool, service worker or push service, and sends nothing outside the machine.
 
 An agent cannot mark notifications read: `sentinel notifications read` is refused inside a task process.
+
+## Usage limits
+
+A provider CLI that exits non-zero with a usage, quota or rate-limit message (Claude "usage limit reached ... resets 3pm", Gemini and Antigravity `RESOURCE_EXHAUSTED` or "quota exceeded ... reset after 1h2m", Codex "try again at 3:45 PM", HTTP 429) does not fail the task. The task returns from RUNNING to QUEUED with `retry_at` and the reason; the dispatcher starts it after that time, and the run is not parked. Patterns are kept in one table per runner in `sentinel/scripts/limits.py`. Without a parsable time the wait is `routing.limit_backoff` minutes (default 30). With `routing.fallback` the task moves to the fallback runner at once. See [config](config.md#routing-a-model-or-provider-per-stage-optional).
+
+Registry migration 0014 adds the columns `tasks.retry_at`, `limit_reason` and `limit_hits`. It is additive; to roll back, restore the registry backup taken at upgrade (`sentinel.db.bak-13`), since older versions do not read these columns.
 
 ## Stats and analytics
 

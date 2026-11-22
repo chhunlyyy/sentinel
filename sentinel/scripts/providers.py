@@ -76,3 +76,45 @@ def probe(runner_id, config=None, timeout=5):
         return {"id": runner_id, "ok": False, "message": f"no answer within {timeout}s"}
     except Exception as e:
         return {"id": runner_id, "ok": False, "message": f"{type(e).__name__}: {e}"[:200]}
+
+
+def suggest_routing(config=None):
+    all_roles = [
+        "triage", "planner", "specifier", "test_designer", "gherkin", "coder",
+        "tdd_red", "qa_red", "tdd_green", "tdd_refactor", "reviewer", "qa",
+        "hardener", "docs", "retrospective", "cleaner", "repro", "knowledge",
+    ]
+    strong_roles = {
+        "specifier", "coder", "reviewer", "tdd_red", "qa_red", "tdd_green",
+        "tdd_refactor", "hardener", "cleaner", "repro",
+    }
+    installed = [p for p in detect(config) if p["installed"]]
+    installed_ids = {p["id"] for p in installed}
+
+    if "claude" in installed_ids:
+        strong_runner, strong_model = "claude", "claude-sonnet-5-5"
+        fast_runner, fast_model = "claude", "claude-haiku-5-5"
+    elif "gemini" in installed_ids:
+        strong_runner, strong_model = "gemini", "gemini-2.5-pro"
+        fast_runner, fast_model = "gemini", "gemini-2.5-flash"
+    elif "agy" in installed_ids:
+        strong_runner, strong_model = "agy", None
+        fast_runner, fast_model = "agy", None
+    elif "codex" in installed_ids:
+        strong_runner, strong_model = "codex", None
+        fast_runner, fast_model = "codex", None
+    else:
+        strong_runner, strong_model = "claude", "claude-sonnet-5-5"
+        fast_runner, fast_model = "claude", "claude-haiku-5-5"
+
+    role_map = {}
+    for role in all_roles:
+        if role in strong_roles:
+            role_map[role] = {"runner": strong_runner, "model": strong_model}
+        else:
+            role_map[role] = {"runner": fast_runner, "model": fast_model}
+
+    return {
+        "roles": role_map,
+        "items": [{"role": r, "runner": m["runner"], "model": m["model"]} for r, m in role_map.items()],
+    }

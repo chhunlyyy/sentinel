@@ -4,6 +4,7 @@ import * as E from './encode.ts';
 import { applyPreset } from './presets.ts';
 import { analyticsSmall, fourNotifications } from './reports.ts';
 import { twoProjects } from './two-projects.ts';
+import { routingFix } from './knowledge-fixtures.ts';
 
 export function fakeAnswers(): Record<string, unknown> {
   const db = twoProjects();
@@ -55,6 +56,7 @@ export function fakeAnswers(): Record<string, unknown> {
     analytics: analyticsSmall(),
     notification_read: { ...fourNotifications()[0], read_at: '2026-11-14T11:30:00.000000Z' },
     factory: db.factory?.['digital-hr'],
+    routing_fix: routingFix('digital-hr', ['triage routes to the native adapter']),
     factory_state: { paused: false, paused_at: null, running_total: 3, max_agents: 4 },
   };
 }

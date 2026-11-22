@@ -343,6 +343,7 @@ export function digitalHrFactory(): W.WFactory {
           lane('c-0123456789ac', 'HR only', 'QUEUED', 'todo', 'todo', 'todo'),
         ],
         attention: null,
+        limit: null,
         pending_notes: 0,
         created_at: '2026-11-21T09:58:00.000000Z',
         updated_at: '2026-11-21T10:45:14.000000Z',
@@ -365,6 +366,7 @@ export function digitalHrFactory(): W.WFactory {
         agents: {},
         lanes: [],
         attention: { kind: 'needs_human', reason: 'Spec v1 waits for your approval' },
+        limit: null,
         pending_notes: 0,
         created_at: '2026-11-21T10:10:00.000000Z',
         updated_at: '2026-11-21T10:24:52.000000Z',
@@ -389,6 +391,7 @@ export function digitalHrFactory(): W.WFactory {
         },
         lanes: [],
         attention: null,
+        limit: null,
         pending_notes: 0,
         created_at: '2026-11-21T10:44:20.000000Z',
         updated_at: '2026-11-21T10:44:58.000000Z',
@@ -398,6 +401,7 @@ export function digitalHrFactory(): W.WFactory {
       { slug: 'payroll-export', title: 'Export payroll as CSV', position: 1, reason: 'the project limit of 3 running tasks is reached' },
       { slug: 'holiday-calendar', title: 'Holiday calendar sync', position: 2, reason: 'the project limit of 3 running tasks is reached' },
     ],
+    routing: { problems: [] },
   };
 }
 

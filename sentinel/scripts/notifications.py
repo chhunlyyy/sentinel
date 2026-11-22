@@ -27,7 +27,7 @@ from util import connect_ro
 USER_DB = "user.db"
 SCHEMA_VERSION = "1"
 CANDIDATES = ("approval.requested", "approval.decided", "run.created", "run.state_changed", "task.finished",
-              "evidence.recorded", "run.status_changed", "knowledge.failed")
+              "task.limit_reached", "evidence.recorded", "run.status_changed", "knowledge.failed")
 ID = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*):(\d+)")
 GATE_TITLE = {"specification": "Specification", "gherkin": "Gherkin"}
 GATE_ARG = {"specification": "spec", "gherkin": "gherkin"}
@@ -83,6 +83,14 @@ def rule(event_type, payload, slug):
             if p.get("error_code") == "E_PROVIDER":
                 return "warning", f"Provider {p.get('provider') or 'unknown'} unavailable", f"{base}/workflow", nxt
             return "warning", f"{p.get('role') or 'task'} failed: {p.get('error_code') or 'error'}", f"{base}/workflow", nxt
+    elif event_type == "task.limit_reached":
+        runner = p.get("runner") or "provider"
+        if p.get("fallback"):
+            return "info", f"{runner} usage limit reached, {p['fallback'].get('to')} takes over", f"{base}/workflow", nxt
+        when = str(p.get("retry_at") or "")
+        clock = f" about {when[11:16]} UTC" if len(when) >= 16 else ""
+        return "warning", f"{runner} usage limit reached, {p.get('role') or 'task'} retries{clock}", f"{base}/workflow", \
+            f"sentinel resolve {slug} --retry-now"
     elif event_type == "evidence.recorded":
         if not p.get("cycle") and (p.get("verdict") == "fail" or p.get("passed") is False):
             return "warning", f"Verification failed: {p.get('kind') or 'check'}", f"{base}/verification", nxt

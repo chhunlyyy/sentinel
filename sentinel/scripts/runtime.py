@@ -109,6 +109,10 @@ class RuntimeOps:
 
     def _task_start_problem(self, run, t):
         """None when the task may start now, else the SentinelError that says why not."""
+        until = self.limit_wait(t)
+        if until:
+            return SentinelError("E_PRECONDITION", f"task {t['id']} waits for the {t['provider']} usage limit until {until}",
+                                 {"retry_at": until, "runner": t["provider"]})
         open_deps = self.open_dependencies(t["id"])
         if open_deps:
             return SentinelError("E_TRANSITION", f"task {t['id']} has open dependencies: {', '.join(open_deps)}",
@@ -505,6 +509,18 @@ class RuntimeOps:
         exit_code, stdout, stderr = adapter.result(handle, timed_out=timed_out)
         if cancelled:
             return self._outcome(task_id, exit_code=exit_code, stderr_tail=self._tail(stderr))
+        if exit_code != 0 and not timed_out:
+            import limits
+            hit = limits.classify(self._task_row(task_id)["provider"], stdout, stderr,
+                                  backoff_minutes=self.limit_backoff_minutes(self._run_config(run)))
+            if hit:
+                try:
+                    row = self.limit_task(task_id, hit)
+                    return self._outcome(task_id, limit=hit["retry_at"], reason=hit["reason"], state=row["state"],
+                                         stderr_tail=self._tail(stderr))
+                except SentinelError as err:
+                    if err.code != "E_TRANSITION":
+                        raise  # a cancel or a recovery finished it first; its state stands
         session = None
         if adapter.runner.get("output") == "json_response":
             from run_stage import parse_output
@@ -677,6 +693,12 @@ class RuntimeOps:
         if waiting:
             return {**base, **self._task_step(waiting[0], run)}
         active = [t["id"] for t in tasks if t["state"] in ACTIVE]
+        limited = [t for t in queued if self.limit_wait(t)]
+        if limited and not active:
+            first = min(limited, key=lambda t: t["retry_at"])
+            return {**base, "kind": "wait", "tasks": [t["id"] for t in limited], "retry_at": first["retry_at"],
+                    "reason": f"waiting for the {first['provider']} usage limit until {first['retry_at']}",
+                    "command": f"sentinel resolve {run['slug']} --retry-now"}
         if active or queued:
             return {**base, "kind": "wait", "tasks": active,
                     "reason": "waiting for running tasks" if active else "queued tasks cannot start yet"}

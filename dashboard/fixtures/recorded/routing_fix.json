@@ -1,0 +1,172 @@
+{
+  "applies": true,
+  "changes": [
+    {
+      "path": "single_model",
+      "value": false
+    },
+    {
+      "path": "agents.triage.runner",
+      "value": "claude"
+    },
+    {
+      "path": "agents.triage.model",
+      "value": "claude-haiku-5-5"
+    },
+    {
+      "path": "agents.planner.runner",
+      "value": "claude"
+    },
+    {
+      "path": "agents.planner.model",
+      "value": "claude-haiku-5-5"
+    },
+    {
+      "path": "agents.specifier.runner",
+      "value": "claude"
+    },
+    {
+      "path": "agents.specifier.model",
+      "value": "claude-sonnet-5-5"
+    },
+    {
+      "path": "agents.test_designer.runner",
+      "value": "claude"
+    },
+    {
+      "path": "agents.test_designer.model",
+      "value": "claude-haiku-5-5"
+    },
+    {
+      "path": "agents.reviewer.runner",
+      "value": "claude"
+    },
+    {
+      "path": "agents.reviewer.model",
+      "value": "claude-sonnet-5-5"
+    },
+    {
+      "path": "agents.qa.runner",
+      "value": "claude"
+    },
+    {
+      "path": "agents.qa.model",
+      "value": "claude-haiku-5-5"
+    },
+    {
+      "path": "agents.hardener.runner",
+      "value": "claude"
+    },
+    {
+      "path": "agents.hardener.model",
+      "value": "claude-sonnet-5-5"
+    },
+    {
+      "path": "agents.docs.runner",
+      "value": "claude"
+    },
+    {
+      "path": "agents.docs.model",
+      "value": "claude-haiku-5-5"
+    }
+  ],
+  "problems": [
+    {
+      "current": {
+        "model": null,
+        "runner": null
+      },
+      "role": "triage",
+      "suggested": {
+        "model": "claude-haiku-5-5",
+        "runner": "claude"
+      },
+      "text": "triage routes to the native adapter"
+    },
+    {
+      "current": {
+        "model": null,
+        "runner": null
+      },
+      "role": "planner",
+      "suggested": {
+        "model": "claude-haiku-5-5",
+        "runner": "claude"
+      },
+      "text": "planner routes to the native adapter"
+    },
+    {
+      "current": {
+        "model": null,
+        "runner": null
+      },
+      "role": "specifier",
+      "suggested": {
+        "model": "claude-sonnet-5-5",
+        "runner": "claude"
+      },
+      "text": "specifier routes to the native adapter"
+    },
+    {
+      "current": {
+        "model": null,
+        "runner": null
+      },
+      "role": "test_designer",
+      "suggested": {
+        "model": "claude-haiku-5-5",
+        "runner": "claude"
+      },
+      "text": "test_designer routes to the native adapter"
+    },
+    {
+      "current": {
+        "model": null,
+        "runner": null
+      },
+      "role": "reviewer",
+      "suggested": {
+        "model": "claude-sonnet-5-5",
+        "runner": "claude"
+      },
+      "text": "reviewer routes to the native adapter"
+    },
+    {
+      "current": {
+        "model": null,
+        "runner": null
+      },
+      "role": "qa",
+      "suggested": {
+        "model": "claude-haiku-5-5",
+        "runner": "claude"
+      },
+      "text": "qa routes to the native adapter"
+    },
+    {
+      "current": {
+        "model": null,
+        "runner": null
+      },
+      "role": "hardener",
+      "suggested": {
+        "model": "claude-sonnet-5-5",
+        "runner": "claude"
+      },
+      "text": "hardener routes to the native adapter"
+    },
+    {
+      "current": {
+        "model": null,
+        "runner": null
+      },
+      "role": "docs",
+      "suggested": {
+        "model": "claude-haiku-5-5",
+        "runner": "claude"
+      },
+      "text": "docs routes to the native adapter"
+    }
+  ],
+  "project": "digital-hr"
+}

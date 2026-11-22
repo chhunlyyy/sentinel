@@ -66,7 +66,20 @@ sentinel pause leave-export                                 # start nothing new;
 sentinel unpause leave-export
 sentinel note leave-export "reuse ExportService, do not add a new class"   # read once by the next agent
 sentinel resolve leave-export --refresh-config -m "routing fixed"          # pick up a changed config
+sentinel resolve leave-export --retry-now                                  # start tasks that wait for a usage limit at once
 ```
+
+When a provider CLI stops because of a usage or rate limit, the task is not failed: it goes back to the queue with a retry time read from the message (or `routing.limit_backoff`, default 30 minutes), and the dispatcher starts it again after that time. `sentinel next <slug>` then answers `Wait: waiting for the claude usage limit until <time>` with the `--retry-now` command. If `routing.fallback` names an installed runner, the task runs there at once instead. `--retry-now` is for a human at a terminal.
+
+### Fix routing
+
+An engine-driven run needs a command-line runner for every role. If a role has none, the run is blocked with a routing message.
+
+```bash
+sentinel doctor --fix-routing    # prints each blocked role with a suggested runner and model and the YAML change
+```
+
+The command writes `sentinel.config.yaml` only after you type `yes` in an interactive terminal (it is refused in a task process and without a terminal, after printing the suggestion). The change is stored in the config history. Comments in the file are not kept, as with the dashboard.
 
 ## The background service
 

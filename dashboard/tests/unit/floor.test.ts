@@ -282,3 +282,42 @@ describe('floor snapshot additions and lanes', () => {
     expect(floorSnapshot(w).runs[0].whereLabel).toBe('Build \u00b7 behavior 2 of 3');
   });
 });
+
+describe('usage limit and routing problems', () => {
+  const limited = (): W.WFactory => {
+    const w = JSON.parse(JSON.stringify(SAMPLE_WIRE_FACTORY)) as W.WFactory;
+    const run = w.runs[0];
+    run.station = 'triage';
+    run.stations = { ...run.stations, triage: 'limit', build: 'todo' };
+    run.lanes = [];
+    run.agents = {};
+    run.limit = { station: 'triage', task: 't-1', role: 'triage', runner: 'claude', retry_at: '2026-11-21T14:05:00.000000Z', reason: 'usage limit reached' };
+    w.routing = { problems: ['triage routes to the native adapter'] };
+    return w;
+  };
+
+  test('a run waiting for a limit gets a paused look and a retry time, not a failed one', () => {
+    const snap = floorSnapshot(limited());
+    const run = snap.runs[0];
+    expect(run.stations.triage).toBe('limit');
+    expect(run.whereLabel).toMatch(/^Waiting for usage limit · retries \d\d:\d\d$/);
+    expect(run.stateLabel).toBe(run.whereLabel);
+    expect(run.limit).toEqual({ task: 't-1', role: 'triage', runner: 'claude', retryAt: '2026-11-21T14:05:00.000000Z', reason: 'usage limit reached' });
+    const look = stateLook('limit');
+    expect(look.label).toBe('Waiting for usage limit');
+    expect(look.ring).toBe(stateLook('paused').ring);
+    expect(look.live).toBe(false);
+    expect(stationsOf(run).triage).toBe('limit');
+  });
+
+  test('routing problems come through, and are empty when the snapshot has none', () => {
+    expect(floorSnapshot(limited()).routingProblems).toEqual(['triage routes to the native adapter']);
+    expect(floorSnapshot(SAMPLE_WIRE_FACTORY).routingProblems).toEqual([]);
+  });
+
+  test('a build lane that works while its task waits for a limit shows the limit', () => {
+    expect(laneState({ red: 'done', green: 'working', refactor: 'todo' }, false, true)).toBe('limit');
+    expect(laneState({ red: 'done', green: 'working', refactor: 'todo' }, true, true)).toBe('paused');
+  });
+});
+

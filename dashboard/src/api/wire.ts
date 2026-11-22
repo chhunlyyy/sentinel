@@ -407,7 +407,7 @@ export interface WAnalytics {
 // ---- Factory (W4) ----
 
 /** Station states returned per run in GET /api/v1/projects/{pid}/factory */
-export type WStationState = 'done' | 'working' | 'waiting' | 'paused' | 'queued' | 'next' | 'todo';
+export type WStationState = 'done' | 'working' | 'waiting' | 'paused' | 'limit' | 'queued' | 'next' | 'todo';
 
 export interface WFactoryAgent {
   task: string;
@@ -442,9 +442,21 @@ export interface WFactoryRun {
   agents: Record<string, WFactoryAgent[]>;
   lanes: WFactoryLane[];
   attention: { kind: 'needs_human' | 'blocked'; reason: string } | null;
+  /** set while the current station waits for a provider usage limit to end (station state `limit`) */
+  limit?: WFactoryLimitWait | null;
   pending_notes: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WFactoryLimitWait {
+  station: string;
+  task: string;
+  role: string;
+  runner: string;
+  /** ISO time the task starts again */
+  retry_at: string;
+  reason: string | null;
 }
 
 export interface WFactoryQueueItem {
@@ -494,6 +506,22 @@ export interface WFactory {
   limits: WFactoryLimits;
   runs: WFactoryRun[];
   queue: WFactoryQueueItem[];
+  /** roles that block engine-driven runs (empty when routing is fine or the driver is not `engine`) */
+  routing?: { problems: string[] };
+}
+
+export interface WRoutingFixRow {
+  role: string;
+  text: string;
+  current: { runner: string | null; model: string | null };
+  suggested: { runner: string; model: string | null };
+}
+
+export interface WRoutingFix {
+  project: string;
+  applies: boolean;
+  problems: WRoutingFixRow[];
+  changes: { path: string; value: unknown }[];
 }
 
 export interface WDetectItem {
