@@ -177,7 +177,7 @@ runners:
 - `output: json_response` reads `status`, `response`, and the session id (`session_field`, default `conversation_id`) from the JSON the tool prints.
 - `models`: model ids the dashboard offers for this runner (Settings > Agents). They are listed before the built-in suggestions for `claude` and `gemini`; "Custom" always accepts any id. A runner without `model_flag` offers none.
 - `unsafe_skip_permissions: true` appends `unsafe_args` and prints a warning. Leave it false unless you accept that the tool will act without asking.
-- Only `claude` and `agy` have been run for real in this project. Check the flags of `codex` and `gemini` against their own documentation.
+- Only `claude` and `agy` have been run for real in this project. `gemini` was run for real only as far as a refused account allows: its flags exist in Gemini CLI 0.60.0 and the runner passes `--skip-trust` (headless Gemini refuses a folder it does not trust) and `--approval-mode auto_edit` (so it can edit files without a prompt), but a successful answer has not been seen. Check the flags of `codex` against its own documentation.
 
 ## notifications
 

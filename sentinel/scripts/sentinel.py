@@ -25,6 +25,17 @@ from initws import detect_profile, load_profile_driver, update_gitignore  # noqa
 from registry import legacy_statuses  # noqa: E402
 
 
+def _failure_line(text):
+    """The line of a failed tool's output that says why. Node tools (gemini) end with a stack trace, so the last line is
+    useless: take the first line that names an error, else the last line that is not a stack frame."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    for ln in lines:
+        if re.search(r"\bError\b", ln) and not ln.startswith("at "):
+            return ln[:300]
+    frames = [ln for ln in lines if not ln.startswith("at ")]
+    return (frames or lines or ["failed"])[-1][:300]
+
+
 def load_json(name):
     return json.loads((ROOT / name).read_text())
 
@@ -226,15 +237,14 @@ def model_problems(config, stage, route, runner, live):
             close = difflib.get_close_matches(model, known, n=3, cutoff=0.4)
             return [f"routing {stage}: agy does not know model {model!r}; " + (f"did you mean {', '.join(close)}?" if close else "") + f" known: {', '.join(known)}"]
         return []
-    command = shlex.split(runner["command"]) + [runner["model_flag"], model]
+    command = shlex.split(runner["command"]) + list(runner.get("args") or []) + [runner["model_flag"], model]  # args: gemini refuses an untrusted folder without --skip-trust
     command += ([runner["prompt_flag"]] if runner.get("prompt_flag") else []) + ["Reply with ok."]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return [f"routing {stage}: model check for {model!r} timed out"]
     if result.returncode != 0:
-        tail = (result.stderr or result.stdout).strip().splitlines()[-1:] or ["failed"]
-        return [f"routing {stage}: {route['runner']} rejected model {model!r}: {tail[0]}"]
+        return [f"routing {stage}: {route['runner']} rejected model {model!r}: {_failure_line(result.stderr or result.stdout)}"]
     return []
 
 
