@@ -488,7 +488,11 @@ class Dash(TtyProc):
 
 
 def tty_env(home):
-    return {**os.environ, **GIT_ENV, "HOME": str(home), "USER": "dev", "LOGNAME": "dev", "PYTHONDONTWRITEBYTECODE": "1"}
+    env = {**os.environ, **GIT_ENV, "HOME": str(home), "USER": "dev", "LOGNAME": "dev", "PYTHONDONTWRITEBYTECODE": "1"}
+    # GIT_ENV is a copy of the environment taken at import time: drop a runner's XDG_CONFIG_HOME (GitHub sets one) so the
+    # command uses <home>/.config/sentinel, the folder the test reads
+    env.pop("XDG_CONFIG_HOME", None)
+    return env
 
 
 def free_port():
