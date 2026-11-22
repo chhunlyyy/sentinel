@@ -158,6 +158,12 @@ export interface WVersion {
   comment: string | null;
 }
 
+export interface WKnowledgeUsed {
+  invariants: { id?: string; path?: string; rule?: string; text: string }[];
+  records: { date?: string; key: string; path?: string; repo?: string; summary?: string; title?: string }[];
+  summaries: { module?: string | null; path: string; repo: string; text: string }[];
+}
+
 interface WReview {
   version: number;
   sha256: string;
@@ -169,6 +175,7 @@ interface WReview {
   versions: WVersion[];
   decision: WDecision | null;
   requested_at: string | null;
+  knowledge_used?: WKnowledgeUsed;
 }
 
 export interface WSpecification extends WReview {
@@ -647,4 +654,26 @@ export interface WKnowledgeBackfill {
   state: 'queued';
   estimated: number | null;
 }
+
+export interface WKnowledgeRelatedRecord {
+  date?: string;
+  key: string;
+  path?: string;
+  repo?: string;
+  summary?: string;
+  title?: string;
+}
+
+export interface WKnowledgeRelatedInvariant {
+  id?: string;
+  path?: string;
+  rule?: string;
+  text?: string;
+}
+
+export interface WKnowledgeRelated {
+  invariants: WKnowledgeRelatedInvariant[];
+  records: WKnowledgeRelatedRecord[];
+}
+
 

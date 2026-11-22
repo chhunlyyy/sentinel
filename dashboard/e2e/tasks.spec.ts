@@ -157,6 +157,33 @@ test.describe('creating a task', () => {
     await expect(shown).toHaveText(text);
     expect(await shown.evaluate((e) => getComputedStyle(e).whiteSpace)).toMatch(/pre/);
   });
+
+  test('AC-TSK-01q knowledge found side panel, slots note, and save as draft', async ({ page }) => {
+    await open(page, '/tasks/new');
+    await page.getByLabel('Project').selectOption('digital-hr');
+
+    // Slots note from factory snapshot
+    await expect(page.getByText(/Slots: \d+ of \d+ busy in digital-hr/)).toBeVisible();
+
+    // Knowledge found panel
+    await expect(page.getByRole('heading', { name: 'Knowledge found' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open knowledge' })).toHaveAttribute('href', '#/projects/digital-hr/knowledge');
+
+    // Debounced query on request change
+    await page.getByLabel('Request').fill('leave balance calculation');
+    await expect(page.getByText(/Leave balance API/)).toBeVisible();
+
+    // Save as draft
+    await page.getByLabel('Slug').fill('my-draft-slug');
+    await page.getByRole('button', { name: 'Save as draft' }).click();
+    await expect(page.getByText('Draft saved')).toBeVisible();
+
+    // Reload page to verify draft survives reload
+    await page.reload();
+    await page.getByLabel('Project').selectOption('digital-hr');
+    await expect(page.getByLabel('Slug')).toHaveValue('my-draft-slug');
+    await expect(page.getByLabel('Request')).toHaveValue('leave balance calculation');
+  });
 });
 
 test.describe('waiting for the AI tool', () => {

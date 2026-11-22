@@ -61,9 +61,9 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET/POST | `/projects/{pid}/tasks` | `runs.list / create(request, repos, type, priority, ...)` |
 | GET | `/tasks/{slug}` | `runs.get` (state, statuses, graph summary) |
 | GET | `/tasks/{slug}/next` | `engine.next` (same as `sentinel next --json`) |
-| GET | `/tasks/{slug}/specification` | current version, hash, validation, diff to previous |
+| GET | `/tasks/{slug}/specification` | current version, hash, validation, diff to previous, `knowledge_used` (records, invariants, summaries read by agents) |
 | GET | `/tasks/{slug}/specification/versions/{v}` | that version |
-| GET | `/tasks/{slug}/gherkin` | features, scenarios, tags, coverage table, hash |
+| GET | `/tasks/{slug}/gherkin` | features, scenarios, tags, coverage table, hash, `knowledge_used` |
 | POST | `/tasks/{slug}/approvals` | body `{gate, sha256, confirmation, decision, comment}` -> `approvals.decide` (human only). `sha256` is the full hash, `confirmation` its first 8 characters as typed |
 | GET | `/tasks/{slug}/workflow` | full graph: nodes (tasks, gates), edges, states |
 | GET | `/tasks/{slug}/tdd` | cycles with phases and evidence ids; each cycle has `red_method` (`test_file` or `qa_scenario`) and `exception` (`{rule, replaced, by, repo}` or null) |
@@ -120,6 +120,7 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/projects/{pid}/knowledge/status` | `readroutes.knowledge_status` | returns knowledge status (cursors, records, by_repo) and kb job summary from `kb_worker` |
 | GET | `/projects/{pid}/knowledge/records?filter=&q=&limit=&cursor=` | `readroutes.knowledge_records` | paginated change records from `index.json`, front matter only, scrubbed text; filter `all|verified|inferred` |
 | GET | `/projects/{pid}/knowledge/records/{key}` | `readroutes.knowledge_record` | single change record body and metadata by key; 404 if not found |
+| GET | `/projects/{pid}/knowledge/related?q=&limit=` | `readroutes.knowledge_related` | related change records and invariants matching query `q` (up to `limit`, default 5), reusing agent search |
 | POST | `/projects/{pid}/knowledge/ingest` | `manage.knowledge_ingest` | queues an ingest job in `kb_jobs`, spawns worker in background, writes audit row `knowledge_ingest`; answers 202 without blocking |
 | POST | `/projects/{pid}/knowledge/snapshot` | `manage.knowledge_snapshot` | queues a snapshot job in `kb_jobs`, spawns worker in background, writes audit row `knowledge_snapshot`; answers 202 without blocking |
 | POST | `/projects/{pid}/knowledge/backfill/estimate` | `manage.knowledge_backfill_estimate` | body `{since?, repo?}`; computes backfill change estimate and returns an estimate token |

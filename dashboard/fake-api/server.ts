@@ -13,6 +13,7 @@ import { summary, twoProjects } from '../fixtures/two-projects.ts';
 import {
   SAMPLE_KNOWLEDGE_RECORDS,
   sampleKnowledgeStatus,
+  sampleKnowledgeRelated,
   sampleKnowledgeCiTemplate,
   sampleRoutingSuggest,
   routingFix,
@@ -902,6 +903,12 @@ route('POST', `${V}/projects/{pid}/config/save`, (c) => {
 
 route('GET', `${V}/projects/{pid}/knowledge/status`, () => {
   return [200, sampleKnowledgeStatus()];
+});
+
+route('GET', `${V}/projects/{pid}/knowledge/related`, (c) => {
+  const q = (c.query.get('q') || '').trim();
+  const limit = Number(c.query.get('limit') || 5);
+  return [200, sampleKnowledgeRelated(q, limit)];
 });
 
 route('GET', `${V}/projects/{pid}/knowledge/records`, (c) => {

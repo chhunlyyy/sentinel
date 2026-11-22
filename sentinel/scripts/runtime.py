@@ -340,15 +340,17 @@ class RuntimeOps:
             parts.append("## Note from the owner\n\n" + "\n\n".join(n["text"] for n in notes))
         try:
             import kb_context
-            kb_text = kb_context.render_project_knowledge(
+            k_data = kb_context.collect_project_knowledge(
                 workspace=self.workspace,
                 config=cfg,
                 repos=sealed.get("repos") or [],
                 write_scope=sealed.get("permissions", {}).get("write") or [],
                 shared_dir=self.state_dir / "shared",
             )
+            kb_text = kb_context.format_project_knowledge(k_data, shared_dir=self.state_dir / "shared")
             if kb_text:
                 parts.append(kb_text)
+            (tdir / "knowledge.json").write_text(json.dumps(k_data, indent=2), encoding="utf-8")
         except Exception:
             pass
         text = "\n\n".join(p.strip() for p in parts) + "\n"

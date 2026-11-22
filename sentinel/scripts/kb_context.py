@@ -83,26 +83,30 @@ def _change_record_overlaps_scope(entry, write_scope, shared_dir=None):
     return False
 
 
-def render_project_knowledge(workspace, config, repos, write_scope, shared_dir):
-    """Build the ## Project knowledge prompt section. Returns '' if disabled, missing, or empty."""
+def collect_project_knowledge(workspace, config, repos, write_scope, shared_dir):
+    """Collect structured project knowledge (records, summaries, invariants) relevant to the task."""
     try:
         kc = knowledge.kb_config(config)
         if not kc.get("enabled", True):
-            return ""
+            return {"invariants": [], "records": [], "summaries": []}
         shared_dir = Path(shared_dir)
         if not shared_dir.is_dir():
-            return ""
+            return {"invariants": [], "records": [], "summaries": []}
 
-        blocks = []
-
-        # 1. Repo summary knowledge/repos/<repo>/summary.md for each task repo
+        summaries = []
+        # 1. Repo summary
         for repo in repos or []:
             sum_path = shared_dir / "knowledge" / "repos" / repo / "summary.md"
             excerpt = _read_file_excerpt(sum_path)
             if excerpt:
-                blocks.append(f"### {sum_path.resolve()}\n\n{excerpt}")
+                summaries.append({
+                    "module": None,
+                    "path": str(sum_path.resolve()),
+                    "repo": repo,
+                    "text": excerpt,
+                })
 
-        # 2. Module summaries knowledge/repos/<repo>/modules/*.md overlapping write_scope
+        # 2. Module summaries overlapping write_scope
         for repo in repos or []:
             modules_dir = shared_dir / "knowledge" / "repos" / repo / "modules"
             if not modules_dir.is_dir():
@@ -125,13 +129,28 @@ def render_project_knowledge(workspace, config, repos, write_scope, shared_dir):
                 if _module_overlaps_scope(repo, mod_path, write_scope):
                     excerpt = _read_file_excerpt(p)
                     if excerpt:
-                        blocks.append(f"### {p.resolve()}\n\n{excerpt}")
+                        summaries.append({
+                            "module": mod_path,
+                            "path": str(p.resolve()),
+                            "repo": repo,
+                            "text": excerpt,
+                        })
 
-        # 3. invariants.md of the shared dir
+        # 3. invariants.md
         inv_path = shared_dir / "invariants.md"
-        excerpt = _read_file_excerpt(inv_path)
-        if excerpt:
-            blocks.append(f"### {inv_path.resolve()}\n\n{excerpt}")
+        invariants = []
+        inv_excerpt = _read_file_excerpt(inv_path)
+        if inv_excerpt:
+            parsed = knowledge.parse_invariants(shared_dir)
+            if parsed:
+                invariants.extend(parsed)
+            else:
+                invariants.append({
+                    "id": "INV-1",
+                    "path": "invariants.md",
+                    "rule": inv_excerpt[:200],
+                    "text": inv_excerpt,
+                })
 
         # 4. 5 newest change records whose modules overlap write_scope
         index = {}
@@ -147,27 +166,73 @@ def render_project_knowledge(workspace, config, repos, write_scope, shared_dir):
             if _change_record_overlaps_scope(entry, write_scope, shared_dir):
                 matching_records.append((key, entry, _latest_reached_at(entry)))
 
-        # Sort by latest reached at descending
         matching_records.sort(key=lambda item: item[2], reverse=True)
 
-        for key, entry, _ in matching_records[:5]:
+        records = []
+        for key, entry, reached_at in matching_records[:5]:
             rp = entry.get("path")
             if not rp:
                 continue
             rec_path = shared_dir / rp
             excerpt = _read_file_excerpt(rec_path)
-            if excerpt:
-                blocks.append(f"### {rec_path.resolve()}\n\n{excerpt}")
+            meta = {}
+            if rec_path.is_file():
+                try:
+                    meta, _ = knowledge.read_record(rec_path)
+                except Exception:
+                    pass
+            date_str = meta.get("date") or entry.get("date") or reached_at
+            records.append({
+                "date": date_str,
+                "key": key,
+                "path": str(rec_path.resolve()),
+                "repo": entry.get("repo", ""),
+                "summary": meta.get("summary") or entry.get("summary", ""),
+                "text": excerpt or "",
+                "title": meta.get("title") or entry.get("title", ""),
+            })
 
-        if not blocks:
-            return ""
+        return {
+            "invariants": invariants,
+            "records": records,
+            "summaries": summaries,
+        }
+    except Exception:
+        return {"invariants": [], "records": [], "summaries": []}
 
-        text = "## Project knowledge\n\n" + "\n\n".join(blocks)
-        if len(text) > MAX_TOTAL_CHARS:
-            text = text[:MAX_TOTAL_CHARS - 3] + "..."
-        return text
+
+def format_project_knowledge(k_data, shared_dir=None):
+    """Format structured knowledge items into the ## Project knowledge prompt markdown."""
+    blocks = []
+    for s in k_data.get("summaries") or []:
+        if s.get("text") and s.get("path"):
+            blocks.append(f"### {Path(s['path']).resolve()}\n\n{s['text']}")
+    if k_data.get("invariants") and shared_dir:
+        inv_path = Path(shared_dir) / "invariants.md"
+        inv_excerpt = _read_file_excerpt(inv_path)
+        if inv_excerpt:
+            blocks.append(f"### {inv_path.resolve()}\n\n{inv_excerpt}")
+    for r in k_data.get("records") or []:
+        if r.get("text") and r.get("path"):
+            blocks.append(f"### {Path(r['path']).resolve()}\n\n{r['text']}")
+
+    if not blocks:
+        return ""
+    text = "## Project knowledge\n\n" + "\n\n".join(blocks)
+    if len(text) > MAX_TOTAL_CHARS:
+        text = text[:MAX_TOTAL_CHARS - 3] + "..."
+    return text
+
+
+def render_project_knowledge(workspace, config, repos, write_scope, shared_dir):
+    """Build the ## Project knowledge prompt section. Returns '' if disabled, missing, or empty."""
+    try:
+        shared_dir = Path(shared_dir)
+        k_data = collect_project_knowledge(workspace, config, repos, write_scope, shared_dir)
+        return format_project_knowledge(k_data, shared_dir=shared_dir)
     except Exception:  # Read-only: missing files are skipped silently, never raise
         return ""
 
 
 kb_context = render_project_knowledge
+

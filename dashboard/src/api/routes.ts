@@ -69,6 +69,7 @@ export const ROUTES = {
   configPreview: { method: 'POST', pattern: '/api/v1/projects/{pid}/config/preview' },
   configSave: { method: 'POST', pattern: '/api/v1/projects/{pid}/config/save' },
   knowledgeStatus: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/status' },
+  knowledgeRelated: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/related' },
   knowledgeRecords: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/records' },
   knowledgeRecord: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/records/{key}' },
   knowledgeCiTemplate: { method: 'GET', pattern: '/api/v1/projects/{pid}/knowledge/ci-template' },

@@ -2,7 +2,10 @@ import type {
   DetectItem,
   KnowledgeCiTemplateResult,
   KnowledgeRecord,
+  KnowledgeRelatedResult,
+  KnowledgeRelatedInvariant,
   KnowledgeStatus,
+  KnowledgeUsed,
   RoutingSuggestResult,
   ConfigFormResult,
 } from '../src/api/types.ts';
@@ -69,6 +72,80 @@ export const SAMPLE_KNOWLEDGE_RECORDS: KnowledgeRecord[] = [
     body: `# Leave balance API\n\nInferred from PR #212.\n\n## Summary\nProvides GET /leave/balance endpoint returning annual leave, sick leave, and compensatory days remaining.`,
   },
 ];
+
+export function sampleKnowledgeRelated(q = '', limit = 5): KnowledgeRelatedResult {
+  const words = q.split(/\s+/).filter(Boolean).map((w) => w.toLowerCase());
+  let records = [...SAMPLE_KNOWLEDGE_RECORDS];
+  if (q) {
+    const matched = records.filter((r) => {
+      const text = `${r.key} ${r.title ?? ''} ${r.summary ?? ''} ${r.repo ?? ''}`.toLowerCase();
+      return text.includes(q.toLowerCase()) || words.some((w) => text.includes(w));
+    });
+    records = matched.length > 0 ? matched : [SAMPLE_KNOWLEDGE_RECORDS[4], SAMPLE_KNOWLEDGE_RECORDS[0]];
+  }
+  const sampleInvariants: KnowledgeRelatedInvariant[] = [
+    { id: 'INV-HR-1', rule: 'HR data only for role HR', text: 'HR data only for role HR', path: 'invariants.md' },
+    { id: 'INV-PAYROLL-1', rule: 'Round once on the final net amount', text: 'Round once on the final net amount', path: 'invariants.md' },
+  ];
+  let invariants = sampleInvariants;
+  if (q) {
+    const matched = sampleInvariants.filter((inv) => {
+      const text = `${inv.id ?? ''} ${inv.rule ?? ''} ${inv.text ?? ''}`.toLowerCase();
+      return text.includes(q.toLowerCase()) || words.some((w) => text.includes(w));
+    });
+    if (matched.length > 0) invariants = matched;
+  }
+  return {
+    invariants: invariants.slice(0, limit),
+    records: records.slice(0, limit).map((r) => ({
+      date: r.date,
+      key: r.key,
+      path: r.path,
+      repo: r.repo,
+      summary: r.summary,
+      title: r.title,
+    })),
+  };
+}
+
+export function sampleKnowledgeUsed(): KnowledgeUsed {
+  return {
+    invariants: [
+      {
+        id: 'INV-HR-1',
+        path: 'invariants.md',
+        rule: 'HR data only for role HR',
+        text: 'HR data only for role HR',
+      },
+    ],
+    records: [
+      {
+        date: '2026-11-03T11:20:00Z',
+        key: 'pr-212',
+        path: 'changes/pr-212.md',
+        repo: 'backend',
+        summary: 'GET /leave/balance per employee; used by the dashboard widget.',
+        title: 'Leave balance API',
+      },
+      {
+        date: '2026-11-20T14:32:00Z',
+        key: 'run-employee-search',
+        path: 'changes/run-employee-search.md',
+        repo: 'backend',
+        summary: 'Adds /employees/search with exact ID match; HR and managers only.',
+        title: 'Employee search by ID',
+      },
+    ],
+    summaries: [
+      {
+        module: 'src/main',
+        path: 'knowledge/repos/backend/modules/src-main.md',
+        repo: 'backend',
+        text: 'Module src/main handles employee leave calculations and queries.',
+      },
+    ],
+  };
+}
 
 export function sampleKnowledgeStatus(): KnowledgeStatus {
   return {

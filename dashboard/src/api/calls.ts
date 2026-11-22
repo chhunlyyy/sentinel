@@ -107,6 +107,7 @@ export const calls = {
   configPreview: (c: Client, pid: string, changes: { path: string; value: unknown }[]) => c.post<W.WConfigPreview>(buildPath('configPreview', { pid }), { changes }),
   configSave: (c: Client, pid: string, changes: { path: string; value: unknown }[], comment?: string) => c.post<W.WConfigSave>(buildPath('configSave', { pid }), { changes, ...(comment ? { comment } : {}) }),
   knowledgeStatus: (c: Client, pid: string) => c.get<W.WKnowledgeStatus>(buildPath('knowledgeStatus', { pid })),
+  relatedKnowledge: (c: Client, pid: string, q?: string, limit?: number) => c.get<W.WKnowledgeRelated>(buildPath('knowledgeRelated', { pid }, { q: q || undefined, limit: limit ? String(limit) : undefined })),
   knowledgeRecords: (c: Client, pid: string, query?: { filter?: string; q?: string; limit?: number; cursor?: string }) => c.get<W.WKnowledgeRecords>(buildPath('knowledgeRecords', { pid }, query ?? {})),
   knowledgeRecord: (c: Client, pid: string, key: string) => c.get<W.WKnowledgeRecord>(buildPath('knowledgeRecord', { pid, key })),
   knowledgeCiTemplate: (c: Client, pid: string, repo: string) => c.get<W.WKnowledgeCiTemplate>(buildPath('knowledgeCiTemplate', { pid }, { repo })),

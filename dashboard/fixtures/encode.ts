@@ -4,6 +4,7 @@
 import type * as T from '../src/api/types.ts';
 import type * as W from '../src/api/wire.ts';
 import type { ProjectData, RunData } from './db.ts';
+import { sampleKnowledgeUsed } from './knowledge-fixtures.ts';
 
 export const installation = (i: T.Installation): W.WInstallation => ({ version: i.version, install_path: i.path, python: i.python, method: i.method });
 
@@ -115,6 +116,7 @@ const validation = (v: { findings: T.Finding[] }) => ({
 export const specification = (s: T.SpecificationAnswer, list: T.VersionRow[], runState: string): W.WSpecification => ({
   version: s.version, sha256: s.sha256, approval_state: s.state, run_state: runState, text: s.text, validation: validation(s.validation), diff: s.diff_to_previous,
   previous_version: s.previous_version, versions: versions(list, s.requested_at ?? ''), decision: decision(s.decision), requested_at: s.requested_at,
+  knowledge_used: s.knowledge_used ?? sampleKnowledgeUsed(),
 });
 
 export const specVersion = (s: T.SpecificationAnswer): W.WSpecVersion => ({ version: s.version, sha256: s.sha256, text: s.text });
@@ -132,6 +134,7 @@ export function gherkin(g: T.GherkinAnswer, runState: string): W.WGherkin {
       summary: '', warnings: g.coverage.filter((c) => c.status === 'missing').map((c) => `${c.category}: missing`),
     },
     validation: validation(g.validation), diff: null, previous_version: null, versions: versions(g.versions, g.requested_at ?? ''), decision: decision(g.decision), requested_at: g.requested_at,
+    knowledge_used: g.knowledge_used ?? sampleKnowledgeUsed(),
   };
 }
 

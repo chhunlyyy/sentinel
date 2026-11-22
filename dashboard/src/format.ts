@@ -12,6 +12,14 @@ export function clock(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? iso : d.toISOString().slice(11, 19);
 }
 
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
 export function prefix(sha: string | null | undefined, n = 8): string {
   return sha ? sha.slice(0, n) : '';
 }

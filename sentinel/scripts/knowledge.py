@@ -1186,3 +1186,146 @@ def refresh_summaries(shared_dir, workspace, config, scrubber=None):
         if res:
             results[repo_cfg["id"]] = res
     return results
+
+
+def parse_invariants(shared_dir):
+    """Parse shared/invariants.md into a list of invariant dicts."""
+    p = Path(shared_dir) / "invariants.md"
+    if not p.is_file():
+        return []
+    try:
+        text = p.read_text(encoding="utf-8")
+    except Exception:
+        return []
+    items = []
+    current = None
+    for line in text.splitlines():
+        line_str = line.strip()
+        if not line_str or line_str.startswith("#"):
+            continue
+        m_id = re.match(r"^-\s*ID:\s*(\S+)", line_str, re.IGNORECASE)
+        m_rule = re.match(r"^(?:Rule|\-\s*Rule):\s*(.+)", line_str, re.IGNORECASE)
+        if m_id:
+            if current:
+                items.append(current)
+            current = {"id": m_id.group(1), "rule": "", "text": "", "path": "invariants.md"}
+        elif m_rule:
+            rule_text = m_rule.group(1).strip()
+            if current:
+                current["rule"] = rule_text
+                current["text"] = rule_text
+            else:
+                items.append({"id": f"INV-{len(items)+1}", "rule": rule_text, "text": rule_text, "path": "invariants.md"})
+        elif line_str.startswith("- ") or line_str.startswith("* "):
+            content = line_str[2:].strip()
+            m_inv = re.match(r"^invariant:\s*(.+)", content, re.IGNORECASE)
+            rule_text = m_inv.group(1).strip() if m_inv else content
+            if current and not current.get("rule"):
+                current["rule"] = rule_text
+                current["text"] = rule_text
+            else:
+                if current:
+                    items.append(current)
+                    current = None
+                items.append({"id": f"INV-{len(items)+1}", "rule": rule_text, "text": rule_text, "path": "invariants.md"})
+        elif current and (line.startswith("  ") or line.startswith("\t")):
+            sub_rule = re.match(r"^\s*Rule:\s*(.+)", line, re.IGNORECASE)
+            if sub_rule:
+                current["rule"] = sub_rule.group(1).strip()
+                current["text"] = current["rule"]
+    if current:
+        items.append(current)
+    if not items and text.strip():
+        items.append({"id": "INV-1", "rule": text.strip()[:200], "text": text.strip()[:200], "path": "invariants.md"})
+    return items
+
+
+def search_related_knowledge(shared_dir, q="", limit=5):
+    """Find related change records and invariants for query `q` (up to `limit` each)."""
+    shared_dir = Path(shared_dir)
+    ensure_layout(shared_dir)
+    index = read_index(shared_dir)
+    q_str = (q or "").strip().lower()
+    words = [w for w in re.split(r"\W+", q_str) if len(w) > 1]
+
+    candidates = []
+    for key, entry in index.items():
+        if not isinstance(entry, dict) or entry.get("status") == "dropped":
+            continue
+        rec_file = shared_dir / entry.get("path", "")
+        meta = {}
+        body = ""
+        if rec_file.is_file():
+            try:
+                meta, body = read_record(rec_file)
+            except Exception:
+                meta, body = dict(entry), ""
+        else:
+            meta = dict(entry)
+
+        title = meta.get("title") or entry.get("title", "")
+        summary = meta.get("summary") or entry.get("summary", "")
+        repo = entry.get("repo", "")
+        modules = " ".join(meta.get("modules") or entry.get("modules") or [])
+        files = " ".join(entry.get("files") or [])
+        haystack = f"{key} {title} {summary} {repo} {modules} {files} {body}".lower()
+
+        reached = entry.get("reached") or []
+        ats = [r.get("at", "") for r in reached if isinstance(r, dict) and r.get("at")]
+        latest_at = max(ats) if ats else ""
+        date_str = meta.get("date") or entry.get("date") or latest_at
+
+        score = 0
+        if not q_str:
+            score = 1
+        else:
+            if q_str in (title.lower() + " " + key.lower()):
+                score += 20
+            elif q_str in haystack:
+                score += 10
+            for w in words:
+                if w in (title.lower() + " " + key.lower()):
+                    score += 5
+                elif w in haystack:
+                    score += 2
+
+        if score > 0:
+            candidates.append((score, latest_at or date_str, {
+                "date": date_str,
+                "key": key,
+                "path": entry.get("path", ""),
+                "repo": repo,
+                "summary": summary,
+                "title": title,
+            }))
+
+    if q_str:
+        candidates.sort(key=lambda c: (c[0], c[1]), reverse=True)
+    else:
+        candidates.sort(key=lambda c: c[1], reverse=True)
+
+    matched_records = [c[2] for c in candidates[:limit]]
+
+    # Invariants
+    all_invs = parse_invariants(shared_dir)
+    if q_str:
+        inv_scored = []
+        for inv in all_invs:
+            inv_text = (inv.get("rule", "") + " " + inv.get("text", "") + " " + inv.get("id", "")).lower()
+            score = 0
+            if q_str in inv_text:
+                score += 10
+            for w in words:
+                if w in inv_text:
+                    score += 3
+            if score > 0:
+                inv_scored.append((score, inv))
+        inv_scored.sort(key=lambda x: x[0], reverse=True)
+        matched_invariants = [x[1] for x in inv_scored[:limit]]
+        if not matched_invariants and all_invs:
+            matched_invariants = all_invs[:limit]
+    else:
+        matched_invariants = all_invs[:limit]
+
+    return {"invariants": matched_invariants, "records": matched_records}
+

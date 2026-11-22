@@ -111,7 +111,7 @@ export const specification = (w: W.WSpecification): T.SpecificationAnswer => ({
   version: w.version, sha256: w.sha256, state: w.approval_state ?? 'NOT_REQUESTED', text: w.text,
   validation: { ok: w.validation.errors.length === 0, findings: findings(w.validation) },
   previous_version: w.previous_version, diff_to_previous: w.diff, versions: w.versions.map(versionRow),
-  decision: record(w.decision), requested_at: w.requested_at,
+  decision: record(w.decision), requested_at: w.requested_at, knowledge_used: w.knowledge_used,
 });
 
 /** An earlier version is read only; its text comes from the versions route, its list from the current answer. */
@@ -153,6 +153,7 @@ export function gherkin(w: W.WGherkin): T.GherkinAnswer {
     })),
     validation: { ok: w.validation.errors.length === 0, findings: findings(w.validation) },
     versions: w.versions.map(versionRow), decision: record(w.decision), requested_at: w.requested_at,
+    knowledge_used: w.knowledge_used,
   };
 }
 
