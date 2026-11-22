@@ -228,7 +228,25 @@ export function SidePanel({ station, state, run, who, pid, onChanged }: SidePane
             Retry now
           </button>
         )}
-        {isWaiting && !isAccept && (
+        {run.attention && (
+          <>
+            <p className="banner warn" data-testid="floor-attention" style={{ margin: 0 }}>
+              {run.attention.kind === 'needs_human' ? 'Needs you' : 'Blocked'}: {run.attention.reason}
+            </p>
+            <Link
+              to={runBase}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                minHeight: 44, borderRadius: 10,
+                background: 'var(--floor-waiting-ring)', color: '#1A1206',
+                fontWeight: 600, textDecoration: 'none',
+              }}
+            >
+              Open the run to fix and resume
+            </Link>
+          </>
+        )}
+        {isWaiting && !isAccept && !run.attention && (
           <Link
             to={`${runBase}/${station.id === 'gate_gherkin' ? 'gherkin' : 'specification'}`}
             style={{
