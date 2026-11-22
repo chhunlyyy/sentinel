@@ -220,7 +220,8 @@ def workflow(reg, run):
         nodes.append({"id": t["id"], "role": t["role"], "repo": t["repo_id"], "state": t["state"], "adapter": t["adapter"],
                       "provider": t["provider"], "model": t["model"], "attempt": t["attempt"], "retry_of": t["retry_of"],
                       "error_code": t["error_code"], "started_at": t["started_at"], "finished_at": t["finished_at"],
-                      "seconds": t["seconds"], "label": label})
+                      "seconds": t["seconds"], "tokens": t["tokens"], "cost": t["cost"],
+                      "input_tokens": t["input_tokens"], "output_tokens": t["output_tokens"], "label": label})
         edges += [{"from": dep, "to": t["id"]} for dep in reg.task_deps(t["id"])]
     gates = [{"gate": g, **{k: a[k] for k in ("state", "version", "sha256")}}
              for g, a in approval_summary(reg, run).items()]

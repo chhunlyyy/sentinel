@@ -618,6 +618,15 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
         with self.reg.transaction():
             self.reg.add_audit(actor, channel, action, target, reason=reason)
 
+    def record_budget_reached(self, stat):
+        with self.reg.transaction():
+            self.reg.add_event(None, "budget.reached", "engine", {
+                "reason": stat["reason"],
+                "tokens_today": stat["tokens_today"],
+                "cost_today": stat["cost_today"],
+                "resets_at": stat["resets_at"],
+            })
+
     def _decide(self, slug, gate, decision, actor, sha256, prefix, comment, who, approver_name, channel):
         if actor != machines.HUMAN:
             raise SentinelError("E_ACTOR", f"{actor} may not decide an approval",

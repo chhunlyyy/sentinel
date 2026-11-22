@@ -327,6 +327,7 @@ class AcceptOps:
                            "started_at": t["started_at"], "finished_at": t["finished_at"], "claim_flags": flags,
                            "summary": summary, "reason": t["reason"],
                            "tokens": t["tokens"], "cost": t["cost"],
+                           "input_tokens": t["input_tokens"], "output_tokens": t["output_tokens"],
                            "cost_reason": None if reported else "not reported by provider"})
             if actual:
                 changed.append({"task": t["id"], "role": t["role"], "files": actual})

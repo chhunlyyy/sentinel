@@ -27,7 +27,7 @@ from util import connect_ro
 USER_DB = "user.db"
 SCHEMA_VERSION = "1"
 CANDIDATES = ("approval.requested", "approval.decided", "run.created", "run.state_changed", "task.finished",
-              "task.limit_reached", "evidence.recorded", "run.status_changed", "knowledge.failed")
+              "task.limit_reached", "evidence.recorded", "run.status_changed", "knowledge.failed", "budget.reached")
 ID = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*):(\d+)")
 GATE_TITLE = {"specification": "Specification", "gherkin": "Gherkin"}
 GATE_ARG = {"specification": "spec", "gherkin": "gherkin"}
@@ -106,6 +106,8 @@ def rule(event_type, payload, slug):
             return "info", "Run accepted", base, nxt
         if execution == "completed" and acceptance == "rejected":
             return "warning", "Run rejected", base, nxt
+    elif event_type == "budget.reached":
+        return "warning", p.get("reason") or "Daily budget reached; new tasks wait until tomorrow", "/floor", None
     return None
 
 
@@ -171,8 +173,8 @@ def _lazy_scrubber(path):
 
 
 # ---- reading the registries
-EVENT_SQL = ("SELECT e.id, e.type, e.at, e.payload, r.slug FROM events e JOIN runs r ON r.id = e.run_id "
-             "WHERE r.workflow_version = '2' AND e.type IN ({marks}){extra} ORDER BY e.id")
+EVENT_SQL = ("SELECT e.id, e.type, e.at, e.payload, r.slug FROM events e LEFT JOIN runs r ON r.id = e.run_id "
+             "WHERE (r.workflow_version = '2' OR e.run_id IS NULL) AND e.type IN ({marks}){extra} ORDER BY e.id")
 
 
 def _registry_id(conn):
@@ -197,8 +199,10 @@ def _make(source, row):
     if hit is None:
         return None
     level, text, link, command = hit
-    if slug_problem(str(row["slug"])) is not None:  # AC-SEC-09b: a link is always a dashboard route of a real run name
+    if row["slug"] is not None and slug_problem(str(row["slug"])) is not None:  # AC-SEC-09b: a link is always a dashboard route of a real run name
         link = command = None
+    if row["type"] == "budget.reached":
+        link = f"/projects/{source.id}/floor"
     return {"id": f"{source.id}:{row['id']}", "project": source.id, "run": row["slug"], "level": level, "text": _clip(source.clean(text)),
             "link": link, "at": row["at"], "read_at": None, "command": command, "_event": row["id"]}
 

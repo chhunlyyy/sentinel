@@ -1337,6 +1337,51 @@ def _legacy_in_range(state, start, end):
 
 def cmd_stats(args):
     import analytics
+    if getattr(args, "usage", False):
+        since = args.since or args.from_day
+        end = args.to_day
+        from apiserver import userdir
+        cfgdir = userdir.config_dir()
+        sources = []
+        try:
+            p_data = userdir.load_projects(cfgdir)
+            for p in p_data.get("projects", []):
+                pid = p.get("id")
+                ppath = Path(p.get("path") or "")
+                if ppath.is_dir():
+                    try:
+                        cfg_p, cfg = load_config(ppath)
+                        sdir = state_dir_of(cfg_p, cfg)
+                        if (sdir / "sentinel.db").exists():
+                            sources.append((pid, sdir / "sentinel.db"))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        if not sources or (args.project and not any(s[0] == args.project for s in sources)):
+            try:
+                cfg_p, cfg = load_config(args.dir)
+                sdir = state_dir_of(cfg_p, cfg)
+                pid = cfg.get("project", {}).get("name") or "default"
+                if (sdir / "sentinel.db").exists():
+                    sources.append((pid, sdir / "sentinel.db"))
+            except Exception:
+                pass
+
+        if args.project:
+            matched = [s for s in sources if s[0] == args.project]
+            if not matched:
+                raise SentinelError("E_NOT_FOUND", f"no project named {args.project!r}", {"project": args.project})
+            sources = matched
+
+        usage = analytics.compute_usage(sources, project=args.project, since=since, end=end)
+        if args.format == "md":
+            sys.stdout.write(analytics.markdown_usage(usage))
+        else:
+            print(json.dumps(usage, indent=2))
+        return
+
     start, end = _stats_range(args)
     config_path, config = load_config(args.dir)
     state_dir = state_dir_of(config_path, config)
@@ -1864,6 +1909,9 @@ def main():
     stats.add_argument("--from", dest="from_day", metavar="YYYY-MM-DD", help="first run creation date (UTC, inclusive)")
     stats.add_argument("--to", dest="to_day", metavar="YYYY-MM-DD", help="last run creation date (UTC, inclusive)")
     stats.add_argument("--format", choices=("json", "md"), default="json", help="json (default) or a Markdown table of the v2 metrics")
+    stats.add_argument("--usage", action="store_true", help="report usage metrics (tokens and cost by project, model, week, and totals)")
+    stats.add_argument("--project", help="filter usage to this project")
+    stats.add_argument("--since", metavar="YYYY-MM-DD", help="alias/start date for usage")
     stats.set_defaults(func=cmd_stats)
 
     notes = sub.add_parser("notifications", help="list local notifications, or mark them read with `read <id>` or `read --all`")

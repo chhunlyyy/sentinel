@@ -33,6 +33,12 @@ export function analyticsSmall(): W.WAnalytics {
       first_attempt_pass_rate: { value: 0.5, passed_first: 1, verified: 2 },
     },
     rework: { spec_revisions: 1, gherkin_revisions: 1, changes_requested: 1, findings_routed: 2 },
+    usage: {
+      by_model: { 'claude-3-7-sonnet': { tokens: 1000, input_tokens: 800, output_tokens: 200, cost: 0.5, seconds: 12.0, tasks: 1 } },
+      by_week: { '2026-W46': { tokens: 1000, input_tokens: 800, output_tokens: 200, cost: 0.5, seconds: 12.0, tasks: 1 } },
+      by_role: { tdd_green: { tokens: 1000, input_tokens: 800, output_tokens: 200, cost: 0.5, seconds: 12.0, tasks: 1 } },
+      total: { tokens: 1000, input_tokens: 800, output_tokens: 200, cost: 0.5, seconds: 12.0, reported_tasks: 1, unreported_tasks: 0 },
+    },
   };
 }
 

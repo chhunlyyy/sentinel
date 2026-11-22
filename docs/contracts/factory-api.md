@@ -40,10 +40,21 @@ Same session, Host and Origin checks as every read route. No query parameters (a
       "attention": null,
       "limit": null,
       "pending_notes": 0,
+      "task_usage": {
+        "build": {"task": "t-0123456789ab", "role": "tdd_green", "runner": "claude", "model": "sonnet", "tokens": 1200, "input_tokens": 1000, "output_tokens": 200, "cost": 0.05}
+      },
       "created_at": "2026-11-21T09:58:00.000000Z",
       "updated_at": "2026-11-21T10:12:40.000000Z"
     }
   ],
+  "budget": {
+    "tokens_per_day": 1000000,
+    "usd_per_day": 20.0,
+    "tokens_today": 1200,
+    "usd_today": 0.05,
+    "reached": false,
+    "date": "2026-11-21"
+  },
   "queue": [
     {"slug": "payroll-export", "title": "Export payroll as CSV", "position": 1,
      "reason": "the project limit of 2 running tasks is reached"}
@@ -104,6 +115,7 @@ The switch lives in `~/.config/sentinel/factory.json` (`{"paused": true, "paused
 | Route | Use |
 |---|---|
 | `POST /tasks/{slug}/pause`, `/unpause` | body `{comment?}` |
+| `POST /tasks/{slug}/retry-now` | body `{}`; retries limit-waiting tasks at once |
 | `GET /factory`, `POST /factory/pause`, `/factory/resume` | whole-factory pause, body `{comment?}` |
 | `POST /tasks/{slug}/note` | body `{text}` |
 | `POST /tasks/{slug}/control` | cancel, resume, retry (unchanged) |

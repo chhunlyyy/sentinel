@@ -33,9 +33,24 @@ An agent cannot mark notifications read: `sentinel notifications read` is refuse
 
 ## Usage limits
 
-A provider CLI that exits non-zero with a usage, quota or rate-limit message (Claude "usage limit reached ... resets 3pm", Gemini and Antigravity `RESOURCE_EXHAUSTED` or "quota exceeded ... reset after 1h2m", Codex "try again at 3:45 PM", HTTP 429) does not fail the task. The task returns from RUNNING to QUEUED with `retry_at` and the reason; the dispatcher starts it after that time, and the run is not parked. Patterns are kept in one table per runner in `sentinel/scripts/limits.py`. Without a parsable time the wait is `routing.limit_backoff` minutes (default 30). With `routing.fallback` the task moves to the fallback runner at once. See [config](config.md#routing-a-model-or-provider-per-stage-optional).
+A provider CLI that exits non-zero with a usage, quota or rate-limit message (Claude "usage limit reached ... resets 3pm", Gemini and Antigravity `RESOURCE_EXHAUSTED` or "quota exceeded ... reset after 1h2m", Codex "try again at 3:45 PM", HTTP 429) does not fail the task. The task returns from RUNNING to QUEUED with `retry_at` and the reason; the dispatcher starts it after that time, and the run is not parked. Patterns are kept in one table per runner in `sentinel/scripts/limits.py`. Without a parsable time the wait is `routing.limit_backoff` minutes (default 30). With `routing.fallback` the task moves to the fallback runner at once. A task waiting for a usage limit can also be retried immediately via `sentinel resolve <slug> --retry-now` or the floor side panel "Retry now" button (`POST /api/v1/tasks/{slug}/retry-now`). See [config](config.md#routing-a-model-or-provider-per-stage-optional).
 
-Registry migration 0014 adds the columns `tasks.retry_at`, `limit_reason` and `limit_hits`. It is additive; to roll back, restore the registry backup taken at upgrade (`sentinel.db.bak-13`), since older versions do not read these columns.
+Registry migration 0014 adds the columns `tasks.retry_at`, `limit_reason` and `limit_hits`. Registry migration 0015 adds columns `tasks.input_tokens` and `tasks.output_tokens`. They are additive; to roll back, restore the registry backup taken at upgrade (`sentinel.db.bak-13` / `sentinel.db.bak-14`), since older versions do not read these columns.
+
+## Daily project budget
+
+Projects can configure an optional daily budget in `sentinel.config.yaml`:
+```yaml
+factory:
+  budget:
+    tokens_per_day: 1000000
+    usd_per_day: 20.0
+```
+When total tokens or total USD cost reported by tasks finished on that UTC day reach the budget ceiling:
+- The factory dispatcher pauses starting new agent tasks for that project until the next day (00:00 UTC).
+- Tasks currently executing finish normally.
+- An in-app notification `budget.reached` is raised once per day (no desktop notification).
+- A warning banner appears on the factory floor.
 
 ## Stats and analytics
 
@@ -44,9 +59,10 @@ Registry migration 0014 adds the columns `tasks.retry_at`, `limit_reason` and `l
 ```bash
 sentinel stats
 sentinel stats --from 2026-11-01 --to 2026-11-30 --format md
+sentinel stats --usage [--project digital-hr] [--since 2026-11-01] [--format md|json]
 ```
 
-`--from` and `--to` filter on the run's creation date (UTC, inclusive). `--format md` prints a Markdown table. Stats open the registry read only and never create it. The dashboard's Reports screen and `GET /api/v1/reports/analytics` give the same numbers.
+`--from` and `--to` filter on the run's creation date (UTC, inclusive). `--format md` prints a Markdown table. `--usage` outputs usage totals (tokens, input/output tokens, cost, seconds, tasks) and breakdowns by model, week, and role. Stats open the registry read only and never create it. The dashboard's Reports screen and `GET /api/v1/reports/analytics` give the same numbers.
 
 | Metric | Definition |
 |---|---|

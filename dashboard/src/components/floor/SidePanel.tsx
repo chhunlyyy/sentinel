@@ -68,6 +68,16 @@ export function SidePanel({ station, state, run, who, pid, onChanged }: SidePane
   const laneIdx = station.id.startsWith('build-') ? parseInt(station.id.slice('build-'.length), 10) : -1;
   const currentLane = laneIdx >= 0 && run.lanes[laneIdx] ? run.lanes[laneIdx] : null;
 
+  const usage = run.task_usage?.[baseStationId];
+  const usageParts = usage
+    ? [
+        usage.tokens !== null && usage.tokens !== undefined ? `${usage.tokens.toLocaleString()} tokens` : null,
+        usage.cost !== null && usage.cost !== undefined ? `$${usage.cost.toFixed(2)}` : null,
+        usage.seconds !== null && usage.seconds !== undefined ? `${Math.round(usage.seconds)}s` : null,
+      ].filter(Boolean)
+    : [];
+  const usageText = usageParts.join(' · ');
+
   let thisTaskText = '—';
   if (state === 'todo' || state === 'next') {
     thisTaskText = 'Not reached yet';
@@ -81,7 +91,7 @@ export function SidePanel({ station, state, run, who, pid, onChanged }: SidePane
   } else if (agents.length > 0) {
     thisTaskText = `${agents[0].role} · running`;
   } else if (state === 'done') {
-    thisTaskText = 'Done';
+    thisTaskText = usageText ? `Done · used ${usageText}` : 'Done';
   } else if (state === 'waiting') {
     thisTaskText = `Waiting for you${run.pendingNotes > 0 ? ` · ${run.pendingNotes} note(s) pending` : ''}`;
   }
@@ -132,6 +142,14 @@ export function SidePanel({ station, state, run, who, pid, onChanged }: SidePane
     );
   };
 
+  const retryNow = async () => {
+    await action.run(
+      () => calls.retryNow(app.client, run.slug, pid),
+      () => 'Retry queued',
+      { onSettled: onChanged },
+    );
+  };
+
   return (
     <aside
       aria-label="Selected station"
@@ -179,6 +197,12 @@ export function SidePanel({ station, state, run, who, pid, onChanged }: SidePane
 
           <dt className="floor-panel-dt">This task</dt>
           <dd className="floor-panel-dd">{thisTaskText}</dd>
+          {usageText ? (
+            <>
+              <dt className="floor-panel-dt">This task used</dt>
+              <dd className="floor-panel-dd" data-testid="task-usage">{usageText}</dd>
+            </>
+          ) : null}
 
           <dt className="floor-panel-dt">Knowledge</dt>
           <dd className="floor-panel-dd">{station.knowledgeText}</dd>
@@ -188,6 +212,22 @@ export function SidePanel({ station, state, run, who, pid, onChanged }: SidePane
         </dl>
 
         {/* action links */}
+        {(state === 'limit' || run.limit) && (
+          <button
+            type="button"
+            disabled={!enabled || action.pending}
+            onClick={() => void retryNow()}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              minHeight: 44, borderRadius: 10,
+              background: 'var(--floor-waiting-ring)', color: '#1A1206',
+              fontWeight: 600, border: 0, cursor: 'pointer', width: '100%',
+              marginBottom: 8,
+            }}
+          >
+            Retry now
+          </button>
+        )}
         {isWaiting && !isAccept && (
           <Link
             to={`${runBase}/${station.id === 'gate_gherkin' ? 'gherkin' : 'specification'}`}

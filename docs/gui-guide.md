@@ -55,12 +55,15 @@ Intake > Triage > Spec > [you approve] > Scenarios > [you approve] > Build lanes
 - **Knowledge** sits below the path. Its dotted links show it feeding the agents: repository and module summaries, team rules and recent related changes. The link to the agent working right now glows.
 - Small colored chips on a station show which tasks are there. The chips at the top switch between tasks.
 
-A station whose agent waits for a provider usage limit shows **Waiting for usage limit · retries 14:05** (your local time) with the paused look: it is not failed, and the task starts again by itself. `sentinel resolve <slug> --retry-now` starts it at once. A notification tells you when a limit is hit.
+A station whose agent waits for a provider usage limit shows **Waiting for usage limit · retries 14:05** (your local time) with the paused look: it is not failed, and the task starts again by itself. A **Retry now** button in the side panel (or `sentinel resolve <slug> --retry-now` in CLI) starts it at once. A notification tells you when a limit is hit.
+
+If a project has configured a daily budget (`factory.budget`) and reaches its daily token or USD limit, an amber banner appears at the top of the Factory floor: **Daily budget reached: this project will start no new tasks until tomorrow (00:00 UTC). Running tasks finish.** The project also receives an in-app notification `budget.reached`.
 
 Click a station to see it in the side panel:
 
 - **Who**: the role, the AI tool and the model, or "engine" or "you".
 - **This task**: what happened there for this task.
+- **This task used**: when finished, shows the runner, model, input/output tokens, and cost reported by the adapter.
 - **Knowledge**: what that station reads from the knowledge base.
 - **Next**: the station that follows.
 
@@ -90,9 +93,16 @@ When the build and the engine's checks are done, the run waits at **You accept**
 
 - **Report**: what was built, the checks the engine ran itself (tests, lint, typecheck, build, write scopes, no new failing tests), and review findings.
 - **Trace**: each requirement, its acceptance criterion, the cycle that built it and the test that proves it.
+- **Usage**: token usage (input, output, total) and cost per task, grouped by model, with run totals.
 - **Changes**, **TDD cycles** and **Logs**: the diffs, the Red, Green and Refactor evidence, and every agent's output.
 
 Type the report hash prefix and **Accept** (or reject). The changes stay on a branch in each repository with a pull request draft: nothing is merged for you. In the background, Sentinel records the accepted change in the team knowledge base.
+
+## Reports and analytics
+
+Open **Reports** in the menu to see project and team analytics:
+- **Usage**: total token count (with input and output breakdown) and reported cost across agent tasks, plus breakdown tables by model and by calendar week.
+- **Lead time, acceptance rate, approval wait, rework, and cost**.
 
 ## Knowledge
 

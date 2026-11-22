@@ -332,6 +332,12 @@ function FloorContent({ snap, pid, initialTaskSlug, reload }: FloorContentProps)
         </p>
       )}
 
+      {snap.budget?.reached && (
+        <p role="status" className="floor-paused-note" data-testid="budget-banner" style={{ background: 'var(--amber-dim, #382806)', borderColor: 'var(--amber, #f59e0b)', color: 'var(--amber-bright, #fef3c7)' }}>
+          Daily budget reached{snap.budget.reason ? `: ${snap.budget.reason}` : ''} · no new agent tasks start until tomorrow.
+        </p>
+      )}
+
       {/* Task switcher chips */}
       <div
         role="group"

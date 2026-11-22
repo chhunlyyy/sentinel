@@ -496,7 +496,8 @@ class TaskOps:
         self._set_state(run, t, "CANCELLED", actor, "task.finished",
                         {"finished_at": _now(), "reason": reason, "waiting_on": None},
                         {"state": "CANCELLED", "error_code": None, "seconds": _seconds_since(t["started_at"]),
-                         "tokens": None, "reason": reason, "exit_code": None})
+                         "tokens": None, "cost": None, "input_tokens": None, "output_tokens": None,
+                         "reason": reason, "exit_code": None})
         if t["cycle_id"] and t["state"] in ("RUNNING", "WAITING_FOR_INPUT"):
             self.on_cycle_task_cancelled(run, t)
         if t["adapter"] == "cli" and t["pid"] and t["state"] in ("RUNNING", "WAITING_FOR_INPUT"):
@@ -835,7 +836,8 @@ class TaskOps:
                     except OSError:
                         pass
 
-    def finish_task(self, task_id, exit_code=0, seconds=None, timed_out=False, lost=False, session_id=None):
+    def finish_task(self, task_id, exit_code=0, seconds=None, timed_out=False, lost=False, session_id=None,
+                    tokens=None, cost=None, input_tokens=None, output_tokens=None):
         """Ingest the task's result.json and decide its state. `exit_code` is the process exit (0 for a native task).
         FAILED tasks are retried as a new task until their cap; scope and integrity failures go to a human."""
         task0 = self._task_row(task_id)
@@ -850,7 +852,8 @@ class TaskOps:
             art = self._store_result(run, task, v["raw"]) if v.get("raw") and v["data"] is not None else None
             secs = seconds if seconds is not None else _seconds_since(task["started_at"])
             extra = {"error_code": v["code"], "reason": v["message"], "finished_at": _now(), "seconds": secs,
-                     "result_artifact_id": art, "changed_files": json.dumps(v["changed"]), "waiting_on": None}
+                     "result_artifact_id": art, "changed_files": json.dumps(v["changed"]), "waiting_on": None,
+                     "tokens": tokens, "cost": cost, "input_tokens": input_tokens, "output_tokens": output_tokens}
             if session_id:
                 extra["session_id"] = session_id
             for rec in v["records"]:
@@ -860,7 +863,8 @@ class TaskOps:
                 self._task_event(run, task_id, "task.scope_violation", machines.ENGINE,
                                  {"paths": [t for k, t in v["violations"] if k == kind], "kind": kind})
             self._set_state(run, task, v["state"], machines.ENGINE, "task.finished", extra,
-                            {"state": v["state"], "error_code": v["code"], "seconds": secs, "tokens": None,
+                            {"state": v["state"], "error_code": v["code"], "seconds": secs,
+                             "tokens": tokens, "cost": cost, "input_tokens": input_tokens, "output_tokens": output_tokens,
                              "reason": v["message"], "details": v["details"],
                              "exit_code": None if lost or timed_out else exit_code})
             (tdir / "report.json").write_text(json.dumps({

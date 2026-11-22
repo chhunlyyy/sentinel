@@ -249,3 +249,11 @@ def factory_pause(cfgdir, projects, paused, body, user):
 
 def note(eng, slug, body, user):
     return eng.add_note(slug, parse_note(body), user=user, channel=CHANNEL)
+
+
+def retry_now(eng, slug, user):
+    """POST tasks/{slug}/retry-now: clear retry_at for waiting tasks and audit retry_limit_now."""
+    ids = eng.retry_limited_now(slug)
+    eng.audit(user, CHANNEL, "retry_limit_now", slug, reason=", ".join(ids) or "no task waits for a usage limit")
+    return {"resumed_tasks": ids}
+

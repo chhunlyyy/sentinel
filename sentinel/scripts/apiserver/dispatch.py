@@ -106,6 +106,8 @@ class Dispatcher:
             load = {p.id: self._running(p) for p in available}
             total = sum(len(v) for v in load.values())
             for project in available:
+                if self._budget_reached(project):
+                    continue
                 limits = self._limits(project)
                 for tid in self._candidates(project):
                     if len(load[project.id]) >= limits["max_tasks_per_project"] or total >= limits["max_agents"]:
@@ -126,6 +128,23 @@ class Dispatcher:
             thread.join(max(0.0, end - time.time()))
 
     # ---- limits
+    def _budget_reached(self, project):
+        try:
+            with self.projects.engine(project) as eng:
+                stat = factory.budget_status(eng)
+                if not stat["reached"]:
+                    return False
+                today = (factory._now() if hasattr(factory, "_now") else time.strftime("%Y-%m-%d"))[:10]
+                rows = eng.reg._c.execute(
+                    "SELECT id FROM events WHERE type = 'budget.reached' AND substr(at, 1, 10) = ?", (today,)
+                ).fetchall()
+                if not rows:
+                    eng.record_budget_reached(stat)
+                return True
+        except Exception as e:
+            self.log(f"dispatch: budget check {project.id}: {type(e).__name__}: {e}")
+            return False
+
     def _limits(self, project):
         try:
             return factory.factory_config(self.projects.require(project))

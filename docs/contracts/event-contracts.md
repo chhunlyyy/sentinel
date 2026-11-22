@@ -51,6 +51,7 @@ Events are rows in the append-only `events` table (`docs/architecture/data-archi
 | `project.created` / `project.updated` / `repository.added` / `repository.removed` | ids |
 | `publish.requested` / `publish.done` | target, commit |
 | `knowledge.failed` | job, error |
+| `budget.reached` | project, date, tokens, tokens_limit, cost, cost_limit |
 
 ## 3. SSE
 
@@ -77,6 +78,7 @@ Notifications are not stored. `sentinel notifications` and `GET /api/v1/notifica
 | `task.finished` FAILED with E_PROVIDER (provider unavailable) | warning | "Provider <name> unavailable"; `/tasks/<slug>/workflow` |
 | `evidence.recorded` failed (verification) | warning | "Verification failed: <kind>"; `/tasks/<slug>/verification` |
 | `knowledge.failed` | warning | "Knowledge harvest failed"; `/tasks/<slug>` |
+| `budget.reached` | warning | "Daily budget reached: <project>"; `/projects/<pid>/floor` |
 | `run.status_changed` completed, acceptance pending | action | "Run completed, waiting for acceptance"; `/tasks/<slug>/verification` |
 | `run.status_changed` completed, accepted | info | "Run accepted"; `/tasks/<slug>` |
 | `run.status_changed` completed, rejected | warning | "Run rejected"; `/tasks/<slug>` |

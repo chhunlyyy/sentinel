@@ -117,6 +117,7 @@ function adaptRun(run: W.WFactoryRun, idx: number): RunView {
     limit: run.limit
       ? { task: run.limit.task, role: run.limit.role, runner: run.limit.runner, retryAt: run.limit.retry_at, reason: run.limit.reason }
       : null,
+    task_usage: run.task_usage,
     pendingNotes: run.pending_notes,
   };
 }
@@ -146,6 +147,7 @@ export function floorSnapshot(w: W.WFactory): FloorSnapshot {
     generatedAt: w.generated_at,
     stations: w.stations,
     limits,
+    budget: w.budget,
     runs: w.runs.map(adaptRun),
     queue,
     routingProblems: w.routing?.problems ?? [],

@@ -208,6 +208,8 @@ export interface WorkflowNode {
   finished_at: string | null;
   seconds: number | null;
   tokens?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
   cost?: number | null;
   label?: string | null;
   reasons?: Record<string, string>;

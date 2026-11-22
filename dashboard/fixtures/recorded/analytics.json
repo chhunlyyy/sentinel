@@ -6,13 +6,13 @@
   "approval_wait_seconds": {
     "gherkin": {
       "count": 1,
-      "median": 0.002143,
-      "p90": 0.002143
+      "median": 0.002059,
+      "p90": 0.002059
     },
     "specification": {
       "count": 3,
-      "median": 0.001349,
-      "p90": 0.214091
+      "median": 0.002257,
+      "p90": 0.220976
     }
   },
   "cost": {
@@ -84,7 +84,7 @@
     "by_role": {
       "specifier": {
         "count": 3,
-        "median_seconds": 0.009
+        "median_seconds": 0.01
       },
       "tdd_red": {
         "count": 3,
@@ -92,7 +92,7 @@
       },
       "test_designer": {
         "count": 3,
-        "median_seconds": 0.0095
+        "median_seconds": 0.009
       }
     }
   },
@@ -105,6 +105,15 @@
         "refactor": 0
       },
       "total": 3
+    }
+  },
+  "usage": {
+    "by_model": {},
+    "by_role": {},
+    "by_week": {},
+    "total": {
+      "reason": "no usage reported",
+      "value": null
     }
   },
   "verification": {

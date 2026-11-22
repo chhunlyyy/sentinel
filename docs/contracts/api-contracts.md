@@ -65,7 +65,7 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/tasks/{slug}/specification/versions/{v}` | that version |
 | GET | `/tasks/{slug}/gherkin` | features, scenarios, tags, coverage table, hash |
 | POST | `/tasks/{slug}/approvals` | body `{gate, sha256, confirmation, decision, comment}` -> `approvals.decide` (human only). `sha256` is the full hash, `confirmation` its first 8 characters as typed |
-| GET | `/tasks/{slug}/workflow` | full graph: nodes (tasks, gates), edges, states |
+| GET | `/tasks/{slug}/workflow` | full graph: nodes (tasks, gates), edges, states; nodes carry `tokens`, `cost`, `input_tokens`, `output_tokens` |
 | GET | `/tasks/{slug}/tdd` | cycles with phases and evidence ids; each cycle has `red_method` (`test_file` or `qa_scenario`) and `exception` (`{rule, replaced, by, repo}` or null) |
 | GET | `/tasks/{slug}/verification` | `cycles` (id, repo, behavior, state, `red_method`, `exception`), evidence list (round, repo, name, verdict), latest finished `round`, `missing` (planned checks without evidence), acceptance computation and `acceptance_record` (decision, approver, channel, at, comment; null while pending) |
 | GET | `/tasks/{slug}/trace` | trace links and gaps |
@@ -84,7 +84,7 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 |---|---|---|
 | GET | `/notifications?project=&unread=&limit=&cursor=` | notifications computed from the events table (event-contracts section 4); answer `{items, next, unread, unavailable}`; each item is `{id, project, run, level, text, link, at, read_at}` |
 | POST | `/notifications/{id}/read` | mark one read in `~/.config/sentinel/user.db` (CSRF; no audit row; the first read time stays) |
-| GET | `/reports/analytics?project=&from=&to=` | analytics (a missing value is `{value: null, reason}`); the same answer as the `v2` key of `sentinel stats` |
+| GET | `/reports/analytics?project=&from=&to=` | analytics (a missing value is `{value: null, reason}`); includes `usage` (`by_model`, `by_week`, `by_role`, `total`); the same answer as the `v2` key of `sentinel stats` |
 | GET | `/audit?project=` | audit log |
 
 ### Added in Phase F
@@ -103,6 +103,7 @@ Two front ends call the same engine functions: the CLI and the local HTTP API. S
 | GET | `/factory` | whole-factory pause state `{paused, paused_at, running_total, max_agents}`; see factory-api.md |
 | POST | `/factory/pause`, `/factory/resume` | body `{comment?}`; idempotent; the dispatcher starts no new agent task in any project. Audit rows `factory_pause`, `factory_resume`; events `factory.paused`, `factory.resumed` |
 | POST | `/tasks/{slug}/unpause` | body `{comment?}`; audit row `unpause`, event `run.unpaused` |
+| POST | `/tasks/{slug}/retry-now` | body `{}`; calls `Engine.retry_limited_now(slug)`. Retries tasks waiting on usage limits at once. Audit row `retry_limit_now` |
 | POST | `/tasks/{slug}/note` | body `{text}` (at most 4000 characters); answer 201 with the run detail and `note`. The next agent task of the run gets the text once. Audit row `note`, event `run.note_added` |
 | GET | `/projects/{pid}/factory` | the factory snapshot, see [factory-api.md](factory-api.md) |
 

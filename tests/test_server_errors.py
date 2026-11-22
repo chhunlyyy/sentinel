@@ -89,7 +89,8 @@ class Mapping(SV):
                                      "create_project", "register_project", "add_repository", "provider_test", "pause", "unpause",
                                      "note", "detect", "shared_test", "config_preview", "config_save", "knowledge_ingest",
                                      "knowledge_snapshot", "knowledge_backfill_estimate", "knowledge_backfill", "factory_pause",
-                                     "factory_resume"})
+                                     "factory_resume", "retry_now"})
+        self.assertEqual(table["retry_now"].calls, ("Engine.retry_limited_now",))
         for name in ("detect", "shared_test", "config_preview", "knowledge_backfill_estimate"):
             self.assertEqual(table[name].calls, ())  # 2.0 setup: read or probe only, nothing changes
         self.assertEqual(table["config_save"].calls, ("manage.write_config",))  # the same history-keeping save as the YAML editor

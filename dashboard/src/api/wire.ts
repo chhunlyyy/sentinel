@@ -202,6 +202,10 @@ export interface WNode {
   finished_at: string | null;
   seconds: number | null;
   label: string | null;
+  tokens?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cost?: number | null;
 }
 
 export interface WWorkflow {
@@ -385,6 +389,23 @@ export interface WCostTotal {
   unreported_tasks: number;
 }
 
+export interface WUsageTotal {
+  tokens: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost: number | null;
+  seconds: number | null;
+  reported_tasks: number;
+  unreported_tasks: number;
+}
+
+export interface WUsageBreakdown {
+  total: WUsageTotal | WNullMetric;
+  by_model: Record<string, { tokens: number; input_tokens: number; output_tokens: number; cost: number; seconds: number; tasks: number }>;
+  by_week: Record<string, { tokens: number; input_tokens: number; output_tokens: number; cost: number; seconds: number; tasks: number }>;
+  by_role: Record<string, { tokens: number; input_tokens: number; output_tokens: number; cost: number; seconds: number; tasks: number }>;
+}
+
 /** GET /reports/analytics. Each metric is its value, or a WNullMetric with the reason. */
 export interface WAnalytics {
   range: { from: string | null; to: string | null };
@@ -402,6 +423,7 @@ export interface WAnalytics {
     first_attempt_pass_rate: { value: number; passed_first: number; verified: number } | WNullMetric;
   };
   rework: { spec_revisions: number; gherkin_revisions: number; changes_requested: number; findings_routed: number } | WNullMetric;
+  usage?: WUsageBreakdown;
 }
 
 // ---- Factory (W4) ----
@@ -444,9 +466,31 @@ export interface WFactoryRun {
   attention: { kind: 'needs_human' | 'blocked'; reason: string } | null;
   /** set while the current station waits for a provider usage limit to end (station state `limit`) */
   limit?: WFactoryLimitWait | null;
+  task_usage?: Record<string, WTaskUsage>;
   pending_notes: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WTaskUsage {
+  tokens: number | null;
+  cost: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  seconds: number | null;
+  role: string;
+  runner?: string | null;
+  model?: string | null;
+}
+
+export interface WFactoryBudget {
+  reached: boolean;
+  tokens_today: number;
+  cost_today: number;
+  tokens_per_day: number | null;
+  usd_per_day: number | null;
+  reason: string | null;
+  resets_at: string | null;
 }
 
 export interface WFactoryLimitWait {
@@ -472,6 +516,7 @@ export interface WFactoryLimits {
   max_agents: number;
   running_in_project: number;
   running_total: number;
+  budget?: { tokens_per_day: number | null; usd_per_day: number | null };
 }
 
 export interface WFactoryWho {
@@ -506,6 +551,7 @@ export interface WFactory {
   limits: WFactoryLimits;
   runs: WFactoryRun[];
   queue: WFactoryQueueItem[];
+  budget?: WFactoryBudget;
   /** roles that block engine-driven runs (empty when routing is fine or the driver is not `engine`) */
   routing?: { problems: string[] };
 }
