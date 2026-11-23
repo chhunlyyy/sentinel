@@ -135,6 +135,35 @@ class RedVerification(RedBase):
         self.assertEqual((e["classification"], e["verdict"]), ("assertion", "accepted"))
         self.assertEqual([x["mode"] for x in self.tool_log()].count("targeted"), 2)
 
+    def test_a_report_with_only_other_tests_counts_as_a_runner_crash(self):
+        """Another Gradle run in the same build folder left a report of other tests: the run is repeated once."""
+        other = {"exit": 1, "report": [["OtherTest", "unrelated", "pass"]]}
+        tid = self.red({"once": other, "exit": 1, "report": NEW_FAIL + [LEGACY]})
+        self.eng.run_task(tid)
+        self.assertEqual(self.cstate("Remaining"), "RED_VERIFIED")
+        self.assertEqual([x["mode"] for x in self.tool_log()].count("targeted"), 2)
+
+    def test_the_engine_waits_while_another_test_run_uses_the_build_folder(self):
+        import threading
+        import time as _time
+        import cycles
+        tid = self.red({"exit": 1, "report": NEW_FAIL + [LEGACY]})
+        cfg = self.eng._run_config(self.eng._get_v2(SLUG))
+        repo = self.eng._repo_path(cfg, "backend")
+        marker = repo / "build" / "busy.bin"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("x")
+        threading.Timer(1.5, marker.unlink).start()
+        orig = cycles.scopes.test_tools
+        try:
+            cycles.scopes.test_tools = lambda c, r: {**orig(c, r), "busy_paths": ["build/busy.bin"]}
+            began = _time.time()
+            self.eng.run_task(tid)
+        finally:
+            cycles.scopes.test_tools = orig
+        self.assertGreaterEqual(_time.time() - began, 1.4)
+        self.assertEqual(self.cstate("Remaining"), "RED_VERIFIED")
+
     def test_a_compile_error_is_not_run_again(self):
         tid = self.red({"exit": 1, "stdout": "error: cannot find symbol"})
         self.eng.run_task(tid)

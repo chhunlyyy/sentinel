@@ -140,7 +140,7 @@ def check_widening(role, requested, allowed):
             raise SentinelError("E_POLICY", f"{role} task may not write {glob}", {"role": role, "glob": glob})
 
 
-TOOL_KEYS = ("targeted_test", "selector", "selector_join", "test_report", "scenario_ref", "summary_patterns")
+TOOL_KEYS = ("targeted_test", "selector", "selector_join", "test_report", "scenario_ref", "summary_patterns", "busy_paths")
 
 
 def test_tools(config, repo_id):

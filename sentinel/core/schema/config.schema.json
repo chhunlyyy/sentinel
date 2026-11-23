@@ -146,6 +146,13 @@
               "type": "string"
             }
           },
+          "busy_paths": {
+            "description": "repo-relative files that exist while another test run is in progress (e.g. Gradle's in-progress results); the engine waits for them to disappear before it runs the tests",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "migration_lane": {
             "oneOf": [
               {

@@ -64,6 +64,9 @@ def json_list(value):
     return out if isinstance(out, list) else []
 
 
+BUSY_WAIT = 600   # seconds the engine waits for another test run in the same build folder
+
+
 class CycleOps:
     # ---- lookups
     def cycle_rows(self, run):
@@ -307,20 +310,35 @@ class CycleOps:
         rendered by testsel (selectors per test id); the JUnit report goes to a fresh engine-owned directory when the
         profile says `{report_dir}` (an agent cannot pre-write it), else a repo-relative report is cleared first and only a
         file written during the run counts. ValueError: a test name that a selector cannot carry."""
+        self._wait_until_idle(cfg, repo_id, tools)
         ran = self._run_tests_once(cfg, repo_id, command, tools, tests, info)
-        if self._runner_crashed(ran, tools):
-            # the test runner died before writing its report (e.g. Gradle `java.io.EOFException`): run it once more
+        if self._runner_crashed(ran, tools, tests):
+            # the test runner died before writing a report of these tests (e.g. Gradle `java.io.EOFException`, or another
+            # Gradle run in the same build folder): wait until that run is done, then run the tests once more
             first = ran
+            self._wait_until_idle(cfg, repo_id, tools)
             ran = self._run_tests_once(cfg, repo_id, command, tools, tests, info)
             ran["output"] = (f"[sentinel] the first test run ended with exit code {first['exit_code']} and wrote no report, "
                              f"so it was run again\n" + ran["output"])
             ran["started_at"] = first["started_at"]
         return ran
 
+    def _wait_until_idle(self, cfg, repo_id, tools):
+        """Wait (up to BUSY_WAIT seconds) while a `busy_paths` file of the profile exists: another test run, often one an
+        agent started in the background, still uses the build folder, and running now would collide with it."""
+        paths = [self._repo_path(cfg, repo_id) / p for p in tools.get("busy_paths") or []]
+        deadline = time.time() + BUSY_WAIT
+        while any(p.exists() for p in paths) and time.time() < deadline:
+            time.sleep(2)
+
     @staticmethod
-    def _runner_crashed(ran, tools):
-        """A failed run that wrote no test report and shows no compile, dependency or environment error."""
-        if ran["exit_code"] == 0 or ran["report"] is not None:
+    def _runner_crashed(ran, tools, tests=()):
+        """A failed run that reported none of the requested tests (no report, or only other tests' files) and shows no
+        compile, dependency or environment error."""
+        if ran["exit_code"] == 0:
+            return False
+        report = ran["report"] or []
+        if report and (not tests or any(case[0] in set(tests) for case in report)):
             return False
         patterns = tools.get("failure_patterns") or {}
         return not any(classifier.matches(k, ran["output"], patterns) for k in classifier.PATTERN_ORDER)

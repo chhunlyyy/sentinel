@@ -75,6 +75,9 @@
     "path": "build/test-results/test/*.xml"
   },
   "targeted_test": "./gradlew test {selectors}",
+  "busy_paths": [
+    "build/test-results/test/binary/in-progress-results-generic.bin"
+  ],
   "failure_patterns": {
     "compile": [
       "error: cannot find symbol",

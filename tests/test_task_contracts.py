@@ -220,3 +220,22 @@ class Finish(PC):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FindingsAreNormalized(unittest.TestCase):
+    def test_common_slips_in_findings_are_fixed(self):
+        import tasks
+        data = {"findings": ["dead code left in ApprovalSnapshot", {"severity": "low", "message": "rename x"},
+                             {"severity": "High", "text": "self-approval"}, {"text": "no severity"}]}
+        tasks.normalize_findings(data)
+        self.assertEqual(data["findings"], [
+            {"severity": "minor", "text": "dead code left in ApprovalSnapshot"},
+            {"severity": "minor", "message": "rename x", "text": "rename x"},
+            {"severity": "major", "text": "self-approval"},
+            {"text": "no severity", "severity": "minor"}])
+
+    def test_unknown_severity_is_still_refused(self):
+        import tasks
+        data = {"findings": [{"severity": "spicy", "text": "x"}]}
+        tasks.normalize_findings(data)
+        self.assertEqual(data["findings"][0]["severity"], "spicy")

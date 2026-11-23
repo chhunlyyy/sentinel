@@ -80,6 +80,39 @@ def schema_problems(name, doc, indexes=False):
     return sorted(found)
 
 
+SEVERITY_ALIASES = {"minor": "minor", "low": "minor", "info": "minor", "trivial": "minor", "nit": "minor", "note": "minor",
+                    "major": "major", "medium": "major", "moderate": "major", "warning": "major", "high": "major",
+                    "blocker": "blocker"}   # AC-AGT-02f: "critical" and other unknown words stay a schema error
+
+
+def normalize_findings(data):
+    """Agents often write findings loosely. Findings are advisory, so common slips are fixed instead of failing the task:
+    a plain string becomes {"severity": "minor", "text": ...}; a known severity word maps onto blocker/major/minor; a
+    missing `text` is taken from `message`, `description` or `title`. Anything else is left for the schema check."""
+    items = data.get("findings")
+    if not isinstance(items, list):
+        return data
+    fixed = []
+    for item in items:
+        if isinstance(item, str):
+            item = {"severity": "minor", "text": item}
+        elif isinstance(item, dict):
+            item = dict(item)
+            sev = item.get("severity")
+            if isinstance(sev, str) and sev.strip().lower() in SEVERITY_ALIASES:
+                item["severity"] = SEVERITY_ALIASES[sev.strip().lower()]
+            elif "severity" not in item:
+                item["severity"] = "minor"
+            if not isinstance(item.get("text"), str):
+                for key in ("message", "description", "title", "summary"):
+                    if isinstance(item.get(key), str):
+                        item["text"] = item[key]
+                        break
+        fixed.append(item)
+    data["findings"] = fixed
+    return data
+
+
 def select_adapter(config, role, repo=None):
     """(adapter, provider, model) for a role from a config snapshot. Workflows never name a provider (PRV-05)."""
     from run_stage import find_route, single_model, orchestrator_route
@@ -605,6 +638,7 @@ class TaskOps:
             return None, raw, ["result.json is not valid JSON"]
         if not isinstance(data, dict):
             return None, raw, ["result.json must be an object"]
+        normalize_findings(data)
         problems = [t for _, t in schema_problems("agent-result-v1", data, indexes=True)]
         if "task_id" in data and data["task_id"] != task_id and (
                 isinstance(data["task_id"], str) or not any(p.startswith("task_id") for p in problems)):
