@@ -307,6 +307,25 @@ class CycleOps:
         rendered by testsel (selectors per test id); the JUnit report goes to a fresh engine-owned directory when the
         profile says `{report_dir}` (an agent cannot pre-write it), else a repo-relative report is cleared first and only a
         file written during the run counts. ValueError: a test name that a selector cannot carry."""
+        ran = self._run_tests_once(cfg, repo_id, command, tools, tests, info)
+        if self._runner_crashed(ran, tools):
+            # the test runner died before writing its report (e.g. Gradle `java.io.EOFException`): run it once more
+            first = ran
+            ran = self._run_tests_once(cfg, repo_id, command, tools, tests, info)
+            ran["output"] = (f"[sentinel] the first test run ended with exit code {first['exit_code']} and wrote no report, "
+                             f"so it was run again\n" + ran["output"])
+            ran["started_at"] = first["started_at"]
+        return ran
+
+    @staticmethod
+    def _runner_crashed(ran, tools):
+        """A failed run that wrote no test report and shows no compile, dependency or environment error."""
+        if ran["exit_code"] == 0 or ran["report"] is not None:
+            return False
+        patterns = tools.get("failure_patterns") or {}
+        return not any(classifier.matches(k, ran["output"], patterns) for k in classifier.PATTERN_ORDER)
+
+    def _run_tests_once(self, cfg, repo_id, command, tools, tests=(), info=None):
         path = self._repo_path(cfg, repo_id)
         tmp = self.state_dir / "tmp"
         tmp.mkdir(parents=True, exist_ok=True)
@@ -428,13 +447,14 @@ class CycleOps:
             return None
         if cycle["red_method"] == Q.QA:
             return self._verify_qa_locked(task_id, verify)
-        if self.reg.rows("evidence", task_id=task_id):
-            return None
+        if any(e["verdict"] != "needs_human" for e in self.reg.rows("evidence", task_id=task_id)):
+            return None  # verified already; only a run a human resumed after "could not be classified" is verified again
         return verify(run, task, cycle)
 
     def resume_verification(self, slug):
-        """A COMPLETED phase task whose cycle is still running and that has no evidence row (the process died between
-        task and verification) is verified now."""
+        """A COMPLETED phase task whose cycle is still running is verified now when it has no evidence row (the process died
+        between task and verification) or only `needs_human` evidence (the run could not be classified, e.g. the test
+        runner crashed while writing its report, and a human resumed it)."""
         run = self._get_v2(slug)
         if run["state"] != "EXECUTING":
             return []

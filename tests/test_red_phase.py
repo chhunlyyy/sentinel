@@ -124,6 +124,37 @@ class RedVerification(RedBase):
                 self.assertEqual(self.state(), rstate)
                 self.assertEqual(out["exit"], code)
 
+    def test_a_test_runner_crash_without_a_report_is_run_again_once(self):
+        """Gradle died before writing its report (exit 1, no report, no compile/dependency/environment pattern): the engine
+        runs the tests once more and the Red is verified from the second run; the evidence output says so."""
+        crash = {"exit": 1, "stderr": "Execution failed for task ':test'. > java.io.EOFException"}
+        tid = self.red({"once": crash, "exit": 1, "report": NEW_FAIL + [LEGACY]})
+        self.eng.run_task(tid)
+        self.assertEqual(self.cstate("Remaining"), "RED_VERIFIED")
+        e = self.evidence("red")[-1]
+        self.assertEqual((e["classification"], e["verdict"]), ("assertion", "accepted"))
+        self.assertEqual([x["mode"] for x in self.tool_log()].count("targeted"), 2)
+
+    def test_a_compile_error_is_not_run_again(self):
+        tid = self.red({"exit": 1, "stdout": "error: cannot find symbol"})
+        self.eng.run_task(tid)
+        self.assertEqual([x["mode"] for x in self.tool_log()].count("targeted"), 1)
+
+    def test_a_resumed_run_verifies_an_unclassified_red_again(self):
+        """The test runner crashed while writing its report (no report, exit 1): the run parks; once a human resumes it,
+        the completed Red task is verified again instead of leaving the cycle in RED_RUNNING."""
+        import machines
+        tid = self.red({"exit": 1, "stderr": "Execution failed for task ':test'. > java.io.EOFException"})
+        self.eng.run_task(tid)
+        self.assertEqual((self.state(), self.cstate("Remaining")), ("NEEDS_HUMAN", "RED_RUNNING"))
+        self.assertEqual(self.evidence("red")[-1]["verdict"], "needs_human")
+        self.tool_modes(full=BASE_FULL, targeted={"exit": 1, "report": NEW_FAIL + [LEGACY]})
+        self.eng.request_state(SLUG, "EXECUTING", machines.HUMAN, reason="resume")
+        self.eng.resume_verification(SLUG)
+        self.assertEqual(self.cstate("Remaining"), "RED_VERIFIED")
+        self.assertEqual([e["verdict"] for e in self.evidence("red")], ["needs_human", "accepted"])
+        self.assertEqual(self.eng.resume_verification(SLUG), [])  # accepted evidence: nothing is verified twice
+
     def test_AC_TDD_03f_the_retry_brief_carries_the_classified_output(self):
         tid = self.red({"exit": 1, "stdout": "RemainingBalanceTest.java:12: error: cannot find symbol"})
         self.eng.run_task(tid)
