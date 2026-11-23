@@ -44,11 +44,17 @@ export function AcceptanceTab({ run, pid, onChanged, compact }: { run: Run | { s
 
   const record = verification.data?.acceptance_record ?? null;
 
-  const decide = async (d: { decision: Decision; confirmation: string; comment: string | null }) => {
+  const decide = async (d: { decision: Decision; comment: string | null; confirmation?: string }) => {
     const sha = report.data?.sha256;
     if (!sha) return;
+    const body: Record<string, unknown> = {
+      sha256_of_report: sha,
+      decision: d.decision === 'accept' ? 'accept' : 'reject',
+      comment: d.comment,
+    };
+    if (d.confirmation !== undefined) body.confirmation = d.confirmation;
     await action.run(
-      () => calls.accept(app.client, run.slug, pid, { sha256_of_report: sha, confirmation: d.confirmation, decision: d.decision === 'accept' ? 'accept' : 'reject', comment: d.comment }),
+      () => calls.accept(app.client, run.slug, pid, body as { decision: string; comment?: string | null }),
       () => {
         setDone(true);
         return '';

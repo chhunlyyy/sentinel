@@ -15,11 +15,13 @@ interface NeuronButtonProps {
   taskDots: TaskDot[];
   /** second label line: `runner · model` for agents, `engine`, or `you` for gates */
   sub: string;
+  /** one-line name with an ellipsis (build lanes stacked in a column) */
+  compact?: boolean;
   selected: boolean;
   onClick: () => void;
 }
 
-export function NeuronButton({ station, state, taskDots, sub, selected, onClick }: NeuronButtonProps) {
+export function NeuronButton({ station, state, taskDots, sub, selected, onClick, compact = false }: NeuronButtonProps) {
   const L = stateLook(state);
   const isGate = station.kind === 'gate';
   const iconKey: StationIconKey = getStationIconKey(station.id, station.kind);
@@ -316,9 +318,9 @@ export function NeuronButton({ station, state, taskDots, sub, selected, onClick 
       </div>
 
       {/* station name + sub-label sit on a chip so edges running behind never cross the text */}
-      <span className="floor-label">
-        <span className="floor-label-name" style={{ color: L.labelColor }}>{station.name}</span>
-        <span className="floor-label-sub">{sub}</span>
+      <span className={compact ? 'floor-label floor-label-compact' : 'floor-label'}>
+        <span className="floor-label-name" style={{ color: L.labelColor }} title={compact ? station.name : undefined}>{station.name}</span>
+        {sub ? <span className="floor-label-sub">{sub}</span> : null}
       </span>
     </div>
   );

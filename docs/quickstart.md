@@ -60,10 +60,10 @@ The dashboard lands on the **Factory Floor** (`/floor`):
 
 Human gates keep you in control:
 
-1. **Specification approval**: When the task reaches Gate Spec, open My Approvals. Review the generated specification and requirement diff, type the first 8 characters of the hash to confirm, and approve (or request changes).
-2. **Gherkin approval**: At Gate Gherkin, review the behavior scenarios and approve with the typed hash confirmation.
+1. **Specification approval**: When the task reaches Gate Spec, open My Approvals. Review the generated specification and requirement diff, and approve with one click (or request changes to send your text back to the agent). The version hash is still checked, so a changed document is never approved by accident; the CLI still asks for the typed hash.
+2. **Gherkin approval**: At Gate Gherkin, review the behavior scenarios and approve with one click.
 3. **Build & Verify**: The engine executes TDD cycles and independent in-process verification.
-4. **Acceptance**: At Gate Accept, inspect the final report, test evidence, and traceability matrix. Type the hash prefix to accept.
+4. **Acceptance**: At Gate Accept, inspect the final report, test evidence, and traceability matrix. Approve with one-click Accept (the CLI still asks for the typed hash).
 5. **Knowledge harvest**: On acceptance, a detached worker automatically indexes verified change records and module summaries into the team knowledge base.
 
 ## 7. Same thing from the terminal

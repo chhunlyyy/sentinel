@@ -145,7 +145,7 @@ class Approvals(SV):
 
     def test_AC_SEC_03l_missing_fields(self):
         self.serve()
-        for field in ("gate", "sha256", "confirmation", "decision"):
+        for field in ("gate", "sha256", "decision"):
             with self.subTest(field=field):
                 b = self.body(self.h)
                 del b[field]
@@ -153,6 +153,28 @@ class Approvals(SV):
                 self.assertEqual((r.status, r.code), (400, "E_VALIDATION"))
                 self.assertIn(field, r.text)
                 self.assertEqual(self.spec_state()[-1], "IN_REVIEW")
+
+    def test_missing_confirmation_is_accepted(self):
+        self.serve()
+        b = self.body(self.h)
+        self.assertNotIn("confirmation", b)
+        r = self.post(b)
+        self.assertEqual(r.status, 200, r.text)
+        self.assertEqual(self.spec_state()[-1], "APPROVED")
+
+    def test_matching_confirmation_is_accepted(self):
+        self.serve()
+        b = self.body(self.h, confirmation=self.h[:8])
+        r = self.post(b)
+        self.assertEqual(r.status, 200, r.text)
+        self.assertEqual(self.spec_state()[-1], "APPROVED")
+
+    def test_changes_decision_comment_reaches_brief_feedback(self):
+        self.serve()
+        r = self.post(self.body(self.h, decision="changes", comment="Add a scenario for inactive parent departments"))
+        self.assertEqual(r.status, 200, r.text)
+        feedback = self.eng.brief_feedback(SLUG, "specifier")
+        self.assertTrue(any("Add a scenario for inactive parent departments" in f for f in feedback), feedback)
 
     def test_AC_SEC_03m_requesting_changes_needs_a_comment(self):
         self.serve()
@@ -241,12 +263,24 @@ class Approvals(SV):
                                                      "verdict": "pass", "classification": "pass", "failing": "[]", "detail": "{}"})
         return self.eng.write_report(slug)["sha256"] if state == "COMPLETED" else "0" * 64
 
-    def accept_body(self, sha, decision="accept", comment=None, **over):
-        body = {"sha256_of_report": sha, "confirmation": sha[:8], "decision": decision}
+    def accept_body(self, sha, decision="accept", comment=None, confirmation=None, **over):
+        body = {"sha256_of_report": sha, "decision": decision}
+        if confirmation is not None:
+            body["confirmation"] = confirmation
         if comment is not None:
             body["comment"] = comment
         body.update(over)
         return body
+
+    def test_acceptance_confirmation_checks(self):
+        sha = self.completed()
+        self.serve()
+        # wrong confirmation is refused
+        r = self.http.post("/api/v1/tasks/leave-form/acceptance", self.accept_body(sha, confirmation="wrong123"))
+        self.assertEqual((r.status, r.code), (400, "E_VALIDATION"), r.text)
+        # matching confirmation is accepted
+        r = self.http.post("/api/v1/tasks/leave-form/acceptance", self.accept_body(sha, confirmation=sha[:8], comment="Shipped"))
+        self.assertEqual(r.status, 200, r.text)
 
     def test_AC_VER_04k_a_human_confirms_acceptance_in_the_dashboard(self):
         sha = self.completed()

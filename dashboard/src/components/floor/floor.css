@@ -566,15 +566,51 @@
 /* Floor buttons: teal primary #4FD1C1 on #062420 for decision submit */
 .floor-panel [data-testid="decision-panel"] button[type="button"],
 .floor-fullscreen-dialog [data-testid="decision-panel"] button[type="button"] {
-  background: #4FD1C1;
-  border: 1px solid #4FD1C1;
-  color: #062420;
   font-weight: 600;
   min-height: 40px;
   padding: 0 14px;
   border-radius: 10px;
   font-size: 13px;
   cursor: pointer;
+}
+
+.floor-panel [data-testid="decision-panel"] button.btn-primary,
+.floor-fullscreen-dialog [data-testid="decision-panel"] button.btn-primary {
+  background: #4FD1C1;
+  border: 1px solid #4FD1C1;
+  color: #062420;
+}
+
+.floor-panel [data-testid="decision-panel"] button.btn-changes,
+.floor-fullscreen-dialog [data-testid="decision-panel"] button.btn-changes {
+  background: rgba(245, 181, 71, 0.15);
+  border: 1px solid var(--floor-waiting-ring, #F5B547);
+  color: var(--floor-waiting-ring, #F5B547);
+}
+.floor-panel [data-testid="decision-panel"] button.btn-changes:hover:not(:disabled),
+.floor-fullscreen-dialog [data-testid="decision-panel"] button.btn-changes:hover:not(:disabled) {
+  background: var(--floor-waiting-ring, #F5B547);
+  color: #1A1206;
+}
+
+.floor-panel [data-testid="decision-panel"] button.btn-reject,
+.floor-fullscreen-dialog [data-testid="decision-panel"] button.btn-reject {
+  background: transparent;
+  border: 1px solid #33404C;
+  color: var(--floor-text-muted);
+  font-size: 12px;
+}
+.floor-panel [data-testid="decision-panel"] button.btn-reject:hover:not(:disabled),
+.floor-fullscreen-dialog [data-testid="decision-panel"] button.btn-reject:hover:not(:disabled) {
+  border-color: #5A2A2A;
+  color: var(--danger, #F87171);
+}
+
+.floor-panel [data-testid="decision-panel"] button.secondary:not(.btn-changes):not(.btn-reject),
+.floor-fullscreen-dialog [data-testid="decision-panel"] button.secondary:not(.btn-changes):not(.btn-reject) {
+  background: #141A21;
+  border: 1px solid #33404C;
+  color: #E6EAEE;
 }
 
 .floor-panel [data-testid="decision-panel"] button[type="button"]:disabled,
@@ -865,3 +901,11 @@
   cursor: not-allowed;
 }
 
+
+/* build lanes stacked in a column: one line each, so a lane's label never runs into the next lane */
+.floor-label-compact { max-width: 150px; }
+.floor-label-compact .floor-label-name { display: block; max-width: 142px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* long names (scenario paths) wrap inside the side panel instead of widening the page */
+.floor-panel { min-width: 0; }
+.floor-panel h2, .floor-panel dd { min-width: 0; overflow-wrap: anywhere; }

@@ -389,10 +389,17 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
         const decided = record?.record ?? (view.state !== 'IN_REVIEW' ? view.decision : null);
         const label = gate === 'specification' ? 'Specification' : 'Gherkin';
 
-        const decide = async (d: { decision: Decision; confirmation: string; comment: string | null }) => {
+        const decide = async (d: { decision: Decision; comment: string | null; confirmation?: string }) => {
           const loadedSha = shown.sha256;
+          const body: Record<string, unknown> = {
+            gate,
+            sha256: loadedSha,
+            decision: d.decision,
+            comment: d.comment,
+          };
+          if (d.confirmation !== undefined) body.confirmation = d.confirmation;
           await action.run(
-            () => calls.decide(app.client, slug, pid, { gate, sha256: loadedSha, confirmation: d.confirmation, decision: d.decision, comment: d.comment }),
+            () => calls.decide(app.client, slug, pid, body as { gate: 'specification' | 'gherkin' }),
             (r) => {
               setRecord({ record: r.approval, text: DECISION_LABEL[d.decision] });
               return d.decision === 'approve' ? `${label} approved` : d.decision === 'changes' ? 'Changes requested' : 'Run rejected';
@@ -479,6 +486,7 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
               <DecisionPanel
                 key={`${shown.sha256}-${blockedByStale}`}
                 kind="approval"
+                gate={gate}
                 version={view.version}
                 sha256={view.sha256}
                 subject={slug}
@@ -584,6 +592,7 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
                         <DecisionPanel
                           key={`${shown.sha256}-${blockedByStale}-fullscreen`}
                           kind="approval"
+                          gate={gate}
                           version={view.version}
                           sha256={view.sha256}
                           subject={slug}

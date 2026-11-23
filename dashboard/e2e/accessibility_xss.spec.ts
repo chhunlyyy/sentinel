@@ -145,11 +145,7 @@ test.describe('keyboard use', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByRole('main')).toBeFocused();
     await expect(page.getByTestId('review-version')).toBeVisible();
-    await tabTo(page, 'Approve', 80, outlines);
-    await page.keyboard.press('Space');
-    await tabTo(page, 'Type the first 8 characters of the sha256 to confirm', 10, outlines);
-    await page.keyboard.type('3f9a0c12');
-    await tabTo(page, 'Approve version 2', 10, outlines);
+    await tabTo(page, 'Approve version 2', 80, outlines);
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('action-result')).toBeFocused();
     expect(await page.getByTestId('action-result').getAttribute('role')).toBe('status');
@@ -249,10 +245,13 @@ test.describe('labels and announcements', () => {
     expect(describedBy).toBeTruthy();
     expect(await page.locator(`#${describedBy}`).textContent()).toContain('Use lower-case letters');
     await open(page, SPEC_URL);
-    for (const c of ['Approve', 'Request changes', 'Reject']) {
-      await page.getByRole('radio', { name: c, exact: true }).check();
-      expect(await unnamed(page)).toEqual([]);
-    }
+    expect(await unnamed(page)).toEqual([]);
+    await page.getByRole('button', { name: 'Request changes' }).click();
+    expect(await unnamed(page)).toEqual([]);
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('button', { name: 'Reject run…' }).click();
+    expect(await unnamed(page)).toEqual([]);
+    await page.getByRole('button', { name: 'Cancel' }).click();
     await open(page, RUN_URL);
     await page.getByRole('button', { name: 'Cancel run', exact: true }).click();
     expect(await unnamed(page)).toEqual([]);

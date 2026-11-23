@@ -320,8 +320,9 @@ class SV(PCX):
         return self.eng.pending_approval(slug, "spec")["sha256"]
 
     def body(self, sha, gate="specification", decision="approve", comment=None, confirmation=None, **over):
-        b = {"gate": gate, "sha256": sha, "confirmation": confirmation if confirmation is not None else sha[:8],
-             "decision": decision}
+        b = {"gate": gate, "sha256": sha, "decision": decision}
+        if confirmation is not None:
+            b["confirmation"] = confirmation
         if comment is not None:
             b["comment"] = comment
         b.update(over)

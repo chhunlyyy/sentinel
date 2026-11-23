@@ -85,10 +85,9 @@ Under **Control** in the side panel:
 When a task reaches a gate, its station turns amber and **My Approvals** shows a badge. Open the review:
 
 1. Read the specification (or the Gherkin scenarios). The diff shows what changed since the previous version. If the specification was imported from an external AI session, its provenance is displayed next to the version badge (`(imported from a session)`). The **Knowledge used** tab lists the change records, project invariants, and repository/module summaries that the agents read when creating the document.
-2. Choose **Approve**, **Request changes** or **Reject**, and add a comment for the agent if you like.
-3. Type the first 8 characters of the document's hash, shown on the page, and confirm.
+2. In the dashboard, approve with one click (**Approve version N**), or **Request changes** to send your text back to the agent (or **Reject run…**).
 
-The typed hash proves you approved exactly the version you read. Agents cannot approve: they have no session and no terminal.
+The version hash is still checked, so a changed document is never approved by accident; the CLI (`sentinel approve`) still asks for the typed hash. Agents cannot approve: they have no session and no terminal.
 
 ## Review the result and accept
 
@@ -99,7 +98,7 @@ When the build and the engine's checks are done, the run waits at **You accept**
 - **Usage**: token usage (input, output, total) and cost per task, grouped by model, with run totals.
 - **Changes**, **TDD cycles** and **Logs**: the diffs, the Red, Green and Refactor evidence, and every agent's output.
 
-Type the report hash prefix and **Accept** (or reject). The changes stay on a branch in each repository with a pull request draft: nothing is merged for you. In the background, Sentinel records the accepted change in the team knowledge base.
+Confirm with one-click **Accept** (or reject with reason). The report hash is still checked, so a changed document is never accepted by accident; the CLI (`sentinel accept`) still asks for the typed hash. The changes stay on a branch in each repository with a pull request draft: nothing is merged for you. In the background, Sentinel records the accepted change in the team knowledge base.
 
 ## Reports and analytics
 

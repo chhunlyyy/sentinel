@@ -102,9 +102,7 @@ try {
   await frame(page, 'run');
 
   await tab(page, 'Specification');
-  // choose Approve and type the first 8 characters of the shown sha256, as a reviewer does (nothing is submitted)
-  await page.getByRole('radio', { name: 'Approve', exact: true }).check();
-  await page.getByLabel('Type the first 8 characters of the sha256 to confirm').fill('3f9a0c12');
+  // specification review shows one-click approve and request changes
   await page.waitForTimeout(300);
   await png(page, 'specification-review');
   await frame(page, 'specification-review');

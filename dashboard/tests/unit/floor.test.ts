@@ -256,8 +256,8 @@ describe('build lane layout', () => {
   test('caps drawn lanes at MAX_LANES (6)', () => {
     const eight = buildLanePositions(8);
     expect(eight).toHaveLength(MAX_LANES);
-    expect(eight[0].y).toBe(90);
-    expect(eight[eight.length - 1].y).toBe(410);
+    expect(eight[0].y).toBe(60);
+    expect(eight[eight.length - 1].y).toBe(470);
   });
 });
 
@@ -405,3 +405,12 @@ describe('phase 3 station icons and hues', () => {
 });
 
 
+
+describe('laneLabel', () => {
+  test('drops the feature path and the Rule keyword', async () => {
+    const { laneLabel } = await import('../../src/components/floor/layout.ts');
+    expect(laneLabel('features/self_request_escalation.feature :: Rule Self-requests escalate to parent')).toBe('Self-requests escalate to parent');
+    expect(laneLabel('Scenario: Export as CSV')).toBe('Export as CSV');
+    expect(laneLabel('Export as CSV')).toBe('Export as CSV');
+  });
+});

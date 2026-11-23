@@ -221,7 +221,7 @@ test.describe('app shell: no success before the API confirms', () => {
     {
       name: 'confirm acceptance of "leave-form"', request: /\/tasks\/leave-form\/acceptance$/, shown: 'Acceptance confirmed',
       pre: (page) => open(page, '/projects/digital-hr/runs/leave-form/acceptance'),
-      act: (page) => page.getByLabel('Type the first 8 characters of the sha256 to confirm').fill('77ab01cd').then(() => page.getByRole('button', { name: 'Confirm acceptance' }).click()),
+      act: (page) => page.getByRole('button', { name: 'Accept' }).click(),
     },
   ];
   for (const row of rows) {
