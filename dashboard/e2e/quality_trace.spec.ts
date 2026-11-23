@@ -3,7 +3,6 @@ import { test, expect, open, RUN, REPORT, heading } from './helpers.ts';
 const RUN_URL = '/projects/digital-hr/runs/leave-balance';
 const FORM_URL = '/projects/digital-hr/runs/leave-form';
 const ACCEPT = /\/tasks\/leave-form\/acceptance$/;
-const LABEL = 'Type the first 8 characters of the sha256 to confirm';
 
 test.beforeEach(async ({ api }) => {
   await api.preset('reviewing');
@@ -97,12 +96,12 @@ test.describe('final acceptance', () => {
   test('AC-VER-04n confirming acceptance', async ({ page, api }) => {
     await open(page, `${FORM_URL}/acceptance`);
     await expect(page.getByTestId('report-summary')).toBeVisible();
-    await page.getByLabel(LABEL).fill('77ab01cd');
-    await page.getByRole('button', { name: 'Confirm acceptance' }).click();
+    await page.getByRole('button', { name: 'Accept' }).click();
     await expect(page.getByTestId('decision-record')).toBeVisible();
     const posts = await api.posts(ACCEPT);
     expect(posts).toHaveLength(1);
-    expect(posts[0].body).toEqual({ sha256_of_report: REPORT, confirmation: '77ab01cd', decision: 'accept', comment: null });
+    expect(posts[0].body).toEqual({ sha256_of_report: REPORT, decision: 'accept', comment: null });
+    expect((posts[0].body as Record<string, unknown>).confirmation).toBeUndefined();
     const rec = page.getByTestId('decision-record');
     await expect(rec).toContainText('Acceptance confirmed');
     await expect(rec).toContainText('dev');
@@ -134,24 +133,23 @@ test.describe('final acceptance', () => {
       await open(page, `${FORM_URL}/acceptance`);
       await expect(page.getByTestId('acceptance-panel')).toContainText(s.text);
       if (s.name.startsWith('already')) await expect(page.getByTestId('decision-record')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Confirm acceptance' })).toHaveCount(0);
-      await expect(page.getByRole('radio', { name: 'Accept', exact: true })).toHaveCount(0);
-      await expect(page.getByRole('radio', { name: 'Reject', exact: true })).toHaveCount(s.reject ? 1 : 0);
-      if (s.reject) await expect(page.getByRole('radio', { name: 'Reject', exact: true })).toBeEnabled();
+      await expect(page.getByRole('button', { name: 'Accept' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Reject…' })).toHaveCount(s.reject ? 1 : 0);
+      if (s.reject) await expect(page.getByRole('button', { name: 'Reject…' })).toBeEnabled();
     });
   }
 
   test('AC-VER-04p rejecting a run needs a comment and a second confirmation', async ({ page, api }) => {
     await open(page, `${FORM_URL}/acceptance`);
-    await page.getByRole('radio', { name: 'Reject', exact: true }).check();
-    await page.getByLabel(LABEL).fill('77ab01cd');
-    await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeDisabled();
-    await page.getByLabel('Comment').fill('wrong totals');
-    await page.getByRole('button', { name: 'Reject', exact: true }).click();
+    await page.getByRole('button', { name: 'Reject…' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
+    const rejectBtn = dialog.getByRole('button', { name: 'Reject run' });
+    await expect(rejectBtn).toBeDisabled();
+    await dialog.getByLabel('Reason').fill('wrong totals');
+    await expect(rejectBtn).toBeEnabled();
     expect(await api.posts(ACCEPT)).toHaveLength(0);
-    await dialog.getByRole('button', { name: 'Reject run' }).click();
+    await rejectBtn.click();
     await expect(page.getByTestId('decision-record')).toBeVisible();
     expect((await api.posts(ACCEPT))[0].body).toMatchObject({ decision: 'reject', comment: 'wrong totals' });
   });
@@ -159,8 +157,7 @@ test.describe('final acceptance', () => {
   test('AC-VER-04q the report changed after the page loaded', async ({ page, api }) => {
     await api.rule({ method: 'POST', path: '/api/v1/tasks/leave-form/acceptance', status: 409, body: { error: { code: 'E_APPROVAL_STALE', message: 'stale', details: {} } } });
     await open(page, `${FORM_URL}/acceptance`);
-    await page.getByLabel(LABEL).fill('77ab01cd');
-    await page.getByRole('button', { name: 'Confirm acceptance' }).click();
+    await page.getByRole('button', { name: 'Accept' }).click();
     await expect(page.getByText('The report changed. Nothing was confirmed. Reload the report.')).toBeVisible();
     await api.idle(400);
     expect(await api.posts(ACCEPT)).toHaveLength(1);

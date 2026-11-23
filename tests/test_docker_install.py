@@ -384,7 +384,7 @@ class Runtime(SV):
         p, hp, token = self.start()
         c = H(hp, token).login()
         url = f"/api/v1/tasks/{SLUG}/approvals"
-        r = c.post(url, {"gate": "specification", "sha256": h, "decision": "approve"})
+        r = c.post(url, {"gate": "specification", "sha256": h, "confirmation": "wrong", "decision": "approve"})
         self.assertEqual((r.status, r.code), (400, "E_VALIDATION"), r.text)
         r = c.post(url, {"gate": "specification", "sha256": h, "confirmation": "", "decision": "approve"})
         self.assertEqual((r.status, r.code), (400, "E_VALIDATION"), r.text)

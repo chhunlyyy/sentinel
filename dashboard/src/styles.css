@@ -599,6 +599,8 @@ button {
 button:hover:not(:disabled) { filter: brightness(1.08); }
 button.secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-text); border-color: var(--btn-secondary-border); }
 button.secondary:hover:not(:disabled) { background: var(--btn-secondary-hover); filter: none; }
+button.tertiary { background: transparent; border: 1px solid transparent; color: var(--text-muted); font-size: 13px; }
+button.tertiary:hover:not(:disabled) { background: var(--btn-secondary-hover); color: var(--text); filter: none; }
 button.danger { background: transparent; border-color: #5A2A2A; color: var(--danger); }
 button.danger:hover:not(:disabled) { background: #2A1A1A; filter: none; }
 button:disabled { cursor: not-allowed; opacity: 0.6; }

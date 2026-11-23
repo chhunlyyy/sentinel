@@ -358,7 +358,7 @@ export interface WConfigDiff {
   diff: string;
 }
 
-/** GET /report: the report document with the sha256 a human types the first 8 characters of to accept the run. */
+/** GET /report: the report document with the sha256 confirmed to accept the run. */
 export type WReport = { sha256: string; report: Record<string, unknown> };
 
 /** GET /notifications: computed from the events table, newest first. `unread` counts every project, not only this page. */

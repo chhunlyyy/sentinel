@@ -162,11 +162,30 @@ export async function control(page: Page, button: string, opts: { comment?: stri
   await confirm.click();
 }
 
-export async function decide(page: Page, choice: string, prefix: string, button: string, comment?: string) {
-  await page.getByRole('radio', { name: choice, exact: true }).check();
-  await page.getByLabel('Type the first 8 characters of the sha256 to confirm').fill(prefix);
-  if (comment !== undefined) await page.getByLabel('Comment').fill(comment);
-  await page.getByRole('button', { name: button, exact: true }).click();
+export async function decide(page: Page, choice: string, _prefix: string, button: string, comment?: string) {
+  if (choice === 'Approve' || button.startsWith('Approve')) {
+    await page.getByRole('button', { name: button, exact: true }).click();
+  } else if (choice === 'Accept' || button === 'Confirm acceptance' || button === 'Accept') {
+    await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  } else if (choice === 'Request changes' || button === 'Request changes') {
+    await page.getByRole('button', { name: 'Request changes', exact: true }).click();
+    if (comment !== undefined) {
+      await page.getByLabel('What needs to change').fill(comment);
+    }
+    await page.getByRole('button', { name: 'Send back to the agent', exact: true }).click();
+  } else if (choice === 'Reject' || button.startsWith('Reject')) {
+    const rejectBtn = page.getByRole('button', { name: /Reject (run…|version|\.\.\.|…)/i });
+    if (await rejectBtn.count()) {
+      await rejectBtn.first().click();
+    } else {
+      await page.getByRole('button', { name: 'Reject…', exact: true }).click();
+    }
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    if (comment !== undefined) {
+      await dialog.getByLabel('Reason').fill(comment);
+    }
+  }
 }
 
 export const SPEC_URL = '/projects/digital-hr/runs/leave-balance/specification';

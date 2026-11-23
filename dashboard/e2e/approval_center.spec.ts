@@ -1,6 +1,5 @@
-import { test, expect, open, nav, decide, RUN, H2, H3, G1, SPEC_URL, GHERKIN_URL, settle } from './helpers.ts';
+import { test, expect, open, nav, RUN, H2, H3, G1, SPEC_URL, GHERKIN_URL, settle } from './helpers.ts';
 
-const LABEL = 'Type the first 8 characters of the sha256 to confirm';
 const APPROVALS = /\/tasks\/leave-balance\/approvals$/;
 
 test.beforeEach(async ({ api }) => {
@@ -60,7 +59,7 @@ test.describe('reviewing the specification', () => {
     await page.getByRole('tab', { name: 'Versions' }).click();
     await page.getByRole('link', { name: 'Version 1' }).click();
     await expect(page.getByText('Version 1 is not in review')).toBeVisible();
-    await expect(page.getByRole('radio')).toHaveCount(0);
+    await expect(page.getByTestId('decision-panel')).toHaveCount(0);
     expect((await api.gets(/specification\/versions\/1/)).length).toBeGreaterThan(0);
   });
 
@@ -109,7 +108,7 @@ test.describe('reviewing the Gherkin set', () => {
     await expect(page.getByTestId('scenario-AC-BIG-11-33')).toBeAttached({ timeout: 2000 });
     expect(Date.now() - t0).toBeLessThan(2500);
     // the decision panel sits above the scrollable scenario list: reachable without scrolling through it
-    await expect(page.getByRole('radio', { name: 'Approve', exact: true })).toBeInViewport();
+    await expect(page.getByRole('button', { name: 'Approve version 1', exact: true })).toBeInViewport();
     await page.getByLabel('Filter scenarios').fill('AC-BIG-3-7');
     await expect(page.getByTestId(/^scenario-/)).toHaveCount(1);
     await page.getByLabel('Filter scenarios').fill('');
@@ -117,82 +116,92 @@ test.describe('reviewing the Gherkin set', () => {
 
   test('AC-GHA-05k approving the Gherkin set', async ({ page, api }) => {
     await open(page, GHERKIN_URL);
-    await decide(page, 'Approve', G1.slice(0, 8), 'Approve version 1');
+    await page.getByRole('button', { name: 'Approve version 1' }).click();
     await expect(page.getByTestId('decision-record')).toBeVisible();
     const posts = await api.posts(APPROVALS);
-    expect(posts[0].body).toMatchObject({ gate: 'gherkin', sha256: G1, confirmation: G1.slice(0, 8), decision: 'approve' });
+    expect(posts[0].body).toMatchObject({ gate: 'gherkin', sha256: G1, decision: 'approve' });
+    expect((posts[0].body as Record<string, unknown>).confirmation).toBeUndefined();
     await expect(page.getByTestId('decision-record')).toContainText('Approved');
   });
 });
 
-test.describe('approving needs the typed hash prefix', () => {
+test.describe('one-click approvals and decisions', () => {
   test('AC-SPA-05e approving the specification', async ({ page, api }) => {
     await open(page, SPEC_URL);
-    await decide(page, 'Approve', '3f9a0c12', 'Approve version 2');
+    await page.getByRole('button', { name: 'Approve version 2' }).click();
     await expect(page.getByTestId('decision-record')).toBeVisible();
     const posts = await api.posts(APPROVALS);
     expect(posts).toHaveLength(1);
-    expect(posts[0].body).toEqual({ gate: 'specification', sha256: H2, confirmation: '3f9a0c12', decision: 'approve', comment: null });
+    expect(posts[0].body).toEqual({ gate: 'specification', sha256: H2, decision: 'approve', comment: null });
+    expect((posts[0].body as Record<string, unknown>).confirmation).toBeUndefined();
     const rec = page.getByTestId('decision-record');
     await expect(rec).toContainText('Approved');
     await expect(rec).toContainText('dev');
     await expect(rec).toContainText('dashboard');
     await expect(rec).toContainText('2026-11-14 09:30:00 UTC');
-    await expect(page.getByRole('radio')).toHaveCount(0);
+    await expect(page.getByTestId('decision-panel')).toHaveCount(0);
   });
 
-  test('AC-SPA-06i the prefix is never filled in for the reviewer', async ({ page, api }) => {
+  test('AC-SPA-06i one-click approve sends no confirmation and the right sha', async ({ page, api }) => {
     await open(page, SPEC_URL);
-    await page.getByRole('radio', { name: 'Approve', exact: true }).check();
-    const field = page.getByLabel(LABEL);
-    await expect(field).toHaveValue('');
-    await expect(field).toHaveAttribute('autocomplete', 'off');
-    await expect(page.getByRole('button', { name: /copy.*(prefix|8 characters)|fill|paste/i })).toHaveCount(0);
-    await field.fill(H2);
-    await expect(page.getByRole('button', { name: 'Approve version 2' })).toBeDisabled();
-    await expect(page.getByText('Does not match')).toBeVisible();
-    await field.fill('3f9a0c12');
     const mark = await api.mark();
     await page.getByRole('button', { name: 'Approve version 2' }).click();
     await expect(page.getByTestId('decision-record')).toBeVisible();
     const during = await api.since(mark);
-    const post = during.findIndex((r) => r.method === 'POST');
-    expect(during.slice(0, post).filter((r) => r.method === 'GET' && /specification/.test(r.path))).toEqual([]);
-    expect((during[post].body as { sha256: string }).sha256).toBe(H2);
+    const post = during.find((r) => r.method === 'POST');
+    expect(post).toBeDefined();
+    expect(post!.body).toMatchObject({ gate: 'specification', sha256: H2, decision: 'approve' });
+    expect((post!.body as Record<string, unknown>).confirmation).toBeUndefined();
   });
 
-  const comments: [string, boolean][] = [['', false], ['   ', false], ['Add the carry-over rule', true]];
-  for (const [comment, enabled] of comments) {
-    test(`AC-SPA-05f requesting changes needs a comment: ${JSON.stringify(comment)}`, async ({ page }) => {
-      await open(page, SPEC_URL);
-      await page.getByRole('radio', { name: 'Request changes', exact: true }).check();
-      await page.getByLabel(LABEL).fill('3f9a0c12');
-      await page.getByLabel('Comment').fill(comment);
-      const b = page.getByRole('button', { name: 'Request changes', exact: true });
-      if (enabled) await expect(b).toBeEnabled();
-      else await expect(b).toBeDisabled();
-    });
-  }
-
-  test('AC-SPA-05g requesting changes', async ({ page, api }) => {
+  test('AC-SPA-05f requesting changes requires text and sends decision changes with comment', async ({ page, api }) => {
     await open(page, SPEC_URL);
-    await decide(page, 'Request changes', '3f9a0c12', 'Request changes', 'Add the carry-over rule');
+    await page.getByRole('button', { name: 'Request changes' }).click();
+    const textarea = page.getByLabel('What needs to change');
+    await expect(textarea).toBeFocused();
+    await expect(textarea).toHaveAttribute('placeholder', 'Add a scenario for inactive parent departments');
+    await expect(page.getByText('The specifier gets this text and writes a new version.')).toBeVisible();
+    const sendBtn = page.getByRole('button', { name: 'Send back to the agent' });
+    await expect(sendBtn).toBeDisabled();
+    await textarea.fill('   ');
+    await expect(sendBtn).toBeDisabled();
+    await textarea.fill('Add the carry-over rule');
+    await expect(sendBtn).toBeEnabled();
+    await sendBtn.click();
     await expect(page.getByTestId('decision-record')).toBeVisible();
-    expect((await api.posts(APPROVALS))[0].body).toMatchObject({ decision: 'changes', comment: 'Add the carry-over rule' });
+    const posts = await api.posts(APPROVALS);
+    expect(posts[0].body).toEqual({ gate: 'specification', sha256: H2, decision: 'changes', comment: 'Add the carry-over rule' });
+    expect((posts[0].body as Record<string, unknown>).confirmation).toBeUndefined();
     await expect(page.getByTestId('decision-record')).toContainText('Changes requested');
     await expect(page.getByTestId('run-state')).toContainText('SPECIFICATION_DRAFT');
   });
 
-  test('AC-SPA-05h rejecting needs a second confirmation', async ({ page, api }) => {
+  test('cancelling request changes returns focus to Request changes button', async ({ page }) => {
     await open(page, SPEC_URL);
-    await decide(page, 'Reject', '3f9a0c12', 'Reject version 2', 'Not needed');
+    const reqBtn = page.getByRole('button', { name: 'Request changes' });
+    await reqBtn.click();
+    await expect(page.getByLabel('What needs to change')).toBeFocused();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(reqBtn).toBeFocused();
+  });
+
+  test('AC-SPA-05h reject needs reason and confirm', async ({ page, api }) => {
+    await open(page, SPEC_URL);
+    const rejectBtn = page.getByRole('button', { name: 'Reject run…' });
+    await rejectBtn.click();
     const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
     await expect(dialog).toContainText('Rejecting cancels run leave-balance. This cannot be undone.');
-    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+    const confirmBtn = dialog.getByRole('button', { name: 'Reject run' });
+    await expect(confirmBtn).toBeDisabled();
+    await dialog.getByLabel('Reason').fill('Not needed');
+    await expect(confirmBtn).toBeEnabled();
     expect(await api.posts(APPROVALS)).toHaveLength(0);
-    await dialog.getByRole('button', { name: 'Reject run' }).click();
+    await confirmBtn.click();
     await expect(page.getByTestId('decision-record')).toBeVisible();
-    expect((await api.posts(APPROVALS))[0].body).toMatchObject({ decision: 'reject', comment: 'Not needed' });
+    const posts = await api.posts(APPROVALS);
+    expect(posts[0].body).toMatchObject({ gate: 'specification', sha256: H2, decision: 'reject', comment: 'Not needed' });
+    expect((posts[0].body as Record<string, unknown>).confirmation).toBeUndefined();
   });
 });
 
@@ -200,13 +209,12 @@ test.describe('stale and changed versions', () => {
   test('AC-SPA-08h a stale hash is shown, never retried with the new hash', async ({ page, api }) => {
     await api.rule({ method: 'POST', path: '/api/v1/tasks/leave-balance/approvals', status: 409, body: { error: { code: 'E_APPROVAL_STALE', message: 'stale', details: { current_sha256: H3 } } } });
     await open(page, SPEC_URL);
-    await decide(page, 'Approve', '3f9a0c12', 'Approve version 2');
+    await page.getByRole('button', { name: 'Approve version 2' }).click();
     await expect(page.getByText('A newer version is in review. Nothing was approved.')).toBeVisible();
     await api.preset('spec-v3');
     await page.getByRole('button', { name: 'Load the version in review' }).click();
     await expect(page.getByTestId('review-version')).toHaveText('Version 3');
-    await page.getByRole('radio', { name: 'Approve', exact: true }).check();
-    await expect(page.getByLabel(LABEL)).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Approve version 3' })).toBeVisible();
     const posts = await api.posts(APPROVALS);
     expect(posts).toHaveLength(1);
     expect(JSON.stringify(posts)).not.toContain(H3);
@@ -214,15 +222,13 @@ test.describe('stale and changed versions', () => {
 
   test('AC-SPA-08i a new version arrives while the reviewer reads', async ({ page, api }) => {
     await open(page, SPEC_URL);
-    await page.getByRole('radio', { name: 'Approve', exact: true }).check();
-    await page.getByLabel(LABEL).fill('3f9a0c12');
+    await expect(page.getByTestId('review-version')).toHaveText('Version 2');
     await api.preset('spec-v3');
     await api.event('approval.state_changed', { id: 99, type: 'approval.state_changed', at: '2026-11-14T09:40:00Z', project: 'digital-hr', run: 'leave-balance', task: null, actor: { kind: 'engine', name: 'engine', channel: 'engine' }, payload: { gate: 'specification', version: 3 } });
     await expect(page.getByText('Version 3 replaced the version you are reading')).toBeVisible();
-    await expect(page.getByRole('radio', { name: 'Approve', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Approve version 2' })).toBeDisabled();
     await page.getByRole('button', { name: 'Load the version in review' }).click();
-    await page.getByRole('radio', { name: 'Approve', exact: true }).check();
-    await expect(page.getByLabel(LABEL)).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Approve version 3' })).toBeEnabled();
   });
 
   test('AC-SPA-06j someone else decided first', async ({ page, api }) => {
@@ -230,7 +236,7 @@ test.describe('stale and changed versions', () => {
     await open(page, SPEC_URL);
     await expect(page.getByTestId('review-version')).toBeVisible();
     await api.set([...RUN('leave-balance'), 'specification', 'current', 'state'], 'APPROVED');
-    await decide(page, 'Approve', '3f9a0c12', 'Approve version 2');
+    await page.getByRole('button', { name: 'Approve version 2' }).click();
     await expect(page.getByText('Refused: the run moved on.')).toBeVisible();
     await expect(page.getByTestId('approval-state')).toContainText('Approved');
     await expect(page.getByText('Specification approved')).toHaveCount(0);
@@ -239,10 +245,10 @@ test.describe('stale and changed versions', () => {
   test('AC-SPA-06k the server could not store the decision', async ({ page, api }) => {
     await api.rule({ method: 'POST', path: '/api/v1/tasks/leave-balance/approvals', status: 500, body: { error: { code: 'E_INTERNAL', message: 'internal error', details: {} } } });
     await open(page, SPEC_URL);
-    await decide(page, 'Approve', '3f9a0c12', 'Approve version 2');
+    await page.getByRole('button', { name: 'Approve version 2' }).click();
     await expect(page.getByText('Not confirmed: server error. See the terminal running sentinel dashboard.')).toBeVisible();
     await expect(page.getByTestId('approval-state')).toContainText('In review');
-    await expect(page.getByLabel(LABEL)).toHaveValue('3f9a0c12');
+    await expect(page.getByRole('button', { name: 'Approve version 2' })).toBeEnabled();
   });
 
   test('AC-SPA-06l two tabs decide the same approval', async ({ page, api, context }) => {
@@ -250,9 +256,9 @@ test.describe('stale and changed versions', () => {
     await open(page, SPEC_URL);
     await open(second, SPEC_URL);
     await expect(second.getByTestId('review-version')).toBeVisible();
-    await decide(page, 'Approve', '3f9a0c12', 'Approve version 2');
+    await page.getByRole('button', { name: 'Approve version 2' }).click();
     await expect(page.getByTestId('decision-record')).toContainText('Approved');
-    await decide(second, 'Approve', '3f9a0c12', 'Approve version 2');
+    await second.getByRole('button', { name: 'Approve version 2' }).click();
     await expect(second.getByText('Refused: the run moved on.')).toBeVisible();
     await expect(second.getByTestId('approval-state')).toContainText('Approved');
     expect((await api.posts(APPROVALS)).length).toBe(2);

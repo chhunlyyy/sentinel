@@ -146,10 +146,10 @@ def create_run(eng, project, config, body, user, scrubber=None):
 # ---- approvals and acceptance
 def _hash_pair(body, hash_field):
     sha = text_field(body, hash_field)
-    conf = text_field(body, "confirmation")
+    conf = text_field(body, "confirmation", required=False)
     if not SHA256.fullmatch(sha):
         raise bad(f"{hash_field} must be 64 lowercase hex characters", hash_field)
-    if conf != sha[:8]:
+    if conf is not None and conf != sha[:8]:
         raise bad("confirmation must be the first 8 characters of the hash", "confirmation")
     return sha
 
@@ -160,7 +160,7 @@ def decide(eng, slug, body, user, git_name):
     refused = None
     try:
         check_fields(body, ("gate", "sha256", "confirmation", "decision", "comment"),
-                     ("gate", "sha256", "confirmation", "decision"))
+                     ("gate", "sha256", "decision"))
         gate = text_field(body, "gate")
         decision = text_field(body, "decision")
         comment = text_field(body, "comment", required=False)
@@ -180,7 +180,7 @@ def decide(eng, slug, body, user, git_name):
 def accept(eng, slug, body, user, git_name):
     """POST acceptance: the Phase E acceptance function, as the dashboard channel of the human."""
     check_fields(body, ("sha256_of_report", "confirmation", "decision", "comment"),
-                 ("sha256_of_report", "confirmation", "decision"))
+                 ("sha256_of_report", "decision"))
     decision = text_field(body, "decision")
     if decision not in ("accept", "reject"):
         raise bad("decision must be accept or reject", "decision", allowed=["accept", "reject"])

@@ -579,13 +579,15 @@ route('GET', `${V}/reports/analytics`, (c) => {
 route('POST', `${V}/tasks/{slug}/approvals`, (c) => {
   const { run } = resolveRun(c.params[0], c.query);
   const b = body(c);
-  for (const k of ['gate', 'sha256', 'confirmation', 'decision']) if (!(k in b)) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
+  for (const k of ['gate', 'sha256', 'decision']) if (!(k in b)) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
   const gate = b.gate as 'specification' | 'gherkin';
   if (gate !== 'specification' && gate !== 'gherkin') throw new ApiErr(400, 'E_VALIDATION', 'bad gate', { field: 'gate' });
   const a = run.detail.approvals[gate];
   if (a.state !== 'IN_REVIEW') throw new ApiErr(409, 'E_TRANSITION', `approval is ${a.state}`);
   if (b.sha256 !== a.sha256) throw new ApiErr(409, 'E_APPROVAL_STALE', 'approval is stale', { current_sha256: a.sha256 });
-  if (b.confirmation !== String(b.sha256).slice(0, 8)) throw new ApiErr(400, 'E_VALIDATION', 'confirmation does not match', { field: 'confirmation' });
+  if (b.confirmation !== undefined && b.confirmation !== null && b.confirmation !== String(b.sha256).slice(0, 8)) {
+    throw new ApiErr(400, 'E_VALIDATION', 'confirmation does not match', { field: 'confirmation' });
+  }
   const decision = String(b.decision);
   if (!['approve', 'changes', 'reject'].includes(decision)) throw new ApiErr(400, 'E_VALIDATION', 'bad decision', { field: 'decision' });
   const comment = typeof b.comment === 'string' ? b.comment : null;
@@ -605,10 +607,12 @@ route('POST', `${V}/tasks/{slug}/approvals`, (c) => {
 route('POST', `${V}/tasks/{slug}/acceptance`, (c) => {
   const { run } = resolveRun(c.params[0], c.query);
   const b = body(c);
-  for (const k of ['sha256_of_report', 'confirmation', 'decision']) if (!(k in b)) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
+  for (const k of ['sha256_of_report', 'decision']) if (!(k in b)) throw new ApiErr(400, 'E_VALIDATION', `${k} is required`, { field: k });
   if (run.detail.state !== 'COMPLETED' || run.verification.acceptance_record?.decision === 'reject') throw new ApiErr(409, 'E_TRANSITION', 'the run cannot be accepted now');
   if (!run.report || b.sha256_of_report !== run.report.sha256) throw new ApiErr(409, 'E_APPROVAL_STALE', 'report changed');
-  if (b.confirmation !== String(b.sha256_of_report).slice(0, 8)) throw new ApiErr(400, 'E_VALIDATION', 'confirmation does not match', { field: 'confirmation' });
+  if (b.confirmation !== undefined && b.confirmation !== null && b.confirmation !== String(b.sha256_of_report).slice(0, 8)) {
+    throw new ApiErr(400, 'E_VALIDATION', 'confirmation does not match', { field: 'confirmation' });
+  }
   if (b.decision === 'accept' && run.verification.acceptance.computed === 'rejected') throw new ApiErr(422, 'E_PRECONDITION', 'the engine rejected this run');
   const comment = typeof b.comment === 'string' ? b.comment : null;
   const record = { decision: String(b.decision), approver: 'dev', channel: 'dashboard', at: '2026-11-14T09:35:00Z', comment };
