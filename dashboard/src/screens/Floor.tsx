@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { calls } from '../api/calls.ts';
 import { useApp, useResource } from '../state/app.tsx';
 import { floorSnapshot, laneState, initials } from '../components/floor/adapt.ts';
-import { STATIONS, buildLanePositions, MAX_LANES, stationById } from '../components/floor/layout.ts';
+import { STATIONS, buildLanePositions, laneLabel, MAX_LANES, stationById } from '../components/floor/layout.ts';
 import { NeuronButton } from '../components/floor/NeuronButton.tsx';
 import { EdgeLayer } from '../components/floor/EdgeLayer.tsx';
 import { SidePanel } from '../components/floor/SidePanel.tsx';
@@ -130,11 +130,11 @@ function FloorNetwork({ snap, selectedSlug, selectedNodeId, onSelectRun, onSelec
   const stationsToRender = STATIONS.flatMap((s) => {
     if (s.id !== 'build') return [{ ...s, laneIdx: -1 }];
     // one lane still shows its name
-    if (buildLaneCount <= 1) return [{ ...s, name: run?.lanes[0]?.name ?? s.name, glyph: run?.lanes[0] ? 'B1' : s.glyph, x: 670, y: 250, laneIdx: 0 }];
+    if (buildLaneCount <= 1) return [{ ...s, name: run?.lanes[0] ? laneLabel(run.lanes[0].name) : s.name, glyph: run?.lanes[0] ? 'B1' : s.glyph, x: 670, y: 250, laneIdx: 0 }];
     return lanePositions.map((pos, i) => ({
       ...s,
       id: `build-${i}`,
-      name: run?.lanes[i]?.name ?? `Lane ${i + 1}`,
+      name: run?.lanes[i] ? laneLabel(run.lanes[i].name) : `Lane ${i + 1}`,
       glyph: `B${i + 1}`,
       x: pos.x, y: pos.y,
       laneIdx: i,
@@ -170,7 +170,8 @@ function FloorNetwork({ snap, selectedSlug, selectedNodeId, onSelectRun, onSelec
               station={s}
               state={stState}
               taskDots={dots}
-              sub={subLabel(s, snap)}
+              sub={s.laneIdx >= 0 && buildLaneCount > 1 ? '' : subLabel(s, snap)}
+              compact={s.laneIdx >= 0 && buildLaneCount > 1}
               selected={isSelected}
               onClick={() => {
                 if (run) onSelectRun(run.slug, s.id);
@@ -466,7 +467,7 @@ function FloorContent({ snap, pid, singleModel, initialTaskSlug, reload }: Floor
       return {
         ...base,
         id: selectedNodeId,
-        name: lane?.name ?? base.name,
+        name: lane ? laneLabel(lane.name) : base.name,
         glyph: `B${idx + 1}`,
       };
     }

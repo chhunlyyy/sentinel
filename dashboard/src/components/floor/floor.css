@@ -865,3 +865,11 @@
   cursor: not-allowed;
 }
 
+
+/* build lanes stacked in a column: one line each, so a lane's label never runs into the next lane */
+.floor-label-compact { max-width: 150px; }
+.floor-label-compact .floor-label-name { display: block; max-width: 142px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* long names (scenario paths) wrap inside the side panel instead of widening the page */
+.floor-panel { min-width: 0; }
+.floor-panel h2, .floor-panel dd { min-width: 0; overflow-wrap: anywhere; }

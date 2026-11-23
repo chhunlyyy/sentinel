@@ -7,7 +7,7 @@ import type { ApiError } from '../../api/errors.ts';
 import { Link, enc } from '../../router.tsx';
 import type { RunView, StationDef, StationState, WhoView } from './types.ts';
 import { stateLook } from './look.ts';
-import { stationById } from './layout.ts';
+import { laneLabel, stationById } from './layout.ts';
 import { limitText } from './adapt.ts';
 import { ReviewPage } from '../../screens/Approvals.tsx';
 import { AcceptanceTab } from '../../screens/run/Acceptance.tsx';
@@ -140,9 +140,9 @@ export function SidePanel({ station, state, run, who, pid, singleModel = false, 
     thisTaskText = `${limitText(run.limit.retryAt)} (${run.limit.runner})`;
   } else if (currentLane) {
     const laneState = currentLane.state.toLowerCase().replace(/_/g, ' ');
-    thisTaskText = `${currentLane.name} · ${laneState}`;
+    thisTaskText = `${laneLabel(currentLane.name)} · ${laneState}`;
   } else if (run.lanes.length > 0 && baseStationId === 'build') {
-    thisTaskText = run.lanes.map((l) => `${l.name}: ${l.state.toLowerCase().replace(/_/g, ' ')}`).join('; ');
+    thisTaskText = run.lanes.map((l) => `${laneLabel(l.name)}: ${l.state.toLowerCase().replace(/_/g, ' ')}`).join('; ');
   } else if (agents.length > 0) {
     thisTaskText = `${agents[0].role} · running`;
   } else if (state === 'done') {
@@ -361,7 +361,7 @@ export function SidePanel({ station, state, run, who, pid, singleModel = false, 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {run.lanes.map((l) => (
                         <div key={l.cycle} style={{ fontSize: 12 }}>
-                          {l.name}: {l.state.toLowerCase().replace(/_/g, ' ')}
+                          <span title={l.name}>{laneLabel(l.name)}</span>: {l.state.toLowerCase().replace(/_/g, ' ')}
                         </div>
                       ))}
                     </div>

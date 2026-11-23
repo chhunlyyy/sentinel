@@ -71,13 +71,20 @@ export function stationById(id: string): StationDef | undefined {
 
 const MAX_LANES = 6;
 
+/** A lane's name on the floor: the behavior, without the feature file path and the `Rule`/`Scenario` keyword
+ * (`features/a.feature :: Rule Self-requests escalate` → `Self-requests escalate`). The full name stays in the side panel. */
+export function laneLabel(name: string): string {
+  const behavior = name.includes('::') ? name.slice(name.lastIndexOf('::') + 2) : name;
+  return behavior.trim().replace(/^(Rule|Scenario Outline|Scenario|Feature):?\s+/i, '') || name.trim();
+}
+
 export function buildLanePositions(n: number): Array<{ x: number; y: number }> {
   const count = Math.min(n, MAX_LANES);
   if (count <= 1) return [{ x: 670, y: 250 }];
   if (count === 2) return [{ x: 670, y: 170 }, { x: 670, y: 330 }];
   if (count === 3) return [{ x: 670, y: 90 }, { x: 670, y: 250 }, { x: 670, y: 410 }];
-  const minY = 90;
-  const maxY = 410;
+  const minY = 60;
+  const maxY = 470;
   const step = (maxY - minY) / (count - 1);
   return Array.from({ length: count }, (_, i) => ({
     x: 670,
