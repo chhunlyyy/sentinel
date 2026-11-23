@@ -227,6 +227,11 @@ class Decide(PB):
         self.assertEqual((ap["state"], ap["comment"]), ("CHANGES_REQUESTED", "Add the half-day case"))
         self.assertIn("Add the half-day case", "\n".join(self.eng.brief_feedback(SLUG, "specifier")))
         self.assertEqual(self.rules()[-1], "R6")
+        # the specifier task the decision creates already carries the requested change in its brief
+        run_id = self.eng.reg.get_run(SLUG)["id"]
+        task = [t for t in self.eng.reg.rows("tasks", run_id=run_id) if t["role"] == "specifier"][-1]
+        brief = self.eng.run_dir(SLUG) / "tasks" / task["id"] / "brief.md"
+        self.assertIn("changes requested: Add the half-day case", brief.read_text(encoding="utf-8"))
 
     def test_AC_SPA_05b_request_changes_needs_comment(self):
         self.to_spec_review()

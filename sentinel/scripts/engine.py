@@ -778,42 +778,48 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
             raise SentinelError("E_VALIDATION", "give exactly one of sha256 or prefix")
         self._need_comment(decision, comment)
         deferred = None
-        feedback = None
+        saved = None
         self._sync(slug)
-        with self.reg.transaction():
-            run = self._get_v2(slug)
-            info = self._pending(run, gate, decision)
-            ap = info["approval"]
-            typed = (prefix if prefix is not None else sha256).strip().lower()
-            current = ap["sha256"]
-            if prefix is not None:
-                ok = len(typed) == 8 and current.startswith(typed)
-                older = len(typed) == 8 and self._is_known_hash(run, gate, lambda h: h.startswith(typed))
-            else:
-                ok = typed == current
-                older = self._is_known_hash(run, gate, lambda h: h == typed)
-            if not ok and not older:
-                raise SentinelError("E_VALIDATION", "the typed hash does not match the artifact in review",
-                                    {"gate": gate})
-            if not ok:  # an older version: keep what detection stored, then refuse
-                deferred = SentinelError("E_APPROVAL_STALE", f"that hash is from an older {gate} version; "
-                                         f"the current sha256 is {current}",
-                                         {"gate": gate, "version": ap["version"], "current_sha256": current})
-            else:
-                new_state, action = DECISIONS[decision]
-                machines.check_approval("IN_REVIEW", new_state, machines.HUMAN)
-                self.reg.update_row("approvals", ap["id"], state=new_state, decision=decision, approver=who,
-                                    channel=channel, comment=comment, decided_at=_now())
-                self._event(run, "approval.decided", machines.HUMAN, {
-                    "gate": gate, "version": ap["version"], "sha256": current, "decision": decision,
-                    "comment": comment, "approver_name": approver_name})
-                self._move(run, DECISION_TARGET[(gate, decision)], machines.HUMAN, reason=f"{gate} {decision}")
-                self.reg.add_audit(who, channel, action, f"{slug}/{gate}", after_sha=current)
-                if decision == "changes":
-                    role = "specifier" if gate == "specification" else "test_designer"
-                    feedback = (role, {"errors": [], "failures": 0, "comments": [comment.strip()]})
-        if feedback:
-            self._save_feedback(slug, *feedback)  # after the commit
+        try:
+            with self.reg.transaction():
+                run = self._get_v2(slug)
+                info = self._pending(run, gate, decision)
+                ap = info["approval"]
+                typed = (prefix if prefix is not None else sha256).strip().lower()
+                current = ap["sha256"]
+                if prefix is not None:
+                    ok = len(typed) == 8 and current.startswith(typed)
+                    older = len(typed) == 8 and self._is_known_hash(run, gate, lambda h: h.startswith(typed))
+                else:
+                    ok = typed == current
+                    older = self._is_known_hash(run, gate, lambda h: h == typed)
+                if not ok and not older:
+                    raise SentinelError("E_VALIDATION", "the typed hash does not match the artifact in review",
+                                        {"gate": gate})
+                if not ok:  # an older version: keep what detection stored, then refuse
+                    deferred = SentinelError("E_APPROVAL_STALE", f"that hash is from an older {gate} version; "
+                                             f"the current sha256 is {current}",
+                                             {"gate": gate, "version": ap["version"], "current_sha256": current})
+                else:
+                    new_state, action = DECISIONS[decision]
+                    machines.check_approval("IN_REVIEW", new_state, machines.HUMAN)
+                    self.reg.update_row("approvals", ap["id"], state=new_state, decision=decision, approver=who,
+                                        channel=channel, comment=comment, decided_at=_now())
+                    self._event(run, "approval.decided", machines.HUMAN, {
+                        "gate": gate, "version": ap["version"], "sha256": current, "decision": decision,
+                        "comment": comment, "approver_name": approver_name})
+                    if decision == "changes":
+                        # saved before the move: the move creates the new specifier/test_designer task, whose brief
+                        # must already carry the requested changes
+                        role = "specifier" if gate == "specification" else "test_designer"
+                        saved = role
+                        self._save_feedback(slug, role, {"errors": [], "failures": 0, "comments": [comment.strip()]})
+                    self._move(run, DECISION_TARGET[(gate, decision)], machines.HUMAN, reason=f"{gate} {decision}")
+                    self.reg.add_audit(who, channel, action, f"{slug}/{gate}", after_sha=current)
+        except BaseException:
+            if saved:
+                self._feedback_path(slug, saved).unlink(missing_ok=True)
+            raise
         result = self._finish_up(slug, run)
         if deferred:
             raise deferred
