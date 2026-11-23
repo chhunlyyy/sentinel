@@ -174,7 +174,7 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
                 self._auto_task({**run, **fields}, "specifier")
         elif rule == "R6":
             self._auto_task({**run, **fields}, "specifier")
-        elif rule == "R5" and run["type"] != "docs":
+        elif rule in ("R5", "R10") and run["type"] != "docs":  # R10: scenario changes requested, write them again
             self._auto_task({**run, **fields}, "test_designer")
         if to in machines.RUN_FINAL:
             self._event(run, "run.status_changed", actor, {

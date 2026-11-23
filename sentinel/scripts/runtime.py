@@ -266,6 +266,18 @@ class RuntimeOps:
         return ids
 
     # ---- bookkeeping shared by next, task run, dispatch
+    def _needs_scenario_writer(self, run):
+        """A run waiting for scenarios with nobody writing them: SPECIFICATION_APPROVED (not docs), no open test_designer
+        task and no scenarios in draft or review. Heals runs that lost their scenario task (e.g. scenario changes
+        requested before R10 created one)."""
+        if run["state"] != "SPECIFICATION_APPROVED" or run["type"] == "docs":
+            return False
+        open_states = ("CREATED", "QUEUED", "RUNNING", "WAITING_FOR_INPUT")
+        if any(t["role"] == "test_designer" and t["state"] in open_states for t in self.reg.rows("tasks", run_id=run["id"])):
+            return False
+        ap = self._latest_approval(run, "gherkin")
+        return ap is None or ap["state"] not in ("DRAFT", "IN_REVIEW")
+
     def bookkeep(self, slug):
         """Engine housekeeping before any answer: shared-file changes, finished or lost processes, native timeouts,
         R22 once a missing runner is installed, R3 and R12 when nothing else is needed, queue ready tasks."""
@@ -280,6 +292,9 @@ class RuntimeOps:
         run = self._get_v2(slug)
         if run["state"] == "TRIAGED" and ((run["tier"] or 0) < 3 or (self.run_dir(slug) / "decisions.md").is_file()):
             self.request_state(slug, "PLANNED", machines.ENGINE, reason="triage done")
+        elif self._needs_scenario_writer(run):
+            with self.reg.transaction():
+                self._auto_task(self._get_v2(slug), "test_designer")
         elif self._starts_execution(run):
             try:
                 self.advance(slug)

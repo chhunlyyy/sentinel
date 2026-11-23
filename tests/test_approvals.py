@@ -277,6 +277,12 @@ class Decide(PB):
         self.assertEqual(self.approvals("specification")[0]["state"], "APPROVED")
         self.assertIn("Add a negative balance case", "\n".join(self.eng.brief_feedback(SLUG, "test_designer")))
         self.assertEqual(self.rules()[-1], "R10")
+        # a new scenario task is created at once, and its brief carries the requested change
+        run_id = self.eng.reg.get_run(SLUG)["id"]
+        designers = [t for t in self.eng.reg.rows("tasks", run_id=run_id) if t["role"] == "test_designer"]
+        self.assertTrue(designers and designers[-1]["state"] in ("QUEUED", "CREATED"), designers)
+        brief = self.eng.run_dir(SLUG) / "tasks" / designers[-1]["id"] / "brief.md"
+        self.assertIn("changes requested: Add a negative balance case", brief.read_text(encoding="utf-8"))
 
     def test_AC_VIS_01a_non_human_actor_refused(self):
         for builder, gate, actor in ((self.to_spec_review, "spec", "orchestrator"),
@@ -784,3 +790,19 @@ class Review(PB):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScenarioWriterSelfHeal(PB):
+    def test_a_run_without_a_scenario_task_gets_one(self):
+        """A run left in SPECIFICATION_APPROVED with no scenario task (as older versions left it after scenario changes)
+        gets a new test_designer task at the next bookkeeping."""
+        self.to_gherkin_review()
+        self.approve("gherkin", decision="changes", comment="Add a negative balance case")
+        run_id = self.eng.reg.get_run(SLUG)["id"]
+        for t in self.eng.reg.rows("tasks", run_id=run_id):
+            if t["role"] == "test_designer" and t["state"] in ("CREATED", "QUEUED"):
+                self.eng.reg.update_row("tasks", t["id"], state="CANCELLED")
+        self.eng.bookkeep(SLUG)
+        open_designers = [t for t in self.eng.reg.rows("tasks", run_id=run_id)
+                          if t["role"] == "test_designer" and t["state"] in ("CREATED", "QUEUED")]
+        self.assertEqual(len(open_designers), 1)
