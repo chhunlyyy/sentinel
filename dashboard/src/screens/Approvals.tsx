@@ -352,12 +352,16 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
     expandBtnRef.current?.focus();
   };
 
-  const onDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
+  // Escape closes full screen; a key inside a native <dialog> (the reject confirmation) belongs to that dialog
+  useEffect(() => {
+    if (!fullScreen) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape' || (e.target instanceof Element && e.target.closest('dialog'))) return;
       closeFullScreen();
-    }
-  };
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  });
 
   useEffect(() => {
     if (!res.data) return;
@@ -499,7 +503,6 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
                 aria-label={`${label} review, full screen`}
                 tabIndex={-1}
                 ref={dialogRef}
-                onKeyDown={onDialogKeyDown}
                 className="floor-fullscreen-dialog"
               >
                 <div className="floor-fullscreen-header">

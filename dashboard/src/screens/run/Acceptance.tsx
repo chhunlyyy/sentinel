@@ -31,12 +31,16 @@ export function AcceptanceTab({ run, pid, onChanged, compact }: { run: Run | { s
     expandBtnRef.current?.focus();
   };
 
-  const onDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
+  // Escape closes full screen; a key inside a native <dialog> (the reject confirmation) belongs to that dialog
+  useEffect(() => {
+    if (!fullScreen) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape' || (e.target instanceof Element && e.target.closest('dialog'))) return;
       closeFullScreen();
-    }
-  };
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  });
 
   const record = verification.data?.acceptance_record ?? null;
 
@@ -142,7 +146,6 @@ export function AcceptanceTab({ run, pid, onChanged, compact }: { run: Run | { s
           aria-label="Acceptance review, full screen"
           tabIndex={-1}
           ref={dialogRef}
-          onKeyDown={onDialogKeyDown}
           className="floor-fullscreen-dialog"
         >
           <div className="floor-fullscreen-header">

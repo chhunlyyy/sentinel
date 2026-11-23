@@ -89,7 +89,9 @@ class Mapping(SV):
                                      "create_project", "register_project", "add_repository", "provider_test", "pause", "unpause",
                                      "note", "detect", "shared_test", "config_preview", "config_save", "knowledge_ingest",
                                      "knowledge_snapshot", "knowledge_backfill_estimate", "knowledge_backfill", "factory_pause",
-                                     "factory_resume", "retry_now"})
+                                     "factory_resume", "retry_now", "chat_send"})
+        # chat: the run's chat.jsonl and a read-only orchestrator reply; no run, task or approval transition
+        self.assertEqual(table["chat_send"].calls, ("chat.append_chat", "chat.reply_worker"))
         self.assertEqual(table["retry_now"].calls, ("Engine.retry_limited_now",))
         for name in ("detect", "shared_test", "config_preview", "knowledge_backfill_estimate"):
             self.assertEqual(table[name].calls, ())  # 2.0 setup: read or probe only, nothing changes
