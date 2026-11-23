@@ -769,8 +769,6 @@ const handleChatPost = (c: Ctx): [number, unknown] => {
 
 route('GET', `${V}/runs/{slug}/chat`, handleChatGet);
 route('POST', `${V}/runs/{slug}/chat`, handleChatPost);
-route('GET', `${V}/tasks/{slug}/chat`, handleChatGet);
-route('POST', `${V}/tasks/{slug}/chat`, handleChatPost);
 
 // ---- providers, orchestrator, agents, folders, project creation ----
 
