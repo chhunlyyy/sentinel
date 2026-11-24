@@ -116,6 +116,44 @@ class Flow(PDX):
         self.assertIn(json.loads(old["approved_tests"])[0]["path"], brief)
 
 
+    BLOCKED_RED = ("keys = re.findall(r\"^- `(features/[^`]+)`$\", prompt, re.M)\n"
+                   "body = ''.join('  @Scenario(\"%s\")\\n  void %s() {}\\n' % (k, camel(k.split(' :: ')[1])) for k in keys)\n"
+                   "write(test_path, 'class ' + klass + ' {\\n' + body + '}\\n')\n"
+                   "write_result('blocked', questions=['these tests already pass: the behavior exists'])\n")
+
+    def parked_red(self):
+        self.boot_x()
+        self.prepare()
+        self.agent_exec("tdd_red", self.BLOCKED_RED)
+        red = self.tid("tdd_red")
+        self.eng.run_task(red)
+        self.assertEqual((self.task(red)["state"], self.state(), self.cstate("Remaining")), ("BLOCKED", "NEEDS_HUMAN", "RED_RUNNING"))
+        return red
+
+    def test_a_human_confirms_an_already_implemented_behavior(self):
+        """MEF-HR 2026-11-24: earlier cycles built the behavior, so Red's tests passed and Red could never be accepted. The
+        human confirms; the engine runs the tests itself and accepts the cycle with method already_implemented."""
+        red = self.parked_red()
+        self.targeted(all_pass())
+        self.eng.already_implemented(SLUG, red, "built by the earlier cycles", user="owner")
+        cyc = self.cycle("Remaining")
+        self.assertEqual((cyc["state"], cyc["red_method"]), ("CYCLE_ACCEPTED", "already_implemented"))
+        self.assertEqual(self.state(), "EXECUTING")
+        self.assertEqual(self.task(red)["state"], "CANCELLED")
+        e = self.evidence("red")[-1]
+        self.assertEqual((e["verdict"], e["classification"], e["method"]), ("accepted", "pass", "already_implemented"))
+        self.assertIn("confirmed by a human: built by the earlier cycles", e["reason"])
+        self.assertEqual(self.tdd_tasks("tdd_green", "Remaining"), [])
+
+    def test_already_implemented_is_refused_when_a_test_fails(self):
+        red = self.parked_red()
+        self.targeted(report("Remaining", "failure"))
+        with self.assertRaises(SentinelError) as cm:
+            self.eng.already_implemented(SLUG, red, "I think it exists", user="owner")
+        self.assertEqual(cm.exception.code, "E_PRECONDITION")
+        self.assertEqual((self.state(), self.cstate("Remaining")), ("NEEDS_HUMAN", "RED_RUNNING"))
+
+
 class R13(PDX):
     def setup_cycles(self, states, tier=3):
         self.boot_x(repos=TWO_REPOS, tier=tier)

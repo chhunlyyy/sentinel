@@ -111,6 +111,24 @@ class ControlOps:
         self._finish_up(slug, run_before)
         return self.request_state(slug, run["previous_state"], machines.HUMAN, reason=comment.strip())
 
+    def already_implemented(self, slug, task_id, comment, *, user, channel="dashboard"):
+        """A human confirms that a parked cycle's behavior already exists (its Red tests pass before Green): the engine runs
+        the tests itself and accepts the cycle only when every one passes (confirm_already_implemented), then the run resumes
+        (R20). Refused unless the run is NEEDS_HUMAN."""
+        self._as_human(user, channel)
+        if not (comment or "").strip():
+            raise SentinelError("E_PRECONDITION", "say why the behavior already exists", {"field": "comment"})
+        self._sync(slug)
+        run, task = self._task_of(slug, task_id)
+        if run["state"] != "NEEDS_HUMAN":
+            raise SentinelError("E_TRANSITION", f"only a parked (NEEDS_HUMAN) run can confirm a cycle, run is {run['state']}",
+                                {"state": run["state"]})
+        if not task["cycle_id"]:
+            raise SentinelError("E_PRECONDITION", f"task {task_id} is not a cycle task", {"task": task_id})
+        self.confirm_already_implemented(run, task, self._cycle(task["cycle_id"]), comment.strip())
+        self.audit(user, channel, "already_implemented", f"{slug}/{task_id}", reason=comment.strip()[:AUDIT_NOTE])
+        return self.request_state(slug, run["previous_state"], machines.HUMAN, reason=comment.strip())
+
     # ---- factory controls: pause, unpause, note (a run-level flag and a message; neither moves the run state)
     def _open_run(self, slug):
         run = self._get_v2(slug)

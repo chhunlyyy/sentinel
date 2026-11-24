@@ -51,6 +51,7 @@ BASELINE_OK = ("pass", "assertion")
 TEST_TIMEOUT = 1800
 INVALIDATED = "approval invalidated"
 SENT_BACK = "sent back to Red by a human: "
+ALREADY = "already_implemented"  # red_method of a cycle whose tests passed at Red and a human confirmed the behavior exists
 LINE_CAP = 500
 
 
@@ -739,7 +740,8 @@ class CycleOps:
     def _evidence_gaps(self, cycle):
         """Items an accepted cycle still lacks (README point 16), and the ones whose stored output no longer matches."""
         gaps, tampered = [], []
-        for phase, klass in (("red", "assertion"), ("green", "pass"), ("refactor", "pass")):
+        phases = (("red", "pass"),) if cycle["red_method"] == ALREADY else (("red", "assertion"), ("green", "pass"), ("refactor", "pass"))
+        for phase, klass in phases:
             e = self._accepted_evidence(cycle, phase)
             if e is None:
                 gaps.append(f"{phase} evidence")
@@ -796,7 +798,7 @@ class CycleOps:
             return "E_INTEGRITY", msg, {"changed": tampered}
         moved = self._move_cycle(run, cycle, "CYCLE_ACCEPTED", accepted_at=_now())
         self.reg.remove_trace_links(run["id"], from_kind="cycle", from_id=moved["id"], to_kind="evidence")
-        for phase in ("red", "green", "refactor"):
+        for phase in ("red",) if moved["red_method"] == ALREADY else ("red", "green", "refactor"):
             self.reg.add_trace_link(run["id"], "cycle", moved["id"], "evidence", self._accepted_evidence(moved, phase)["id"])
         return None
 
@@ -896,23 +898,11 @@ class CycleOps:
         cfg = self._run_config(run)
         repo = cycle["repo_id"]
         tools = scopes.test_tools(cfg, repo)
-        keys = self._scenario_keys(cycle)
         files = self._changed_test_files(run, task, cycle)
         if not files:
             self._flag(run, task, text="no test file changed")
             return self._finish_red(run, task, cycle, None, "rejected", "no test file changed", None, [], files)
-        refs, base, info = [], self._repo_path(cfg, repo), {}
-        for rel, _ in files:
-            try:
-                text = (base / rel).read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            refs += binding.references(text, tools["scenario_ref"], rel)
-            info.update(binding.test_info(text, tools["scenario_ref"], rel))
-        live = self.live_cycles(run)
-        other = {k for c in live if c["id"] != cycle["id"] for k in self._scenario_keys(c)}
-        shared = {k for c in live if c["id"] != cycle["id"] and json_list(c["approved_tests"]) for k in self._scenario_keys(c)}
-        problem, pairs = binding.bind(refs, set(keys), other, shared)
+        problem, pairs, info = self._red_binding(run, cycle, files, tools)
         if problem:
             return self._finish_red(run, task, cycle, None, "rejected", problem, None, [], files)
         tests = list(dict.fromkeys(t for _, t in pairs))
@@ -931,6 +921,87 @@ class CycleOps:
             line = classifier.output_line(cl["classification"], ran["output"], tools["failure_patterns"])
             reason = f"{cl['classification'].replace('_', ' ')}: {line}" if line else reason
         return self._finish_red(run, task, cycle, ran, verdict, reason, cl, pairs, files, tools, info)
+
+    def _red_binding(self, run, cycle, files, tools):
+        """(problem, pairs, info) of the scenario references in Red's changed test files: pairs (scenario key, test)."""
+        cfg = self._run_config(run)
+        keys = self._scenario_keys(cycle)
+        refs, base, info = [], self._repo_path(cfg, cycle["repo_id"]), {}
+        for rel, _ in files:
+            try:
+                text = (base / rel).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            refs += binding.references(text, tools["scenario_ref"], rel)
+            info.update(binding.test_info(text, tools["scenario_ref"], rel))
+        live = self.live_cycles(run)
+        other = {k for c in live if c["id"] != cycle["id"] for k in self._scenario_keys(c)}
+        shared = {k for c in live if c["id"] != cycle["id"] and json_list(c["approved_tests"]) for k in self._scenario_keys(c)}
+        problem, pairs = binding.bind(refs, set(keys), other, shared)
+        return problem, pairs, info
+
+    def confirm_already_implemented(self, run, task, cycle, comment):
+        """A human confirms that the behavior of a cycle whose Red tests pass before Green already exists (earlier cycles
+        built it). Not in a transaction: the engine binds Red's tests, runs them and every accepted test, and only when all
+        ran and passed accepts the cycle with red_method already_implemented and that one run as its evidence (classification
+        pass, the comment as reason). Green and Refactor are skipped; their state moves carry the reason. Refusals are
+        E_PRECONDITION and change nothing."""
+        refuse = lambda msg, **d: SentinelError("E_PRECONDITION", msg, {"cycle": cycle["id"], **d})  # noqa: E731
+        if task["role"] != "tdd_red" or task["cycle_id"] != cycle["id"] or cycle["red_method"] == Q.QA:
+            raise refuse(f"task {task['id']} is not the Red task of a test-file cycle")
+        if cycle["state"] != "RED_RUNNING" or cycle["red_task"] != task["id"]:
+            raise refuse(f"cycle {cycle['behavior']} is {cycle['state']}; only a cycle whose latest Red is waiting can be confirmed")
+        cfg = self._run_config(run)
+        repo = cycle["repo_id"]
+        tools = scopes.test_tools(cfg, repo)
+        files = self._changed_test_files(run, task, cycle)
+        if not files:
+            raise refuse("the Red task changed no test file")
+        problem, pairs, info = self._red_binding(run, cycle, files, tools)
+        if problem:
+            raise refuse(problem)
+        tests = list(dict.fromkeys(t for _, t in pairs))
+        related = [t for t in self.accepted_tests(run, cycle) if t not in tests]
+        base_row = self.baseline(run, repo)
+        ran = self._run_tests(cfg, repo, tools["targeted_test"], tools, tests + related, self.test_info(run, cycle, info))
+        cl = classifier.classify(ran["exit_code"], ran["output"], ran["report"], tools["failure_patterns"], new_tests=tests,
+                                 baseline_failing=json_list(base_row["failing"]) if base_row else [], related_tests=related,
+                                 summary_patterns=tools.get("summary_patterns"))
+        verdict, why = classifier.verify_green(cl, tests)
+        if verdict != "accepted" or cl["classification"] != "pass":
+            raise refuse(f"not every test passes, so the behavior is not implemented yet: {why or cl['classification']}")
+        reason = "already implemented, confirmed by a human: " + comment
+        with self.reg.transaction():
+            run = self.reg.get_run_by_id(run["id"])
+            cycle = self._cycle(cycle["id"])
+            if cycle["state"] != "RED_RUNNING" or cycle["red_task"] != task["id"]:
+                raise refuse("the cycle moved while its tests ran")
+            for t in self.reg.rows("tasks", run_id=run["id"], cycle_id=cycle["id"]):
+                if t["state"] in OPEN_STATES or t["state"] == "BLOCKED":
+                    self._cancel_in_tx(run, t, machines.HUMAN, reason, cascade=False)
+            self.reg.update_row("cycles", cycle["id"], red_method=ALREADY)
+            cycle = self._cycle(cycle["id"])
+            self._store_evidence(run, "red", repo, task=task, cycle=cycle, ran=ran, cl=cl, verdict="accepted", reason=reason,
+                                 failing=[], counts=(len(tests), 0, 0))
+            approved = [{"path": f"{repo}/{rel}", "sha256": sha} for rel, sha in files]
+            for key in self._scenario_keys(cycle):
+                self.reg.remove_trace_links(run["id"], from_kind="scenario", from_id=key, to_kind="test")
+            self.reg.remove_trace_links(run["id"], from_kind="cycle", from_id=cycle["id"], to_kind="test_file")
+            for key, test in pairs:
+                self.reg.add_trace_link(run["id"], "scenario", key, "test", test)
+            for item in approved:
+                self.reg.add_trace_link(run["id"], "cycle", cycle["id"], "test_file", item["path"])
+            cycle = self._move_cycle(run, cycle, "RED_VERIFIED", reason=reason, classification="pass",
+                                     approved_tests=json.dumps(approved), tests=json.dumps(tests),
+                                     test_info=json.dumps({t: info[t] for t in tests if t in info}))
+            for to in ("GREEN_RUNNING", "GREEN_VERIFIED", "REFACTOR_RUNNING", "REFACTOR_VERIFIED"):
+                cycle = self._move_cycle(run, cycle, to, reason=reason)
+            refused = self._try_accept(run, cycle)
+            if refused:
+                raise SentinelError(*refused)
+            self._queue_ready(run)
+        self._finish_up(run["slug"], run)
+        return self._cycle(cycle["id"])
 
     def _finish_red(self, run, task, cycle, ran, verdict, reason, cl, pairs, files, tools=None, info=None):
         tests = list(dict.fromkeys(t for _, t in pairs))
