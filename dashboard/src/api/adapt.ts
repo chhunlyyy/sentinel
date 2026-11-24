@@ -137,6 +137,7 @@ export function gherkin(w: W.WGherkin): T.GherkinAnswer {
   const features: T.GherkinFeature[] = w.files.map((f) => ({
     path: f.path,
     name: featureName(f.text, f.path),
+    text: f.text,
     scenarios: w.scenarios
       .filter((s) => s.path === f.path)
       .map((s) => {
@@ -300,28 +301,4 @@ export function acceptance(w: W.WRun): T.AcceptanceAnswer {
   return { run: run(w) };
 }
 
-export function chat(w: W.WChatAnswer): T.ChatAnswer {
-  return {
-    items: (w.items ?? []).map((m) => ({
-      id: m.id,
-      role: m.role,
-      text: m.text ?? '',
-      at: m.at ?? '',
-      status: m.status,
-      error: m.error,
-    })),
-    orchestrator: {
-      runner: w.orchestrator?.runner ?? 'claude',
-      model: w.orchestrator?.model ?? null,
-    },
-  };
-}
-
-export function mergeChatItems(items: T.ChatItem[]): T.ChatItem[] {
-  const map = new Map<string, T.ChatItem>();
-  for (const item of items) {
-    map.set(item.id, item);
-  }
-  return Array.from(map.values());
-}
 

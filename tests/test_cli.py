@@ -60,5 +60,40 @@ class TestLocks(unittest.TestCase):
         self.assertFalse((self.ws / ".sentinel" / "shared" / "locks" / "lb").exists())
 
 
+class TestAttach(unittest.TestCase):
+    def setUp(self):
+        import io
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.ws = Path(self._tmp.name)
+        (self.ws / "sentinel.config.yaml").write_text("version: 1\nshape: single\nrepos:\n  - id: app\n    path: .\n    role: app\n    profile: generic\n")
+        (self.ws / ".git").mkdir()
+
+    def test_attach_print_outputs_context_block(self):
+        import contextlib
+        import io
+        from engine import Engine
+        eng = Engine(self.ws / ".sentinel", self.ws, CONFIG)
+        try:
+            eng.create_run("tax-calc", "test-user", request="Fix tax calculation edge case", type="feature", baseline={})
+            eng.request_state("tax-calc", "NEEDS_HUMAN", "engine", reason="Which rounding method to use?")
+        finally:
+            eng.close()
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            sentinel.cmd_attach(argparse.Namespace(dir=str(self.ws), slug="tax-calc", print_only=True))
+
+        out = buf.getvalue()
+        self.assertIn("Run: tax-calc", out)
+        self.assertIn("Request: Fix tax calculation edge case", out)
+        self.assertIn("State: NEEDS_HUMAN", out)
+        self.assertIn("Park reason: Which rounding method to use?", out)
+        self.assertIn("Open questions: Which rounding method to use?", out)
+        self.assertIn("Run folder:", out)
+        self.assertIn("Spec path:", out)
+        self.assertIn("Scenario path:", out)
+
+
 if __name__ == "__main__":
     unittest.main()

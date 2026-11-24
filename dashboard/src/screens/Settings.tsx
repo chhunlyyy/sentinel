@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { calls } from '../api/calls.ts';
 import type { CheckStatus, ConfigFormField, ConfigFormSection } from '../api/types.ts';
 import { ActionResult, Loaded, StatusChip, useAction } from '../components/common.tsx';
@@ -499,7 +499,378 @@ function HealthPage() {
   );
 }
 
-export function SettingsScreen({ page }: { page: string }) {
+interface StationRow {
+  role: string;
+  name: string;
+  tool: string;
+  model: string;
+}
+
+const DEFAULT_STATIONS: StationRow[] = [
+  { role: 'specifier', name: 'Spec writer', tool: 'Claude', model: 'claude-opus-5-5' },
+  { role: 'test_designer', name: 'Scenario writer', tool: 'Antigravity', model: 'gemini-3.8-flash-high' },
+  { role: 'tdd_red', name: 'Test writer', tool: 'Claude', model: 'claude-sonnet-5-5' },
+  { role: 'tdd_green', name: 'Coder', tool: 'Claude', model: 'claude-sonnet-5-5' },
+  { role: 'reviewer', name: 'Reviewer', tool: 'Claude', model: 'claude-opus-5-5' },
+  { role: 'qa', name: 'QA', tool: 'Antigravity', model: 'gemini-3.8-flash-medium' },
+];
+
+function UnifiedSettings() {
+  const app = useApp();
+  const projectsRes = useResource('settings-projects', (c) => calls.projects(c), {});
+  const availableProjects = projectsRes.data?.items.filter((p) => p.status === 'available') ?? [];
+  const [selectedPid, setSelectedPid] = useState<string>('');
+  const pid = selectedPid || availableProjects[0]?.id || '';
+  const currentProject = availableProjects.find((p) => p.id === pid) || availableProjects[0];
+  const projectName = currentProject?.name || pid || 'MEF-HR';
+
+  const providersRes = useResource('settings-unified-providers', (c) => calls.providers(c), {});
+  const formRes = useResource(`settings-unified-form-${pid}`, (c) => calls.configForm(c, pid), { project: pid }, !!pid);
+
+  // Tools testing state
+  const [testedTools, setTestedTools] = useState<Record<string, { status: 'testing' | 'works' | 'failed'; message?: string }>>({});
+
+  // Team state: 'mix' | 'one' | 'custom'
+  const [team, setTeam] = useState<'mix' | 'one' | 'custom'>('mix');
+  const [stations, setStations] = useState<StationRow[]>(DEFAULT_STATIONS);
+
+  // Orchestrator state
+  const [selfAnswer, setSelfAnswer] = useState<boolean>(true);
+  const [orchModel, setOrchModel] = useState<string>('Claude · claude-opus-5-5');
+
+  // Notify state
+  const [notifyDecision, setNotifyDecision] = useState<boolean>(true);
+  const [notifyFinished, setNotifyFinished] = useState<boolean>(true);
+
+  // Sync selfAnswer from config if present
+  useEffect(() => {
+    if (formRes.data?.sections) {
+      const field = formRes.data.sections.flatMap((s) => s.fields).find((f) => f.path === 'orchestrator.answer_from_spec');
+      if (field && typeof field.value === 'boolean') {
+        setSelfAnswer(field.value);
+      }
+    }
+  }, [formRes.data]);
+
+  const handleTestTool = async (toolId: string) => {
+    setTestedTools((prev) => ({ ...prev, [toolId]: { status: 'testing' } }));
+    try {
+      const res = await calls.providerTest(app.client, toolId);
+      setTestedTools((prev) => ({
+        ...prev,
+        [toolId]: {
+          status: res.ok ? 'works' : 'failed',
+          message: res.message,
+        },
+      }));
+    } catch (err: unknown) {
+      setTestedTools((prev) => ({
+        ...prev,
+        [toolId]: {
+          status: 'failed',
+          message: err instanceof Error ? err.message : String(err),
+        },
+      }));
+    }
+  };
+
+  const handlePickTeam = (picked: 'mix' | 'one' | 'custom') => {
+    setTeam(picked);
+    if (picked === 'mix') {
+      setStations(DEFAULT_STATIONS);
+    } else if (picked === 'one') {
+      setStations(DEFAULT_STATIONS.map((s) => ({ ...s, tool: 'Claude', model: 'claude-sonnet-5-5' })));
+    }
+  };
+
+  const handleStationChange = (role: string, field: 'tool' | 'model', val: string) => {
+    setStations((prev) =>
+      prev.map((s) => {
+        if (s.role !== role) return s;
+        if (field === 'tool') {
+          const defaultModel = val === 'Antigravity' ? 'gemini-3.8-flash-high' : 'claude-sonnet-5-5';
+          return { ...s, tool: val, model: defaultModel };
+        }
+        return { ...s, model: val };
+      }),
+    );
+  };
+
+  const handleToggleSelfAnswer = async () => {
+    const nextVal = !selfAnswer;
+    setSelfAnswer(nextVal);
+    if (pid) {
+      try {
+        await calls.configSave(app.client, pid, [{ path: 'orchestrator.answer_from_spec', value: nextVal }], 'Toggle orchestrator.answer_from_spec');
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const pillStyle = (on: boolean): CSSProperties => ({
+    fontSize: '14px',
+    padding: '10px 14px',
+    borderRadius: '999px',
+    cursor: 'pointer',
+    font: 'inherit',
+    border: on ? '2px solid #0F766E' : '1px solid #D6D5CF',
+    background: on ? '#F1F7F6' : '#FFFFFF',
+    color: '#1B1B19',
+    fontWeight: on ? 600 : 400,
+  });
+
+  // Providers list
+  const providerItems = providersRes.data?.items ?? [];
+  const tools = providerItems.length > 0
+    ? providerItems.map((p) => ({
+        id: p.id,
+        name: p.label || p.id,
+        status: p.installed ? 'Installed · signed in' : 'Not installed',
+        installed: p.installed,
+      }))
+    : [
+        { id: 'claude', name: 'Claude', status: 'Installed · signed in', installed: true },
+        { id: 'agy', name: 'Antigravity', status: 'Installed · signed in', installed: true },
+      ];
+
+  const teamHint =
+    team === 'custom'
+      ? 'Pick a tool and model per station. A tool that fails falls back to the next one.'
+      : 'Switch to Custom to change a single station.';
+
+  return (
+    <div style={{ minHeight: '1000px', background: '#F6F6F3', fontFamily: 'Inter, system-ui, sans-serif', color: '#1B1B19', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, width: '100%', maxWidth: '880px', margin: '0 auto', boxSizing: 'border-box', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '12px' }}>
+          <h1 style={{ margin: 0, fontSize: '26px' }}>Settings</h1>
+          <span style={{ fontSize: '15px', color: '#5A5A55' }}>
+            for {projectName} · saved as you change them
+          </span>
+          {availableProjects.length > 1 ? (
+            <select
+              aria-label="Select project"
+              value={pid}
+              onChange={(e) => setSelectedPid(e.target.value)}
+              style={{ fontSize: '14px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #D6D5CF', marginLeft: 'auto' }}
+            >
+              {availableProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+
+        {/* Section 1: AI tools on this computer */}
+        <section style={{ background: '#FFFFFF', border: '1px solid #E4E3DE', borderRadius: '14px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <h2 style={{ margin: 0, fontSize: '17px' }}>AI tools on this computer</h2>
+          {tools.map((t) => {
+            const testState = testedTools[t.id];
+            const testLabel = testState?.status === 'testing' ? 'Testing…' : testState?.status === 'works' ? 'Works' : 'Test';
+            return (
+              <div
+                key={t.id}
+                data-testid={`provider-${t.id}`}
+                style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', padding: '12px 14px', border: '1px solid #E4E3DE', borderRadius: '10px' }}
+              >
+                <span style={{ fontWeight: 600, fontSize: '15px', minWidth: '140px' }}>{t.name}</span>
+                <span style={{ fontSize: '14px', color: t.installed ? '#0F5E57' : '#8A8984', flex: '1 1 200px' }}>{t.status}</span>
+                <button
+                  type="button"
+                  aria-label={`Test ${t.name}`}
+                  disabled={!t.installed || testState?.status === 'testing'}
+                  onClick={() => void handleTestTool(t.id)}
+                  style={{ fontSize: '14px', padding: '8px 12px', border: '1px solid #D6D5CF', background: '#FFFFFF', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  {testLabel}
+                </button>
+              </div>
+            );
+          })}
+        </section>
+
+        {/* Section 2: AI team */}
+        <section style={{ background: '#FFFFFF', border: '1px solid #E4E3DE', borderRadius: '14px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <h2 style={{ margin: 0, fontSize: '17px' }}>AI team</h2>
+          <div role="radiogroup" aria-label="AI team" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={team === 'mix'}
+              onClick={() => handlePickTeam('mix')}
+              style={pillStyle(team === 'mix')}
+            >
+              Recommended mix
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={team === 'one'}
+              onClick={() => handlePickTeam('one')}
+              style={pillStyle(team === 'one')}
+            >
+              One AI for everything
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={team === 'custom'}
+              onClick={() => handlePickTeam('custom')}
+              style={pillStyle(team === 'custom')}
+            >
+              Custom
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', minWidth: '560px' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: '#6B6B65' }}>
+                  <th scope="col" style={{ padding: '8px 10px', fontWeight: 600 }}>Station</th>
+                  <th scope="col" style={{ padding: '8px 10px', fontWeight: 600 }}>AI tool</th>
+                  <th scope="col" style={{ padding: '8px 10px', fontWeight: 600 }}>Model</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stations.map((s) => (
+                  <tr key={s.role} style={{ borderTop: '1px solid #EEEDE8' }}>
+                    <th scope="row" style={{ padding: '10px', textAlign: 'left', fontWeight: 500 }}>{s.name}</th>
+                    <td style={{ padding: '10px' }}>
+                      <select
+                        aria-label={`${s.name} AI tool`}
+                        disabled={team !== 'custom'}
+                        value={s.tool}
+                        onChange={(e) => handleStationChange(s.role, 'tool', e.target.value)}
+                        style={{ fontSize: '14px', padding: '7px 9px', border: '1px solid #D6D5CF', borderRadius: '8px', background: '#FFFFFF' }}
+                      >
+                        <option value="Claude">Claude</option>
+                        <option value="Antigravity">Antigravity</option>
+                        <option value="Codex">Codex</option>
+                      </select>
+                    </td>
+                    <td style={{ padding: '10px' }}>
+                      <select
+                        aria-label={`${s.name} model`}
+                        disabled={team !== 'custom'}
+                        value={s.model}
+                        onChange={(e) => handleStationChange(s.role, 'model', e.target.value)}
+                        style={{ fontSize: '14px', padding: '7px 9px', border: '1px solid #D6D5CF', borderRadius: '8px', background: '#FFFFFF' }}
+                      >
+                        {s.tool === 'Antigravity' ? (
+                          <>
+                            <option value="gemini-3.8-flash-high">gemini-3.8-flash-high</option>
+                            <option value="gemini-3.8-flash-medium">gemini-3.8-flash-medium</option>
+                            <option value="gemini-3.8-pro">gemini-3.8-pro</option>
+                          </>
+                        ) : s.tool === 'Codex' ? (
+                          <>
+                            <option value="gpt-5">gpt-5</option>
+                            <option value="gpt-5-mini">gpt-5-mini</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="claude-opus-5-5">claude-opus-5-5</option>
+                            <option value="claude-sonnet-5-5">claude-sonnet-5-5</option>
+                            <option value="claude-haiku-4-5">claude-haiku-4-5</option>
+                          </>
+                        )}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: '13px', color: '#5A5A55' }}>{teamHint}</div>
+        </section>
+
+        {/* Section 3: Orchestrator */}
+        <section style={{ background: '#FFFFFF', border: '1px solid #E4E3DE', borderRadius: '14px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <h2 style={{ margin: 0, fontSize: '17px' }}>Orchestrator</h2>
+          <p style={{ margin: 0, fontSize: '14px', lineHeight: 1.5, color: '#3D3D39' }}>
+            Agents ask the orchestrator when they are unsure. It brings real decisions to you as a card on the floor.
+          </p>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={selfAnswer}
+              onChange={() => void handleToggleSelfAnswer()}
+              style={{ width: '18px', height: '18px', accentColor: '#0F766E' }}
+            />
+            Answer from the approved spec when it settles the question, and show me which section it used
+          </label>
+          <label style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', fontSize: '15px' }}>
+            Orchestrator model
+            <select
+              aria-label="Orchestrator model"
+              value={orchModel}
+              onChange={(e) => setOrchModel(e.target.value)}
+              style={{ fontSize: '14px', padding: '8px 10px', border: '1px solid #D6D5CF', borderRadius: '8px', background: '#FFFFFF' }}
+            >
+              <option value="Claude · claude-opus-5-5">Claude · claude-opus-5-5</option>
+              <option value="Claude · claude-sonnet-5-5">Claude · claude-sonnet-5-5</option>
+              <option value="Antigravity · gemini-3.8-flash-high">Antigravity · gemini-3.8-flash-high</option>
+              <option value="Codex · gpt-5">Codex · gpt-5</option>
+            </select>
+          </label>
+        </section>
+
+        {/* Section 4: Notify me */}
+        <section style={{ background: '#FFFFFF', border: '1px solid #E4E3DE', borderRadius: '14px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <h2 style={{ margin: 0, fontSize: '17px' }}>Notify me</h2>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={notifyDecision}
+              onChange={(e) => setNotifyDecision(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: '#0F766E' }}
+            />
+            When the orchestrator needs a decision
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '15px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={notifyFinished}
+              onChange={(e) => setNotifyFinished(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: '#0F766E' }}
+            />
+            When a task is finished
+          </label>
+        </section>
+
+        {/* Section 5: Advanced folded */}
+        <details style={{ background: '#FFFFFF', border: '1px solid #E4E3DE', borderRadius: '14px', padding: '18px 24px', fontSize: '15px' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Advanced</summary>
+          <ul style={{ margin: '12px 0 0', paddingLeft: '20px', lineHeight: 1.9, fontSize: '14px' }}>
+            <li>
+              <Link to="/settings/config">Edit sentinel.config.yaml</Link> (history kept)
+            </li>
+            <li>
+              <Link to="/settings/service">Retries, time limits and test commands per repo</Link>
+            </li>
+            <li>
+              <Link to="/settings/installation">Installation and service details</Link> (<Link to="/settings/installation">Sentinel installation</Link>)
+            </li>
+            <li>
+              <Link to="/settings/runtime">Runtime connection</Link>
+            </li>
+            <li>
+              <Link to="/settings/health">Health checks</Link>
+            </li>
+          </ul>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+export function SettingsScreen({ page }: { page?: string }) {
+  if (!page || page === 'index' || page === 'settings') {
+    return <UnifiedSettings />;
+  }
+
   const items: [string, string][] = [
     ['service', 'Factory service'],
     ['providers', 'Providers and agents'],
@@ -511,6 +882,11 @@ export function SettingsScreen({ page }: { page: string }) {
 
   return (
     <section>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+        <Link to="/settings" style={{ fontSize: '14px', textDecoration: 'none', color: 'var(--link)', fontWeight: 500 }}>
+          ← Back to Settings
+        </Link>
+      </div>
       <h1>Settings</h1>
       <nav aria-label="Settings">
         <ul className="tabs">

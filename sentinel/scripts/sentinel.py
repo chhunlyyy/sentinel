@@ -944,6 +944,74 @@ def cmd_report(args):
         engine.close()
 
 
+def cmd_attach(args):
+    config_path, config = load_config(args.dir)
+    engine = open_registry(config_path, config)
+    try:
+        slug = check_slug(args.slug)
+        if not engine.reg.get_run(slug):
+            raise SentinelError("E_NOT_FOUND", f"no run named {slug}", {"slug": slug})
+        run = engine.load_run(slug) if engine.is_v2(slug) else engine.reg.get_run(slug)
+        state = run.get("state", "UNKNOWN")
+        request = run.get("request") or "(none)"
+        run_dir = str(engine.run_dir(slug)) if hasattr(engine, "run_dir") else "(none)"
+        spec_path = str(engine.spec_path(slug)) if hasattr(engine, "spec_path") else "(none)"
+        features_dir = str(engine.features_dir(slug)) if hasattr(engine, "features_dir") else "(none)"
+
+        park_reason = engine._state_reason(run, state) if hasattr(engine, "_state_reason") else None
+        if not park_reason and state == "NEEDS_HUMAN":
+            for ev in reversed(engine.reg.list_events(run["id"], "run.state_changed")):
+                if (ev["payload"] or {}).get("to") == "NEEDS_HUMAN":
+                    park_reason = (ev["payload"] or {}).get("reason")
+                    break
+
+        questions = []
+        tasks = engine.reg.rows("tasks", run_id=run["id"]) if hasattr(engine, "reg") else []
+        for t in tasks:
+            if t["state"] in ("WAITING_FOR_INPUT", "BLOCKED"):
+                if t.get("reason"):
+                    for q in t["reason"].split("; "):
+                        q = q.strip()
+                        if q and q not in questions:
+                            questions.append(q)
+        if not questions and park_reason:
+            for q in park_reason.split("; "):
+                q = q.strip()
+                if q and q not in questions:
+                    questions.append(q)
+
+        open_q_str = "; ".join(questions) if questions else "(none)"
+        lines = [
+            f"Run: {slug}",
+            f"Request: {request}",
+            f"State: {state}",
+            f"Park reason: {park_reason or '(none)'}",
+            f"Open questions: {open_q_str}",
+            f"Run folder: {run_dir}",
+            f"Spec path: {spec_path}",
+            f"Scenario path: {features_dir}",
+        ]
+        context = "\n".join(lines)
+    finally:
+        engine.close()
+
+    if getattr(args, "print_only", False):
+        print(context)
+        return
+
+    orch = config.get("orchestrator") or {}
+    runner = orch.get("runner") or "claude"
+    workspace = config_path.parent
+    if runner == "agy" and shutil.which("agy"):
+        subprocess.run(["agy", "-i", context], cwd=workspace)
+    elif runner == "claude" and shutil.which("claude"):
+        subprocess.run(["claude", context], cwd=workspace)
+    elif shutil.which(runner):
+        subprocess.run([runner, context], cwd=workspace)
+    else:
+        print(context)
+
+
 def cmd_resolve(args):
     config_path, config = load_config(args.dir)
     engine = open_registry(config_path, config)
@@ -1843,6 +1911,11 @@ def main():
     report.add_argument("slug")
     report.add_argument("--json", action="store_true")
     report.set_defaults(func=cmd_report)
+
+    attach = sub.add_parser("attach", help="attach interactive orchestrator runner to a run")
+    attach.add_argument("slug")
+    attach.add_argument("--print", dest="print_only", action="store_true", help="print the run context only")
+    attach.set_defaults(func=cmd_attach)
 
     resolve = sub.add_parser("resolve", help="record a human decision on a parked run and resume it (human, interactive terminal only)")
     resolve.add_argument("slug")

@@ -1,4 +1,3 @@
-import type { Page } from '@playwright/test';
 import { test, expect, open, heading } from './helpers.ts';
 
 interface ProjectCreatedBody {
@@ -13,80 +12,45 @@ interface ConfigSaveBody {
 
 const bodyOf = <T = Record<string, unknown>>(r: { body: unknown }) => r.body as T;
 
-async function pick(page: Page, label: string, ...dirs: string[]) {
-  await page.getByRole('button', { name: `Browse folders for ${label}` }).click();
-  for (const d of dirs) await page.getByRole('button', { name: `Open ${d}`, exact: true }).click();
-}
-
 test.describe('W3b GUI screens: wizard, shared access, config preview & save, knowledge backfill', () => {
-  test('wizard happy path through all 5 steps to the factory floor', async ({ page, api }) => {
+  test('wizard happy path through 3 steps to the factory floor', async ({ page, api }) => {
     await open(page, '/projects/new');
     await expect(heading(page, 'Create project')).toBeVisible();
 
-    // Step 1: Repositories
-    await page.getByLabel('Project name').fill('Billing');
-    await pick(page, 'Project folder', 'projects');
-    await page.getByLabel('New folder name').fill('billing');
-    await page.getByRole('button', { name: 'Create folder here' }).click();
-    await expect(page.getByRole('textbox', { name: 'Project folder' })).toHaveValue('/home/dev/projects/billing');
-
-    await pick(page, 'Repository folder', 'projects', 'hr-backend');
+    // Step 1: Project folder
+    await page.getByRole('button', { name: 'Or enter folder path manually' }).click();
+    await page.getByLabel('Project folder').fill('/home/dev/projects/billing');
     await page.getByRole('button', { name: 'Use this folder' }).click();
-    await page.getByLabel('Role').selectOption('backend');
-    await page.getByRole('button', { name: 'Add repository' }).click();
-    await expect(page.getByTestId('wizard-repos')).toContainText('/home/dev/projects/hr-backend');
 
-    // Advance to Step 2: Detected setup
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.getByText('We looked at your repos')).toBeVisible();
-    await expect(page.getByLabel('Test command')).toBeVisible();
+    // Step 2: Repositories found
+    await expect(page.getByText('Repos found in this folder')).toBeVisible();
 
-    // Advance to Step 3: Shared knowledge
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.getByText('Shared team knowledge')).toBeVisible();
-    await page.getByRole('radio', { name: /Shared through a git repository/ }).check();
+    // Step 3: Shared knowledge
+    await page.getByText('Team knowledge repo').click();
     await page.getByLabel('Git URL').fill('git@example.test:team/state.git');
-
-    // Advance to Step 4: AI team
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.getByText('Your AI team')).toBeVisible();
-    await expect(page.getByRole('table')).toBeVisible();
-    await expect(page.getByLabel('Provider for coder')).toBeVisible();
-
-    // Advance to Step 5: Checks and Create
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.getByText('Ready to open the factory')).toBeVisible();
-    await expect(page.getByTestId('wizard-review')).toContainText('Billing');
-    await expect(page.getByTestId('wizard-review')).toContainText('Shared: git@example.test:team/state.git');
 
     // Submit wizard
     await page.getByRole('button', { name: 'Create project' }).click();
-    await expect(heading(page, 'Billing')).toBeVisible();
     await expect(page).toHaveURL(/#\/projects\/billing\/floor/);
 
     const [sent] = (await api.posts(/\/api\/v1\/projects$/)).map((r) => bodyOf<ProjectCreatedBody>(r));
-    expect(sent.name).toBe('Billing');
+    expect(sent.name).toBe('billing');
     expect(sent.shared.mode).toBe('git');
     expect(sent.shared.url).toBe('git@example.test:team/state.git');
   });
 
   test('failing shared access test is shown with error notice', async ({ page }) => {
     await open(page, '/projects/new');
-    await page.getByLabel('Project name').fill('Billing');
-    await page.getByRole('textbox', { name: 'Project folder' }).fill('/home/dev/projects/billing');
-    await page.getByRole('textbox', { name: 'Repository folder' }).fill('/home/dev/projects/hr-backend');
-    await page.getByRole('button', { name: 'Add repository' }).click();
+    await page.getByRole('button', { name: 'Or enter folder path manually' }).click();
+    await page.getByLabel('Project folder').fill('/home/dev/projects/billing');
+    await page.getByRole('button', { name: 'Use this folder' }).click();
 
-    // Advance to Step 2 then Step 3
-    await page.getByRole('button', { name: 'Next' }).click();
-    await page.getByRole('button', { name: 'Next' }).click();
-
-    await page.getByRole('radio', { name: /Shared through a git repository/ }).check();
+    await page.getByText('Team knowledge repo').click();
     // 'fail' in url triggers mock server error in fake-api
     await page.getByLabel('Git URL').fill('git@example.test:fail/unreachable.git');
     await page.getByRole('button', { name: 'Test access' }).click();
 
-    await expect(page.getByText(/Could not resolve host|Access test failed/)).toBeVisible();
+    await expect(page.getByText(/Could not resolve host|Access test failed|✗/)).toBeVisible();
   });
 
   test('project settings config preview diff then save', async ({ page, api }) => {

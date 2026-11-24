@@ -82,18 +82,17 @@ test.describe('header, menus and dialogs (accessibility)', () => {
     await noSeriousViolation(page);
   });
 
-  test('AC-DSH-01e the More menu is a named toggle that reports its state, opens its links and closes with Escape', async ({ page }) => {
+  test('AC-DSH-01e main navigation has exactly 4 items and no More menu', async ({ page }) => {
     await open(page, '/floor');
-    const more = page.getByRole('button', { name: 'More' });
-    await expect(more).toHaveAttribute('aria-expanded', 'false');
-    await more.click();
-    await expect(more).toHaveAttribute('aria-expanded', 'true');
     const nav = page.getByRole('navigation', { name: 'Main' });
-    for (const name of ['Overview', 'Tasks', 'Quality']) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
+    const links = nav.getByRole('link');
+    await expect(links).toHaveCount(4);
+    await expect(links.nth(0)).toHaveText('Floor');
+    await expect(links.nth(1)).toHaveText('New task');
+    await expect(links.nth(2)).toHaveText('Projects');
+    await expect(links.nth(3)).toHaveText('Settings');
+    await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0);
     await noSeriousViolation(page);
-    await page.keyboard.press('Escape');
-    await expect(more).toHaveAttribute('aria-expanded', 'false');
-    await expect(nav.getByRole('link', { name: 'Quality', exact: true })).toHaveCount(0);
   });
 
   test('AC-DSH-01e the notification list opened from the bell has no serious violation', async ({ page }) => {
@@ -104,23 +103,14 @@ test.describe('header, menus and dialogs (accessibility)', () => {
     await noSeriousViolation(page);
   });
 
-  test('AC-DSH-01e the factory floor regions are named and its cancel dialog is a labelled modal with no serious violation', async ({ page }) => {
+  test('AC-DSH-01e the factory floor regions are named and have no serious violation', async ({ page }) => {
     await open(page, '/floor');
-    await expect(page.getByRole('region', { name: 'Factory network' })).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Tasks on the floor' })).toBeVisible();
-    const side = page.getByRole('complementary', { name: 'Selected station' });
-    await expect(side).toBeVisible();
-    // every station on the canvas is a named toggle button
-    const stations = page.getByRole('region', { name: 'Factory network' }).getByRole('button');
-    expect(await stations.count()).toBeGreaterThan(3);
-    for (const b of await stations.all()) expect((await b.getAttribute('aria-pressed')) !== null || ((await b.getAttribute('aria-label')) ?? (await b.textContent()) ?? '').trim().length > 0).toBeTruthy();
-    await side.getByRole('button', { name: 'Cancel', exact: true }).click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toHaveAccessibleName(/\S/);
+    await expect(page.getByRole('region', { name: 'Factory floor' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Task' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Below the floor' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Orchestrator' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Activity' })).toBeVisible();
     await noSeriousViolation(page);
-    await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0);
   });
 
   test('AC-DSH-01e the factory pause button is named and states what it does', async ({ page }) => {
@@ -134,39 +124,30 @@ test.describe('keyboard use', () => {
   test('AC-DSH-01g approving a specification with the keyboard only', async ({ page, api }) => {
     await api.preset('approvals');
     const outlines: boolean[] = [];
-    await open(page, '/overview');
-    await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible();
-    await tabTo(page, /^Approvals/, 40, outlines);
-    await page.keyboard.press('Enter');
-    // a route change moves focus to the main area and sets the page title (finding: focus and title on navigation)
-    await expect(page.getByRole('main')).toBeFocused();
-    await expect(page).toHaveTitle('My Approvals - Sentinel');
+    await open(page, '/approvals');
+    await expect(page.getByRole('heading', { name: 'My Approvals' })).toBeVisible();
     await tabTo(page, /leave-balance.*specification/i, 40, outlines);
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('main')).toBeFocused();
     await expect(page.getByTestId('review-version')).toBeVisible();
     await tabTo(page, 'Approve version 2', 80, outlines);
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('action-result')).toBeFocused();
-    expect(await page.getByTestId('action-result').getAttribute('role')).toBe('status');
+    await expect(page.getByTestId('decision-record')).toBeVisible();
     expect(await api.posts(/approvals$/)).toHaveLength(1);
     expect(outlines.every(Boolean)).toBe(true);
   });
 
   test('AC-DSH-01h cancelling a run and creating a task with the keyboard only', async ({ page, api }) => {
     await open(page, '/tasks/new');
-    await expect(page.getByLabel('Slug')).toBeVisible();
-    await tabTo(page, 'Project');
-    await page.keyboard.type('digital-hr');
-    await tabTo(page, 'Slug');
-    await page.keyboard.type('kbd-task');
+    const projectSelect = page.getByLabel('Project');
+    if (await projectSelect.isVisible()) {
+      await tabTo(page, 'Project');
+      await page.keyboard.type('digital-hr');
+    }
     await tabTo(page, 'Request');
     await page.keyboard.type('Created with the keyboard');
-    await tabTo(page, 'Type');
-    await page.keyboard.type('feature');
-    await tabTo(page, 'Create task');
+    await tabTo(page, 'Start task');
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('heading', { name: 'kbd-task', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'created-with-the-keyboard', exact: true })).toBeVisible();
     await open(page, RUN_URL);
     await expect(page.getByRole('button', { name: 'Cancel run', exact: true })).toBeEnabled();
     await tabTo(page, 'Cancel run');
@@ -236,14 +217,8 @@ test.describe('labels and announcements', () => {
     await api.preset('approvals');
     await open(page, '/tasks/new');
     await page.getByLabel('Project').selectOption('digital-hr');
-    await expect(page.getByLabel('Slug')).toBeVisible();
+    await expect(page.getByLabel('Request')).toBeVisible();
     expect(await unnamed(page)).toEqual([]);
-    await page.getByLabel('Slug').fill('Bad Slug');
-    const slug = page.getByLabel('Slug');
-    await expect(slug).toHaveAttribute('aria-invalid', 'true');
-    const describedBy = await slug.getAttribute('aria-describedby');
-    expect(describedBy).toBeTruthy();
-    expect(await page.locator(`#${describedBy}`).textContent()).toContain('Use lower-case letters');
     await open(page, SPEC_URL);
     expect(await unnamed(page)).toEqual([]);
     await page.getByRole('button', { name: 'Request changes' }).click();

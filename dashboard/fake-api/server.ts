@@ -644,11 +644,21 @@ route('POST', `${V}/tasks/{slug}/control`, (c) => {
       run.detail.state = 'EXECUTING';
       run.detail.reason = null;
       break;
+    case 'already_implemented':
+      run.detail.state = 'EXECUTING';
+      run.detail.reason = null;
+      break;
+    case 'back_to_red':
+      run.detail.state = 'EXECUTING';
+      run.detail.reason = null;
+      break;
     case 'retry': {
-      const n = nodes.find((x) => x.id === b.task_id);
-      if (!n || n.state !== 'FAILED') throw new ApiErr(409, 'E_TRANSITION', 'only a failed task can be retried');
-      nodes.push({ ...n, id: `${n.id}-r${n.attempt + 1}`, state: 'QUEUED', retry_of: n.id, attempt: n.attempt + 1, error_code: null, started_at: null, finished_at: null, seconds: null });
-      run.workflow.edges.push({ from: n.id, to: `${n.id}-r${n.attempt + 1}` });
+      const n = b.task_id ? nodes.find((x) => x.id === b.task_id) : nodes.find((x) => x.state === 'FAILED');
+      if (n) {
+        nodes.push({ ...n, id: `${n.id}-r${n.attempt + 1}`, state: 'QUEUED', retry_of: n.id, attempt: n.attempt + 1, error_code: null, started_at: null, finished_at: null, seconds: null });
+        run.workflow.edges.push({ from: n.id, to: `${n.id}-r${n.attempt + 1}` });
+      }
+      run.detail.state = 'EXECUTING';
       break;
     }
     default:
@@ -915,12 +925,12 @@ route('POST', `${V}/projects`, (c) => {
   if (ext.workspaces.has(path) || db.projects.some((p) => p.path === path)) throw new ApiErr(409, 'E_PRECONDITION', 'sentinel.config.yaml already exists in that folder', { fix: 'use Register existing folder' });
   const parent = path.slice(0, path.lastIndexOf('/')) || '/';
   if (!ext.tree[path] && !ext.tree[parent]) throw new ApiErr(400, 'E_VALIDATION', 'the parent folder does not exist', { field: 'path' });
-  const used = new Set<string>();
-  const repos = reposIn.map((r) => repoFrom(r, used, 'repo'));
   if (!ext.tree[path]) {
     ext.tree[path] = [];
-    ext.tree[parent].push(path.split('/').pop() ?? '');
+    if (ext.tree[parent]) ext.tree[parent].push(path.split('/').pop() ?? '');
   }
+  const used = new Set<string>();
+  const repos = reposIn.map((r) => repoFrom(r, used, 'repo'));
   ext.workspaces.add(path);
   const project = addProject(name, path, repos);
   const g = ext.global;

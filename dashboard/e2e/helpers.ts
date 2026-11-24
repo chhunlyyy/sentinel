@@ -139,19 +139,42 @@ export function heading(page: Page, name: string) {
 /** action helpers shared by several specs */
 export async function createTask(page: Page, v: { slug: string; request?: string; type?: string; repos?: string[]; priority?: string; ticket?: string }) {
   await open(page, '/tasks/new');
-  await page.getByLabel('Project').selectOption('digital-hr');
-  await page.getByLabel('Slug').fill(v.slug);
+  if (await page.getByLabel('Project').isVisible()) {
+    await page.getByLabel('Project').selectOption('digital-hr');
+  }
+  const slugInput = page.getByLabel('Slug');
+  if (!(await slugInput.isVisible())) {
+    await page.getByText('More options').click();
+  }
+  await slugInput.fill(v.slug);
   await page.getByLabel('Request').fill(v.request ?? 'Report leave per team');
-  await page.getByLabel('Type').selectOption(v.type ?? 'feature');
+  const typeSelect = page.getByLabel('Type');
+  if (await typeSelect.isVisible()) {
+    await typeSelect.selectOption(v.type ?? 'feature');
+  } else if (v.type && v.type !== 'feature') {
+    await page.getByText('More options').click();
+    await typeSelect.selectOption(v.type);
+  }
   if (v.repos) {
     for (const r of ['backend', 'frontend']) {
-      const box = page.getByRole('checkbox', { name: r, exact: true });
-      if (v.repos.includes(r)) await box.check();
-      else await box.uncheck();
+      const box = page.getByRole('checkbox', { name: new RegExp(`^${r}`) });
+      if (v.repos.includes(r)) {
+        if (!(await box.isChecked())) await box.check();
+      } else {
+        if (await box.isChecked()) await box.uncheck();
+      }
     }
   }
-  if (v.priority) await page.getByLabel('Priority').selectOption(v.priority);
-  if (v.ticket) await page.getByLabel('Ticket').fill(v.ticket);
+  if (v.priority) {
+    const pri = page.getByLabel('Priority');
+    if (!(await pri.isVisible())) await page.getByText('More options').click();
+    await pri.selectOption(v.priority);
+  }
+  if (v.ticket) {
+    const tick = page.getByLabel('Ticket');
+    if (!(await tick.isVisible())) await page.getByText('More options').click();
+    await tick.fill(v.ticket);
+  }
 }
 
 export async function control(page: Page, button: string, opts: { comment?: string } = {}) {

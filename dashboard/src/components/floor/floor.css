@@ -72,6 +72,11 @@
 @keyframes floor-breathe-gate { 0%, 100% { transform: rotate(45deg) scale(.86); } 50% { transform: rotate(45deg) scale(.93); } }
 @keyframes floor-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
 
+@keyframes askpulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.35); }
+  50% { box-shadow: 0 0 28px rgba(245, 158, 11, 0.85); }
+}
+
 /* Phase 3 keyframes ported from Main.dc.html */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 1.8s linear infinite; }

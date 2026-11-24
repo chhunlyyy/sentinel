@@ -35,7 +35,7 @@ class Mapping(SV):
         from apiserver import status
         self.assertEqual(set(status.ENGINE_STATUS), set(errors.CODES))
         self.assertEqual(status.ENGINE_STATUS, STATUS)
-        for code in ("E_AUTH", "E_CSRF", "E_HOST", "E_ORIGIN", "E_METHOD", "E_BODY_TOO_LARGE", "E_MEDIA_TYPE", "E_INTERNAL"):
+        for code in ("E_AUTH", "E_CSRF", "E_HOST", "E_ORIGIN", "E_METHOD", "E_BODY_TOO_LARGE", "E_MEDIA_TYPE", "E_INTERNAL", "E_UNAVAILABLE"):
             self.assertIn(code, status.HTTP_ONLY_STATUS)
             self.assertNotIn(code, errors.CODES)
 
@@ -89,11 +89,9 @@ class Mapping(SV):
                                      "create_project", "register_project", "add_repository", "provider_test", "pause", "unpause",
                                      "note", "detect", "shared_test", "config_preview", "config_save", "knowledge_ingest",
                                      "knowledge_snapshot", "knowledge_backfill_estimate", "knowledge_backfill", "factory_pause",
-                                     "factory_resume", "retry_now", "chat_send"})
-        # chat: the run's chat.jsonl and a read-only orchestrator reply; no run, task or approval transition
-        self.assertEqual(table["chat_send"].calls, ("chat.append_chat", "chat.reply_worker"))
+                                     "factory_resume", "retry_now", "pick_folder"})
         self.assertEqual(table["retry_now"].calls, ("Engine.retry_limited_now",))
-        for name in ("detect", "shared_test", "config_preview", "knowledge_backfill_estimate"):
+        for name in ("detect", "shared_test", "config_preview", "knowledge_backfill_estimate", "pick_folder"):
             self.assertEqual(table[name].calls, ())  # 2.0 setup: read or probe only, nothing changes
         self.assertEqual(table["config_save"].calls, ("manage.write_config",))  # the same history-keeping save as the YAML editor
         self.assertEqual((table["knowledge_ingest"].calls, table["knowledge_snapshot"].calls, table["knowledge_backfill"].calls),

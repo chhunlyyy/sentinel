@@ -1,14 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
-import type { Page } from '@playwright/test';
-import { test, expect, open, heading, nav } from './helpers.ts';
+import { test, expect, open, heading } from './helpers.ts';
 
 const bodyOf = (r: { body: unknown }) => r.body as Record<string, unknown>;
 const puts = async (api: { requests: () => Promise<{ method: string; path: string; body: unknown }[]> }, re: RegExp) => (await api.requests()).filter((r) => r.method === 'PUT' && re.test(r.path));
-
-async function pick(page: Page, label: string, ...dirs: string[]) {
-  await page.getByRole('button', { name: `Browse folders for ${label}` }).click();
-  for (const d of dirs) await page.getByRole('button', { name: `Open ${d}`, exact: true }).click();
-}
 
 test.describe('providers and orchestrator', () => {
   test('Settings has a Providers page with installed badge, path and Test', async ({ page }) => {
@@ -25,21 +19,16 @@ test.describe('providers and orchestrator', () => {
     await expect(page.getByTestId('provider-result-claude')).toContainText('claude 1.0.0');
   });
 
-  test('the orchestrator is chosen on the page and shown in the header', async ({ page, api }) => {
+  test('the orchestrator is chosen on the page and saved', async ({ page, api }) => {
     await open(page, '/settings/providers');
-    await expect(page.getByTestId('orchestrator-badge')).toContainText('none');
     const select = page.getByRole('combobox', { name: 'Orchestrator' });
     await expect(select.locator('option')).toHaveText([/None/, /Claude Code \(claude\)/, /Codex CLI \(codex\)/]);
     await select.selectOption('codex');
     await page.getByRole('button', { name: 'Set orchestrator' }).click();
     await expect(page.getByTestId('action-result')).toContainText('Orchestrator set to Codex CLI');
     await expect(page.getByTestId('orchestrator-current')).toHaveText('Codex CLI');
-    await expect(page.getByTestId('orchestrator-badge')).toContainText('Codex CLI');
     const sent = await puts(api, /orchestrator$/);
     expect(sent.map(bodyOf)).toEqual([{ id: 'codex' }]);
-    // the header follows the user to other pages
-    await nav(page).getByRole('link', { name: 'Projects' }).click();
-    await expect(page.getByTestId('orchestrator-badge')).toContainText('Codex CLI');
   });
 
   test('an id that is not installed is refused by the server and shown', async ({ page, api }) => {
@@ -116,78 +105,44 @@ test.describe('agent routing', () => {
 });
 
 test.describe('project creation', () => {
-  test('wizard: name, folder, repositories, sharing, review, create', async ({ page, api }) => {
+  test('wizard: folder, repositories, AI team, create', async ({ page, api }) => {
     await open(page, '/projects');
     await page.getByRole('button', { name: 'Create project' }).click();
     await expect(heading(page, 'Create project')).toBeVisible();
-    await page.getByLabel('Project name').fill('Billing');
-    await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
-    await pick(page, 'Project folder', 'projects');
-    await page.getByLabel('New folder name').fill('billing');
-    await page.getByRole('button', { name: 'Create folder here' }).click();
-    await expect(page.getByRole('textbox', { name: 'Project folder' })).toHaveValue('/home/dev/projects/billing');
 
-    // at least one repository required before moving past step 1
-    await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
-    await pick(page, 'Repository folder', 'projects', 'hr-backend');
-    await expect(page.getByText('git', { exact: true }).first()).toBeVisible();
+    // Step 1: Project folder
+    await page.getByRole('button', { name: 'Or enter folder path manually' }).click();
+    await page.getByLabel('Project folder').fill('/home/dev/projects/billing');
     await page.getByRole('button', { name: 'Use this folder' }).click();
-    await page.getByLabel('Role').selectOption('backend');
-    await page.getByRole('button', { name: 'Add repository' }).click();
-    await expect(page.getByTestId('wizard-repos')).toContainText('/home/dev/projects/hr-backend');
-    await page.getByRole('textbox', { name: 'Repository folder' }).fill('/home/dev/projects/hr-frontend');
-    await page.getByLabel('Role').selectOption('frontend');
-    await page.getByLabel('Profile').selectOption('node');
-    await page.getByRole('button', { name: 'Add repository' }).click();
-    await expect(page.getByTestId('wizard-repos').getByRole('listitem')).toHaveCount(2);
-    await page.getByRole('button', { name: 'Remove /home/dev/projects/hr-frontend' }).click();
-    await page.getByRole('textbox', { name: 'Repository folder' }).fill('/home/dev/projects/hr-frontend');
-    await page.getByRole('button', { name: 'Add repository' }).click();
 
-    // Step 1 -> Step 2: Detected setup
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.getByText('We looked at your repos')).toBeVisible();
+    // Step 2: Repositories
+    await expect(page.getByText('Repos found in this folder')).toBeVisible();
 
-    // Step 2 -> Step 3: Shared knowledge
-    await page.getByRole('button', { name: 'Next' }).click();
-    await page.getByRole('radio', { name: /Shared through a git repository/ }).check();
-    await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
+    // Step 3: Shared knowledge
+    await page.getByText('Team knowledge repo').click();
     await page.getByLabel('Git URL').fill('git@example.test:team/state.git');
 
-    // Step 3 -> Step 4: AI team
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.getByText('Your AI team')).toBeVisible();
-
-    // Step 4 -> Step 5: Checks and create
-    await page.getByRole('button', { name: 'Next' }).click();
-    await expect(page.getByTestId('wizard-review')).toContainText('Billing');
-    await expect(page.getByTestId('wizard-review')).toContainText('Shared: git@example.test:team/state.git');
+    // Create project
     await page.getByRole('button', { name: 'Create project' }).click();
-    await expect(heading(page, 'Billing')).toBeVisible();
+    await expect(page).toHaveURL(/#\/projects\/billing\/floor/);
 
     const [sent] = (await api.posts(/\/api\/v1\/projects$/)).map(bodyOf);
-    expect(sent).toEqual({
-      name: 'Billing',
+    expect(sent).toMatchObject({
+      name: 'billing',
       path: '/home/dev/projects/billing',
       shared: { mode: 'git', url: 'git@example.test:team/state.git' },
-      repos: [{ path: '/home/dev/projects/hr-backend', role: 'backend' }, { path: '/home/dev/projects/hr-frontend', role: 'frontend' }],
     });
-    await page.getByRole('navigation', { name: 'Project' }).getByRole('link', { name: 'Repositories' }).click();
-    await expect(page.getByTestId('repo-row')).toHaveCount(2);
+    await open(page, '/projects/billing/repositories');
+    await expect(page.getByTestId('repo-row')).toHaveCount(1);
   });
 
   test('add and remove repositories on the Repositories tab; the last one cannot go', async ({ page, api }) => {
     await open(page, '/projects/new');
-    await page.getByLabel('Project name').fill('Solo');
-    await page.getByRole('textbox', { name: 'Project folder' }).fill('/home/dev/projects/solo');
-    await page.getByRole('textbox', { name: 'Repository folder' }).fill('/home/dev/projects/hr-backend');
-    await page.getByRole('button', { name: 'Add repository' }).click();
-    await page.getByRole('button', { name: 'Next' }).click(); // Step 2: Detected setup
-    await page.getByRole('button', { name: 'Next' }).click(); // Step 3: Shared knowledge
-    await page.getByRole('button', { name: 'Next' }).click(); // Step 4: AI team
-    await page.getByRole('button', { name: 'Next' }).click(); // Step 5: Checks & create
+    await page.getByRole('button', { name: 'Or enter folder path manually' }).click();
+    await page.getByLabel('Project folder').fill('/home/dev/projects/solo');
+    await page.getByRole('button', { name: 'Use this folder' }).click();
     await page.getByRole('button', { name: 'Create project' }).click();
-    await expect(heading(page, 'Solo')).toBeVisible();
+    await expect(page).toHaveURL(/#\/projects\/solo\/floor/);
     await open(page, '/projects/solo/repositories');
     await expect(page.getByTestId('repo-row')).toHaveCount(1);
 
@@ -204,7 +159,7 @@ test.describe('project creation', () => {
     await expect(page.getByTestId('repo-row')).toHaveCount(1);
     expect((await api.requests()).filter((r) => r.method === 'DELETE').map((r) => r.path)).toEqual(['/api/v1/projects/solo/repositories/hr-frontend']);
 
-    const last = page.getByRole('button', { name: 'Remove repository hr-backend' });
+    const last = page.getByRole('button', { name: /^Remove repository (hr-backend|solo)/ });
     await expect(last).toBeDisabled();
     await expect(last).toHaveAccessibleDescription('A project needs at least one repository. Add another first, or delete the project.');
     await expect(page.getByTestId('repo-row')).toHaveCount(1);
@@ -218,8 +173,8 @@ test.describe('project creation', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Delete project' }).click();
     await expect(heading(page, 'Projects')).toBeVisible();
     await expect(page).toHaveURL(/\/projects$/);
-    await expect(page.getByTestId('action-result')).toContainText('Deleted project Solo');
-    await expect(page.getByRole('link', { name: 'Solo' })).toHaveCount(0);
+    await expect(page.getByTestId('action-result')).toContainText(/Deleted project (Solo|solo)/);
+    await expect(page.getByRole('link', { name: /^solo$/i })).toHaveCount(0);
     expect((await api.requests()).filter((r) => r.method === 'DELETE').map((r) => r.path)).toContain('/api/v1/projects/solo');
   });
 

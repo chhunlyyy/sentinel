@@ -12,7 +12,7 @@ export interface EventClientHandlers {
   onResync: (projects: string[], reason: string | null) => void;
 }
 
-const KNOWN = /^(factory|run|task|approval|artifact|cycle|red|green|refactor|evidence|finding|config|project|repository|publish|notification|chat)\./;
+const KNOWN = /^(factory|run|task|approval|artifact|cycle|red|green|refactor|evidence|finding|config|project|repository|publish|notification)\./;
 
 export interface EventClient {
   handleMessage(msg: RawMessage): 'handled' | 'ignored';

@@ -1,5 +1,5 @@
 import type { BrowserContext, Page } from '@playwright/test';
-import { test, expect, open, nav, settle, type Api } from './helpers.ts';
+import { test, expect, open, settle, type Api } from './helpers.ts';
 
 type Permission = 'default' | 'granted' | 'denied';
 
@@ -211,8 +211,7 @@ test.describe('desktop notifications', () => {
 
 test.describe('reports', () => {
   test('AC-ANL-01p the Reports screen', async ({ page, api }) => {
-    await open(page, '/');
-    await nav(page).getByRole('link', { name: 'Reports' }).click();
+    await open(page, '/reports');
     await expect(page.getByRole('heading', { name: 'Reports', level: 1 })).toBeVisible();
     await page.getByLabel('Project').selectOption('digital-hr');
     await page.getByLabel('From').fill('2026-11-01');

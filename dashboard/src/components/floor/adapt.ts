@@ -116,6 +116,8 @@ function adaptRun(run: W.WFactoryRun, idx: number): RunView {
   return {
     slug: run.slug,
     title: run.title,
+    tier: run.tier,
+    createdAt: run.created_at,
     short: initials(run.slug),
     color: TASK_COLORS[idx % TASK_COLORS.length],
     paused: run.paused,

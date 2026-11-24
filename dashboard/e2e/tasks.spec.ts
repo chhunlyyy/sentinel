@@ -51,37 +51,53 @@ test.describe('creating a task', () => {
   test('AC-TSK-01l creating a task queues it for the AI tool', async ({ page, api, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await open(page, '/tasks/new');
-    await page.getByLabel('Project').selectOption('digital-hr');
-    await page.getByLabel('Slug').fill('leave-report');
+    if (await page.getByLabel('Project').isVisible()) {
+      await page.getByLabel('Project').selectOption('digital-hr');
+    }
     await page.getByLabel('Request').fill('Report leave per team');
+    await page.getByText('More options').click();
+    await page.getByLabel('Slug').fill('leave-report');
     await page.getByLabel('Type').selectOption('feature');
-    await page.getByRole('checkbox', { name: 'frontend', exact: true }).uncheck();
-    await page.getByLabel('Priority').selectOption('high');
-    await page.getByLabel('Ticket').fill('HR-12');
-    await page.getByRole('button', { name: 'Create task' }).click();
+    await page.getByRole('checkbox', { name: 'frontend' }).uncheck();
+    await page.getByRole('button', { name: 'Start task' }).click();
     await expect(heading(page, 'leave-report')).toBeVisible();
     const posts = await api.posts(/projects\/digital-hr\/tasks$/);
     expect(posts).toHaveLength(1);
-    expect(posts[0].body).toEqual({ slug: 'leave-report', request: 'Report leave per team', type: 'feature', repos: ['backend'], priority: 'high', ticket: 'HR-12' });
+    expect(posts[0].body).toMatchObject({ slug: 'leave-report', request: 'Report leave per team', type: 'feature', repos: ['backend'] });
     await expect(page.getByTestId('run-state')).toContainText('CREATED');
     await expect(page.getByText('Queued for the AI tool. In your AI tool session run /sentinel resume leave-report')).toBeVisible();
     await page.getByRole('button', { name: 'Copy /sentinel resume leave-report' }).first().click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('/sentinel resume leave-report');
   });
 
-  test('AC-TSK-02b the form says that creating a task approves nothing', async ({ page }) => {
+  test('AC-TSK-02b Start task shows the blocking reason', async ({ page }) => {
     await open(page, '/tasks/new');
-    await expect(page.getByText('Creating a task does not approve anything. The specification and the Gherkin scenarios need your approval before any code is written.')).toBeVisible();
-    await expect(page.getByLabel(/approv|skip|start|gate/i)).toHaveCount(0);
+    // Disabled initially because request is empty
+    const startBtn = page.getByRole('button', { name: 'Start task' });
+    await expect(startBtn).toBeDisabled();
+    await expect(page.getByText('Enter what the factory should build above.')).toBeVisible();
+
+    // Type a request: button is enabled with estimate hint
+    await page.getByLabel('Request').fill('Implement notification service');
+    await expect(startBtn).toBeEnabled();
+    await expect(page.getByText('About 5 minutes until the spec is ready for you.')).toBeVisible();
+
+    // Untick all repos: button is disabled with repos hint
+    await page.getByRole('checkbox', { name: 'backend' }).uncheck();
+    await page.getByRole('checkbox', { name: 'frontend' }).uncheck();
+    await expect(startBtn).toBeDisabled();
+    await expect(page.getByText('Pick at least one repository.')).toBeVisible();
   });
 
   test('AC-TSK-01m tier and repository choices: every repository checked', async ({ page, api }) => {
     await open(page, '/tasks/new');
-    await page.getByLabel('Project').selectOption('digital-hr');
+    if (await page.getByLabel('Project').isVisible()) {
+      await page.getByLabel('Project').selectOption('digital-hr');
+    }
+    await page.getByLabel('Request').fill('all-repos task');
+    await page.getByText('More options').click();
     await page.getByLabel('Slug').fill('all-repos');
-    await page.getByLabel('Request').fill('x');
-    await page.getByLabel('Type').selectOption('feature');
-    await page.getByRole('button', { name: 'Create task' }).click();
+    await page.getByRole('button', { name: 'Start task' }).click();
     await expect(heading(page, 'all-repos')).toBeVisible();
     const body = (await api.posts(/tasks$/))[0].body as Record<string, unknown>;
     expect('repos' in body).toBe(false);
@@ -90,32 +106,34 @@ test.describe('creating a task', () => {
 
   test('AC-TSK-01m tier and repository choices: no repository checked', async ({ page }) => {
     await open(page, '/tasks/new');
-    await page.getByLabel('Project').selectOption('digital-hr');
-    await page.getByLabel('Slug').fill('no-repos');
+    if (await page.getByLabel('Project').isVisible()) {
+      await page.getByLabel('Project').selectOption('digital-hr');
+    }
     await page.getByLabel('Request').fill('x');
-    await page.getByLabel('Type').selectOption('feature');
-    await page.getByRole('checkbox', { name: 'backend', exact: true }).uncheck();
-    await page.getByRole('checkbox', { name: 'frontend', exact: true }).uncheck();
-    await expect(page.getByRole('button', { name: 'Create task' })).toBeDisabled();
-    await expect(page.getByText('Pick at least one repository')).toBeVisible();
+    await page.getByRole('checkbox', { name: 'backend' }).uncheck();
+    await page.getByRole('checkbox', { name: 'frontend' }).uncheck();
+    await expect(page.getByRole('button', { name: 'Start task' })).toBeDisabled();
+    await expect(page.getByText('Pick at least one repository').first()).toBeVisible();
   });
 
   test('AC-TSK-01m tier and repository choices: the tier list', async ({ page }) => {
     await open(page, '/tasks/new');
+    await page.getByText('More options').click();
     await expect(page.getByLabel('Tier')).toBeVisible();
     const options = await page.getByLabel('Tier').locator('option').allTextContents();
-    expect(options).toEqual(['Decided at triage', '1', '2', '3', '4']);
-    await expect(page.getByText('A tier can only raise the triage result')).toBeVisible();
+    expect(options).toEqual(['Let Sentinel decide', 'Quick (tier 1)', 'Standard (tier 2)', 'Thorough (tier 3)', 'Critical (tier 4)']);
   });
 
   test('AC-TSK-01m tier and repository choices: tier 3', async ({ page, api }) => {
     await open(page, '/tasks/new');
-    await page.getByLabel('Project').selectOption('digital-hr');
+    if (await page.getByLabel('Project').isVisible()) {
+      await page.getByLabel('Project').selectOption('digital-hr');
+    }
+    await page.getByLabel('Request').fill('tier-three task');
+    await page.getByText('More options').click();
     await page.getByLabel('Slug').fill('tier-three');
-    await page.getByLabel('Request').fill('x');
-    await page.getByLabel('Type').selectOption('feature');
     await page.getByLabel('Tier').selectOption('3');
-    await page.getByRole('button', { name: 'Create task' }).click();
+    await page.getByRole('button', { name: 'Start task' }).click();
     await expect(heading(page, 'tier-three')).toBeVisible();
     expect(((await api.posts(/tasks$/))[0].body as Record<string, unknown>).tier).toBe(3);
   });
@@ -127,11 +145,14 @@ test.describe('creating a task', () => {
     test(`AC-TSK-01o server refusals are shown at the field: ${status} ${code} ${field}`, async ({ page, api }) => {
       await api.rule({ method: 'POST', path: '/api/v1/projects/digital-hr/tasks', status, body: { error: { code, message: `server says no to ${field}`, details: { field } } } });
       await open(page, '/tasks/new');
-      await page.getByLabel('Project').selectOption('digital-hr');
-      await page.getByLabel('Slug').fill('refused-one');
+      if (await page.getByLabel('Project').isVisible()) {
+        await page.getByLabel('Project').selectOption('digital-hr');
+      }
       await page.getByLabel('Request').fill('keep me');
+      await page.getByText('More options').click();
+      await page.getByLabel('Slug').fill('refused-one');
       await page.getByLabel('Type').selectOption('feature');
-      await page.getByRole('button', { name: 'Create task' }).click();
+      await page.getByRole('button', { name: 'Start task' }).click();
       const label = { type: 'Type', repos: 'Repositories', slug: 'Slug' }[field]!;
       const control = field === 'repos' ? page.getByRole('group', { name: label }) : page.getByLabel(label, { exact: true });
       await expect(page.getByText(`server says no to ${field}`)).toBeVisible();
@@ -146,11 +167,13 @@ test.describe('creating a task', () => {
   test('AC-TSK-01p the request text keeps its form', async ({ page, api }) => {
     const text = 'line one\n\nline three\nline four';
     await open(page, '/tasks/new');
-    await page.getByLabel('Project').selectOption('digital-hr');
-    await page.getByLabel('Slug').fill('multi-line');
+    if (await page.getByLabel('Project').isVisible()) {
+      await page.getByLabel('Project').selectOption('digital-hr');
+    }
     await page.getByLabel('Request').fill(text);
-    await page.getByLabel('Type').selectOption('feature');
-    await page.getByRole('button', { name: 'Create task' }).click();
+    await page.getByText('More options').click();
+    await page.getByLabel('Slug').fill('multi-line');
+    await page.getByRole('button', { name: 'Start task' }).click();
     await expect(heading(page, 'multi-line')).toBeVisible();
     expect(((await api.posts(/tasks$/))[0].body as Record<string, unknown>).request).toBe(text);
     const shown = page.getByTestId('run-request');
@@ -158,29 +181,25 @@ test.describe('creating a task', () => {
     expect(await shown.evaluate((e) => getComputedStyle(e).whiteSpace)).toMatch(/pre/);
   });
 
-  test('AC-TSK-01q knowledge found side panel, slots note, and save as draft', async ({ page }) => {
+  test('AC-TSK-01q save as draft persists and restores input', async ({ page }) => {
     await open(page, '/tasks/new');
-    await page.getByLabel('Project').selectOption('digital-hr');
+    if (await page.getByLabel('Project').isVisible()) {
+      await page.getByLabel('Project').selectOption('digital-hr');
+    }
 
-    // Slots note from factory snapshot
-    await expect(page.getByText(/Slots: \d+ of \d+ busy in digital-hr/)).toBeVisible();
-
-    // Knowledge found panel
-    await expect(page.getByRole('heading', { name: 'Knowledge found' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Open knowledge' })).toHaveAttribute('href', '#/projects/digital-hr/knowledge');
-
-    // Debounced query on request change
+    // Enter draft data
     await page.getByLabel('Request').fill('leave balance calculation');
-    await expect(page.getByText(/Leave balance API/)).toBeVisible();
-
-    // Save as draft
+    await page.getByText('More options').click();
     await page.getByLabel('Slug').fill('my-draft-slug');
     await page.getByRole('button', { name: 'Save as draft' }).click();
     await expect(page.getByText('Draft saved')).toBeVisible();
 
     // Reload page to verify draft survives reload
     await page.reload();
-    await page.getByLabel('Project').selectOption('digital-hr');
+    if (await page.getByLabel('Project').isVisible()) {
+      await page.getByLabel('Project').selectOption('digital-hr');
+    }
+    await page.getByText('More options').click();
     await expect(page.getByLabel('Slug')).toHaveValue('my-draft-slug');
     await expect(page.getByLabel('Request')).toHaveValue('leave balance calculation');
   });

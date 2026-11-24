@@ -35,6 +35,8 @@ export interface StationTaskView {
 export interface RunView {
   slug: string;
   title: string;
+  tier?: number | null;
+  createdAt?: string;
   /** Short initials (≤2 chars) for the task chip badge */
   short: string;
   /** Brand colour for this task chip */

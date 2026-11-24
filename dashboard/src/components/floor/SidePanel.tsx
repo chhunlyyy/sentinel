@@ -11,7 +11,6 @@ import { laneLabel, stationById } from './layout.ts';
 import { limitText } from './adapt.ts';
 import { ReviewPage } from '../../screens/Approvals.tsx';
 import { AcceptanceTab } from '../../screens/run/Acceptance.tsx';
-import { OrchestratorChat } from './OrchestratorChat.tsx';
 
 interface SidePanelProps {
   station: StationDef | null;
@@ -34,8 +33,7 @@ export function SidePanel({ station, state, run, who, pid, singleModel = false, 
   const [note, setNote] = useState('');
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const [resumeComment, setResumeComment] = useState('');
-  const [tab, setTab] = useState<'station' | 'review' | 'chat'>('station');
-  const [pendingChatPrompt, setPendingChatPrompt] = useState<string | null>(null);
+  const [tab, setTab] = useState<'station' | 'review'>('station');
   const [logLines, setLogLines] = useState<string[]>([]);
 
   // Automatically open Review tab when a waiting gate station is selected
@@ -254,25 +252,9 @@ export function SidePanel({ station, state, run, who, pid, singleModel = false, 
         >
           Review{hasWaitingGate ? ' •' : ''}
         </button>
-        <button
-          type="button"
-          className="floor-panel-tab"
-          aria-pressed={tab === 'chat'}
-          onClick={() => setTab('chat')}
-        >
-          Orchestrator chat
-        </button>
       </div>
 
-      {tab === 'chat' ? (
-        <OrchestratorChat
-          slug={run.slug}
-          pid={pid}
-          onNoteSent={onChanged}
-          pendingPrompt={pendingChatPrompt}
-          onClearPendingPrompt={() => setPendingChatPrompt(null)}
-        />
-      ) : tab === 'review' ? (
+      {tab === 'review' ? (
         <section className="floor-panel-section">
           {reviewGate === 'specification' || reviewGate === 'gherkin' ? (
             <ReviewPage
@@ -456,18 +438,6 @@ export function SidePanel({ station, state, run, who, pid, singleModel = false, 
             <Link to={runBase} style={{ fontSize: 13, marginTop: 4 }}>
               Open the full run: logs, diffs, evidence
             </Link>
-
-            <button
-              type="button"
-              className="floor-btn-ask-step"
-              disabled={!enabled}
-              onClick={() => {
-                setTab('chat');
-                setPendingChatPrompt(`Explain the ${station.name} station for this run`);
-              }}
-            >
-              Ask the orchestrator about this step
-            </button>
           </section>
 
           {/* Controls panel */}

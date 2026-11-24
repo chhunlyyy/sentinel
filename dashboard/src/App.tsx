@@ -1,7 +1,7 @@
 import { Component, useEffect, useRef, useState, type ReactNode } from 'react';
 import { calls } from './api/calls.ts';
 import { AppProvider, useApp, useResource } from './state/app.tsx';
-import { Link, enc, segments, useRoute, type Route } from './router.tsx';
+import { Link, segments, useRoute, type Route } from './router.tsx';
 import { Overview } from './screens/Overview.tsx';
 import { ProjectsScreen, ProjectScreen } from './screens/Projects.tsx';
 import { NewProjectScreen } from './screens/NewProject.tsx';
@@ -13,7 +13,6 @@ import { SettingsScreen } from './screens/Settings.tsx';
 import { ReportsScreen } from './screens/Reports.tsx';
 import { FloorScreen } from './screens/Floor.tsx';
 import { NotificationBell } from './components/Notifications.tsx';
-import { onOrchestratorChanged } from './state/orchestrator.ts';
 
 function NotFound({ message }: { message: string }) {
   return (
@@ -86,7 +85,7 @@ function screenFor(route: Route): ReactNode {
     case 'reports':
       return <ReportsScreen />;
     case 'settings':
-      return <SettingsScreen page={s[1] ?? 'installation'} />;
+      return <SettingsScreen page={s[1] ?? ''} />;
     default:
       return <NotFound message="Page not found" />;
   }
@@ -132,23 +131,6 @@ export function titleFor(path: string): string {
   if (s[0] === 'projects' && s[1]) return `${s[1]}${s[2] ? ` ${s[2]}` : ''}`;
   if (s[0] === 'tasks' && s[1] === 'new') return 'New task';
   return TITLES[s[0]] ?? 'Page not found';
-}
-
-function OrchestratorBadge() {
-  const orch = useResource('header-orchestrator', (c) => calls.orchestrator(c), {});
-  const providers = useResource('header-providers', (c) => calls.providers(c), {});
-  useEffect(() => onOrchestratorChanged(() => { void orch.reload(); void providers.reload(); }), [orch.reload, providers.reload]);
-  // an older server without the route shows nothing instead of an error in the header
-  if (!orch.data) return null;
-  const id = orch.data.id;
-  const label = id ? (providers.data?.items.find((p) => p.id === id)?.label ?? id) : null;
-  return (
-    <Link to="/settings/providers" className={`orch-badge${id ? ' on' : ''}`} data-testid="orchestrator-badge" title="Change the orchestrator in Settings">
-      <span className="orch-dot" aria-hidden="true" />
-      <span className="orch-k">Orchestrator</span>
-      <strong>{label ?? 'none'}</strong>
-    </Link>
-  );
 }
 
 function FactoryControls() {
@@ -213,53 +195,20 @@ function FactoryControls() {
 }
 
 function TopHeader({ path, label }: { path: string; label: string }) {
-  const approvals = useResource('approvals-count', (c) => calls.approvals(c), {});
-  const count = approvals.data?.items.length ?? 0;
   const projects = useResource('nav-projects', (c) => calls.projects(c), {});
   const unavailable = projects.data?.items.filter((p) => p.status === 'unavailable') ?? [];
   const hasProjects = (projects.data?.items.filter((p) => p.status === 'available').length ?? 0) > 0;
-  const firstPid = projects.data?.items.find((p) => p.status === 'available')?.id ?? '';
 
-  const [moreOpen, setMoreOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!moreOpen) return undefined;
-    const onClick = (e: MouseEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
-        setMoreOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMoreOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [moreOpen]);
-
-  useEffect(() => {
-    setMoreOpen(false);
     setMobileMenuOpen(false);
   }, [path]);
 
   const isFloor = path === '/floor' || path.endsWith('/floor') || (path === '/' && hasProjects);
   const isNewTask = path === '/tasks/new' || path.startsWith('/tasks/new');
-  const isApprovals = path.startsWith('/approvals');
   const isProjects = path.startsWith('/projects') && !path.endsWith('/floor') && !path.includes('/knowledge');
-  const isRuns = path === '/runs' || path.startsWith('/runs');
-  const isKnowledge = path.includes('/knowledge');
-  const isReports = path.startsWith('/reports');
   const isSettings = path.startsWith('/settings');
-
-  const isOverview = path === '/overview' || (path === '/' && !hasProjects);
-  const isTasks = path.startsWith('/tasks') && !path.startsWith('/tasks/new');
-  const isQuality = path.startsWith('/quality');
-  const isMoreActive = isOverview || isTasks || isQuality;
 
   return (
     <>
@@ -287,58 +236,17 @@ function TopHeader({ path, label }: { path: string; label: string }) {
 
         <nav aria-label="Main" className={mobileMenuOpen ? 'main-nav open' : 'main-nav'}>
           <Link to="/floor" current={isFloor}>
-            Factory floor
+            Floor
           </Link>
           <Link to="/tasks/new" current={isNewTask}>
             New task
           </Link>
-          <Link to="/approvals" current={isApprovals}>
-            Approvals
-            {count > 0 ? <span className="badge">{count}</span> : null}
-          </Link>
           <Link to="/projects" current={isProjects}>
             Projects
           </Link>
-          <Link to="/runs" current={isRuns}>
-            Runs
-          </Link>
-          <Link to={firstPid ? `/projects/${enc(firstPid)}/knowledge` : '/knowledge'} current={isKnowledge}>
-            Knowledge
-          </Link>
-          <Link to="/reports" current={isReports}>
-            Reports
-          </Link>
-          <Link to="/settings/installation" current={isSettings}>
+          <Link to="/settings" current={isSettings}>
             Settings
           </Link>
-
-          <div className="more-menu-container" ref={moreRef}>
-            <button
-              type="button"
-              className={`more-btn${isMoreActive ? ' active' : ''}`}
-              aria-expanded={moreOpen}
-              aria-haspopup="true"
-              onClick={() => setMoreOpen((o) => !o)}
-            >
-              <span>More</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </button>
-            {moreOpen ? (
-              <div className="more-dropdown">
-                <Link to="/overview" current={isOverview}>
-                  Overview
-                </Link>
-                <Link to="/tasks" current={isTasks}>
-                  Tasks
-                </Link>
-                <Link to="/quality" current={isQuality}>
-                  Quality
-                </Link>
-              </div>
-            ) : null}
-          </div>
         </nav>
 
         <span className="header-spacer" />
@@ -346,7 +254,6 @@ function TopHeader({ path, label }: { path: string; label: string }) {
         <div className="header-right">
           <FactoryControls />
           <NotificationBell />
-          <OrchestratorBadge />
           <span role="status" data-testid="connection-status" className="session-status" title={label}>
             <span className={`session-dot${label === 'Connected' ? ' ok' : ''}`} aria-hidden="true" />
             <span className="sr-only">{label}</span>

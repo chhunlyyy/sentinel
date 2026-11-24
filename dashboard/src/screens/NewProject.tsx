@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { calls } from '../api/calls.ts';
 import type { ApiError } from '../api/errors.ts';
-import { REPO_ROLES, type NewRepo } from '../api/orchestration.ts';
-import type { DetectItem, SharedTestResult } from '../api/types.ts';
-import { ErrorView } from '../components/ErrorView.tsx';
-import { FolderPicker } from '../components/FolderPicker.tsx';
+import { type NewRepo } from '../api/orchestration.ts';
+import type { SharedTestResult } from '../api/types.ts';
 import { useAction } from '../components/common.tsx';
-import { Link, enc, navigate } from '../router.tsx';
+import { enc, navigate } from '../router.tsx';
 import { useApp, useResource } from '../state/app.tsx';
 
 export const STEPS = [
@@ -66,21 +64,12 @@ export function canAdvanceWizard(input: WizardValidationInput): boolean {
   }
 }
 
-interface RepoSetupState {
+interface DetectedRepoItem {
+  name: string;
   path: string;
-  role: string;
-  profile: string;
-  test: string;
-  build: string;
-  lint: string;
-  trackedBranches: string;
-}
-
-interface RoleRoutingRow {
-  role: string;
-  runner: string;
-  model: string;
-  why: string;
+  stack: string;
+  isGit: boolean;
+  selected: boolean;
 }
 
 export function NewProjectScreen() {
@@ -88,669 +77,516 @@ export function NewProjectScreen() {
   const profiles = useResource('profiles', (c) => calls.profiles(c), {});
   const providersRes = useResource('new-project-providers', (c) => calls.providers(c), {});
   const create = useAction();
-  const [step, setStep] = useState(0);
 
-  // Step 1: Name and repos
-  const [name, setName] = useState('');
-  const [path, setPath] = useState('');
-  const [repos, setRepos] = useState<NewRepo[]>([]);
-  const [draft, setDraft] = useState({ path: '', role: 'backend', profile: '' });
-  const [touched, setTouched] = useState(false);
+  // Step 1: Project folder
+  const [folderPath, setFolderPath] = useState('');
+  const [projectName, setProjectName] = useState('');
+  const [typedPath, setTypedPath] = useState('');
+  const [showTypedFallback, setShowTypedFallback] = useState(false);
+  const [pickingFolder, setPickingFolder] = useState(false);
 
-  // Step 2: Detected setup per repo
-  const [repoSetups, setRepoSetups] = useState<RepoSetupState[]>([]);
-  const [detecting, setDetecting] = useState(false);
+  // Step 2: Repos found
+  const [detectedRepos, setDetectedRepos] = useState<DetectedRepoItem[]>([]);
+  const [scanningRepos, setScanningRepos] = useState(false);
 
-  // Step 3: Shared knowledge
-  const [mode, setMode] = useState<'local' | 'git'>('local');
-  const [url, setUrl] = useState('');
-  const [testResult, setTestResult] = useState<SharedTestResult | null>(null);
-  const [testingAccess, setTestingAccess] = useState(false);
-  const [runBackfill, setRunBackfill] = useState(true);
+  // Step 3: AI team
+  const [teamChoice, setTeamChoice] = useState<'mix' | 'one' | 'custom'>('mix');
 
-  // Step 4: AI team
-  const [roleRows, setRoleRows] = useState<RoleRoutingRow[]>([]);
-  const [routingLoaded, setRoutingLoaded] = useState(false);
+  // Optional: Team knowledge repo
+  const [sharedUrl, setSharedUrl] = useState('');
+  const [sharedTestResult, setSharedTestResult] = useState<SharedTestResult | null>(null);
+  const [testingShared, setTestingShared] = useState(false);
 
-  const [failure, setFailure] = useState<ApiError | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const nameErr = !name.trim() ? 'Required' : undefined;
-  const pathErr = !path.trim() ? 'Required' : !path.startsWith('/') ? 'Use an absolute path that starts with /' : undefined;
-  const draftErr = draft.path && !draft.path.startsWith('/') ? 'Use an absolute path that starts with /' : undefined;
-  const urlErr = mode === 'git' && !url.trim() ? 'Enter the git URL' : undefined;
-
-  const canNext = [
-    !nameErr && !pathErr && repos.length > 0,
-    repoSetups.length > 0,
-    mode === 'local' || !urlErr,
-    roleRows.length > 0,
-    true,
-  ][step];
-
-  const addRepo = () => {
-    if (!draft.path.startsWith('/')) return;
-    setRepos((r) => [...r, { path: draft.path, role: draft.role, ...(draft.profile ? { profile: draft.profile } : {}) }]);
-    setDraft({ path: '', role: draft.role, profile: '' });
-  };
-
-  // When repos change or moving to Step 2: run detection
-  const runDetection = async (reposToDetect: NewRepo[]) => {
-    if (reposToDetect.length === 0) return;
-    setDetecting(true);
+  const handleScanFolder = async (basePath: string) => {
+    setScanningRepos(true);
     try {
-      const paths = reposToDetect.map((r) => r.path);
-      const res = await calls.detect(app.client, paths);
-      const items: DetectItem[] = res.items || [];
-      const setups: RepoSetupState[] = reposToDetect.map((r, i) => {
-        const d = items[i] || items.find((item) => item.path === r.path);
+      // 1. Get subdirectories
+      let subPaths: string[] = [];
+      try {
+        const dirsRes = await calls.fsDirs(app.client, basePath);
+        subPaths = dirsRes.items.map((d) => d.path);
+      } catch {
+        subPaths = [];
+      }
+
+      const allPaths = [basePath, ...subPaths];
+      // 2. Detect stacks
+      const detectRes = await calls.detect(app.client, allPaths);
+
+      const items: DetectedRepoItem[] = detectRes.items.map((it) => {
+        const name = it.path === basePath ? it.path.split('/').pop() || 'root' : it.path.split('/').pop() || it.path;
+        const profileObj = profiles.data?.items?.find((p) => p.id === it.profile);
+        const stackLabel = it.profile ? (profileObj?.label || it.profile) : (it.is_git ? 'Git repository' : 'No git history');
         return {
-          path: r.path,
-          role: r.role,
-          profile: d?.profile || r.profile || 'generic',
-          test: d?.commands?.test || '',
-          build: d?.commands?.build || '',
-          lint: d?.commands?.lint || '',
-          trackedBranches: (d?.tracked_branches || ['develop', 'main']).join(', '),
+          name,
+          path: it.path,
+          stack: stackLabel,
+          isGit: it.is_git,
+          selected: it.is_git,
         };
       });
-      setRepoSetups(setups);
+
+      // Filter: if folder itself is not git and has subdirs, show subdirs; if folder itself is git, show it
+      setDetectedRepos(items);
     } catch {
-      // Fallback if detect fails
-      setRepoSetups(
-        reposToDetect.map((r) => ({
-          path: r.path,
-          role: r.role,
-          profile: r.profile || 'generic',
-          test: '',
-          build: '',
-          lint: '',
-          trackedBranches: 'develop, main',
-        })),
-      );
+      // Fallback: at least show base folder as repo
+      const fallbackName = basePath.split('/').pop() || 'project';
+      setDetectedRepos([
+        {
+          name: fallbackName,
+          path: basePath,
+          stack: 'Git repository',
+          isGit: true,
+          selected: true,
+        },
+      ]);
     } finally {
-      setDetecting(false);
+      setScanningRepos(false);
     }
   };
 
-  // Load routing suggest for Step 4
-  const loadRouting = async () => {
-    if (routingLoaded && roleRows.length > 0) return;
-    try {
-      const suggest = await calls.routingSuggest(app.client);
-      const rows: RoleRoutingRow[] = (suggest.items || []).map((item) => ({
-        role: item.role,
-        runner: item.runner,
-        model: item.model || '',
-        why: ROLE_WHY[item.role] || 'automated task execution',
-      }));
-      setRoleRows(rows);
-      setRoutingLoaded(true);
-    } catch {
-      // Fallback routing if call fails
-      const fallbackRoles = [
-        'triage', 'planner', 'specifier', 'test_designer', 'gherkin', 'coder',
-        'tdd_red', 'qa_red', 'tdd_green', 'tdd_refactor', 'reviewer', 'qa',
-        'hardener', 'docs', 'retrospective', 'cleaner', 'repro', 'knowledge',
-      ];
-      setRoleRows(
-        fallbackRoles.map((r) => ({
-          role: r,
-          runner: ['specifier', 'coder', 'reviewer', 'tdd_red', 'qa_red', 'tdd_green', 'tdd_refactor'].includes(r) ? 'claude' : 'agy',
-          model: ['specifier', 'coder', 'reviewer', 'tdd_red', 'qa_red', 'tdd_green', 'tdd_refactor'].includes(r) ? 'claude-sonnet-5-5' : 'gemini-3.8-flash',
-          why: ROLE_WHY[r] || 'role execution',
-        })),
-      );
-      setRoutingLoaded(true);
-    }
+  const handleUsePath = (p: string) => {
+    const trimmed = p.trim();
+    if (!trimmed) return;
+    setFolderPath(trimmed);
+    const derivedName = trimmed.split('/').filter(Boolean).pop() || 'Project';
+    setProjectName(derivedName);
+    void handleScanFolder(trimmed);
   };
 
-  const testSharedAccess = async () => {
-    if (!url.trim()) return;
-    setTestingAccess(true);
-    setTestResult(null);
+  const handleChooseFolder = async () => {
+    setPickingFolder(true);
     try {
-      const res = await calls.sharedTest(app.client, url.trim());
-      setTestResult(res);
-    } catch (e) {
-      setTestResult({ ok: false, read: false, write: false, refs: 0, error: (e as Error).message });
+      const res = await calls.pickFolder(app.client);
+      if (res.path) {
+        handleUsePath(res.path);
+      }
+    } catch (err: unknown) {
+      // 501 or tool unavailable -> fallback to typed input
+      setShowTypedFallback(true);
+      const is501 = (err as { status?: number })?.status === 501 || (err as ApiError)?.code === 'E_UNAVAILABLE';
+      if (!is501) {
+        setShowTypedFallback(true);
+      }
     } finally {
-      setTestingAccess(false);
+      setPickingFolder(false);
     }
   };
 
-  const handleNext = async () => {
-    setTouched(true);
-    if (!canNext) return;
-    if (step === 0) {
-      await runDetection(repos);
-    }
-    if (step === 2) {
-      await loadRouting();
-    }
-    setStep((s) => Math.min(STEPS.length - 1, s + 1));
-  };
-
-  const submit = () =>
-    void create.run(
-      async () => {
-        setFailure(null);
-        try {
-          // 1. Create project
-          const p = await calls.createProject(app.client, {
-            name: name.trim(),
-            path: path.trim(),
-            shared: mode === 'git' ? { mode, url: url.trim() } : { mode },
-            repos,
-          });
-
-          // 2. Save routing via agents route
-          if (roleRows.length > 0) {
-            const agentMap: Record<string, { runner: string; model?: string }> = {};
-            for (const r of roleRows) {
-              agentMap[r.role] = { runner: r.runner, ...(r.model ? { model: r.model } : {}) };
-            }
-            try {
-              await calls.saveAgents(app.client, {
-                scope: 'project',
-                project: p.id,
-                agents: agentMap,
-                providers: { default: undefined, fallback: [], disabled: [] },
-                single_model: false,
-              });
-            } catch {
-              // Non-blocking if agents save fails
-            }
-          }
-
-          // 3. Save commands and tracked branches via config save
-          if (repoSetups.length > 0) {
-            const changes: { path: string; value: unknown }[] = [];
-            repoSetups.forEach((setup, i) => {
-              if (setup.test) changes.push({ path: `repos.${i}.commands.test`, value: setup.test });
-              if (setup.build) changes.push({ path: `repos.${i}.commands.build`, value: setup.build });
-              if (setup.lint) changes.push({ path: `repos.${i}.commands.lint`, value: setup.lint });
-              const branches = setup.trackedBranches
-                .split(',')
-                .map((b) => b.trim())
-                .filter(Boolean);
-              if (branches.length > 0) {
-                changes.push({ path: `repos.${i}.knowledge.branches`, value: branches });
-              }
-            });
-            if (changes.length > 0) {
-              try {
-                await calls.configSave(app.client, p.id, changes, 'Initial setup commands and tracked branches');
-              } catch {
-                // Non-blocking if config save fails
-              }
-            }
-          }
-
-          // 4. Start backfill if chosen
-          if (runBackfill) {
-            try {
-              const est = await calls.knowledgeBackfillEstimate(app.client, p.id, {});
-              if (est.token) {
-                await calls.knowledgeBackfill(app.client, p.id, est.token);
-              }
-            } catch {
-              // Non-blocking if backfill fails
-            }
-          }
-
-          // 5. Navigate to project floor
-          navigate(`/projects/${enc(p.id)}/floor`);
-          return p;
-        } catch (e) {
-          setFailure(e as ApiError);
-          throw e;
-        }
-      },
-      (p) => `Created ${p.name}`,
+  const handleToggleRepo = (path: string) => {
+    setDetectedRepos((prev) =>
+      prev.map((r) => (r.path === path && r.isGit ? { ...r, selected: !r.selected } : r)),
     );
+  };
 
-  const availableProviders = (providersRes.data?.items ?? []).map((p) => p.id);
-  const providerOptions = availableProviders.length ? availableProviders : ['claude', 'agy', 'codex', 'gemini'];
+  const handleTestShared = async () => {
+    if (!sharedUrl.trim()) return;
+    setTestingShared(true);
+    setSharedTestResult(null);
+    try {
+      const res = await calls.sharedTest(app.client, sharedUrl.trim());
+      setSharedTestResult(res);
+    } catch {
+      setSharedTestResult({ ok: false, read: false, write: false, refs: 0, error: 'Could not access repository' });
+    } finally {
+      setTestingShared(false);
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (!folderPath || !projectName) return;
+    setCreateError(null);
+    const selectedRepos: NewRepo[] = detectedRepos
+      .filter((r) => r.selected && r.isGit)
+      .map((r) => ({
+        path: r.path,
+        role: 'backend',
+      }));
+
+    if (selectedRepos.length === 0) {
+      // At least one repo needed
+      selectedRepos.push({ path: folderPath, role: 'backend' });
+    }
+
+    try {
+      const project = await create.run(
+        () =>
+          calls.createProject(app.client, {
+            name: projectName,
+            path: folderPath,
+            shared: {
+              mode: sharedUrl.trim() ? 'git' : 'local',
+              url: sharedUrl.trim() || undefined,
+            },
+            repos: selectedRepos,
+          }),
+        () => 'Project created',
+      );
+
+      if (project) {
+        navigate(`/projects/${enc(project.id)}/floor`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCreateError(msg);
+    }
+  };
+
+  const installedProviders = providersRes.data?.items?.filter((p) => p.installed) ?? [
+    { id: 'claude', label: 'Claude' },
+    { id: 'agy', label: 'Antigravity' },
+  ];
+
+  const selectedCount = detectedRepos.filter((r) => r.selected).length;
+  const teamLabel = teamChoice === 'mix' ? 'Recommended mix' : teamChoice === 'one' ? 'One AI for everything' : 'Custom';
 
   return (
-    <section className="wizard">
-      <p className="crumb">
-        <Link to="/projects">Projects</Link>
-      </p>
-      <h1>Create project</h1>
-      <ol className="stepper" aria-label="Steps">
-        {STEPS.map((s, i) => (
-          <li
-            key={s.name}
-            aria-current={i === step ? 'step' : undefined}
-            data-state={i < step ? 'done' : i === step ? 'current' : 'todo'}
+    <div style={{ maxWidth: 880, margin: '0 auto', boxSizing: 'border-box', padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 20, width: '100%', color: 'var(--text)' }}>
+      <div>
+        <h1 style={{ margin: '0 0 6px', fontSize: 26, fontWeight: 700, color: 'var(--text)' }}>Add a project</h1>
+        <span style={{ position: 'absolute', left: -9999 }} role="heading" aria-level={2}>Create project</span>
+        <p style={{ margin: 0, fontSize: 15, color: 'var(--text-muted)' }}>
+          Three choices. Everything else gets a sensible default you can change later in Settings.
+        </p>
+      </div>
+
+      {/* Step 1: Project folder */}
+      <section style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, display: 'flex', flexDirection: 'column', gap: 14, color: 'var(--text)' }}>
+        <h2 style={{ margin: 0, fontSize: 17, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text)' }}>
+          <span style={{ display: 'inline-flex', width: 26, height: 26, borderRadius: '50%', background: 'var(--accent-soft)', color: 'var(--accent)', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600 }}>
+            1
+          </span>
+          Project folder
+        </h2>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+          <button
+            type="button"
+            disabled={pickingFolder}
+            onClick={() => void handleChooseFolder()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 15,
+              padding: '12px 16px',
+              border: '1px solid var(--border)',
+              background: 'var(--surface)',
+              borderRadius: 10,
+              color: 'var(--text)',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
           >
-            <span className="num" aria-hidden="true">
-              {i < step ? '✓' : i + 1}
-            </span>
-            <span>
-              <strong>{s.name}</strong> <span className="hint">{s.hint}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            </svg>
+            {pickingFolder ? 'Opening picker…' : 'Choose folder…'}
+          </button>
 
-      <div className="card">
-        {/* Step 1: Name and Repositories */}
-        {step === 0 ? (
-          <>
-            <h2>Where is the code?</h2>
-            <p className="hint">
-              Add one or more repositories. Sentinel never moves them; it only reads and works in branches you can review.
-            </p>
-            <div className="field">
-              <label htmlFor="np-name">Project name</label>
-              <input
-                id="np-name"
-                type="text"
-                value={name}
-                autoComplete="off"
-                onChange={(e) => {
-                  setName(e.target.value);
-                  setTouched(true);
-                }}
-                aria-invalid={touched && nameErr ? true : undefined}
-              />
-              {touched && nameErr ? <p className="field-error">{nameErr}</p> : null}
-            </div>
-
-            <FolderPicker
-              label="Project folder"
-              value={path}
-              onChange={(p) => {
-                setPath(p);
-                setTouched(true);
+          {!showTypedFallback && (
+            <button
+              type="button"
+              onClick={() => setShowTypedFallback(true)}
+              style={{
+                fontSize: 14,
+                padding: '8px 12px',
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--link)',
+                cursor: 'pointer',
+                textDecoration: 'underline',
               }}
-              allowNew
-              hint="Sentinel keeps its configuration here. The folder is created when it does not exist; its parent must exist."
-              error={touched ? pathErr : undefined}
-              testId="project-folder"
-            />
+            >
+              Or enter folder path manually
+            </button>
+          )}
 
-            <h3>Repositories</h3>
-            <p className="hint">
-              A project needs at least one repository. Pick folders that already exist; Sentinel does not clone or create them.
-            </p>
-            {repos.length === 0 ? <p className="empty-inline">No repository added yet</p> : null}
-            <ul className="plain" data-testid="wizard-repos">
-              {repos.map((r, i) => (
-                <li key={`${r.path}-${i}`} className="row listrow">
-                  <code>{r.path}</code>
-                  <span className="chip">{r.role}</span>
-                  <span className="chip">{r.profile ?? 'auto profile'}</span>
-                  <button
-                    type="button"
-                    className="secondary"
-                    aria-label={`Remove ${r.path}`}
-                    onClick={() => setRepos((x) => x.filter((_, j) => j !== i))}
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {folderPath ? (
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 14, background: 'var(--surface-sunken)', padding: '8px 10px', borderRadius: 8, color: 'var(--text)' }}>
+              {folderPath}
+            </span>
+          ) : null}
+        </div>
 
-            <fieldset>
-              <legend className="field-label">Add repository</legend>
-              <FolderPicker
-                label="Repository folder"
-                value={draft.path}
-                onChange={(p) => setDraft((d) => ({ ...d, path: p }))}
-                error={draftErr}
-                testId="repo-folder"
+        {/* Fallback typed input if dialog tool unavailable or toggled */}
+        {showTypedFallback && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4, background: 'var(--surface-sunken)', padding: 14, borderRadius: 10, border: '1px solid var(--border)' }}>
+            <label htmlFor="project-folder-fallback" style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)' }}>
+              Project folder path (fallback)
+            </label>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <input
+                id="project-folder-fallback"
+                aria-label="Project folder"
+                type="text"
+                value={typedPath}
+                onChange={(e) => setTypedPath(e.target.value)}
+                placeholder="/home/dev/projects/my-project"
+                style={{
+                  flex: '1 1 320px',
+                  fontSize: 14,
+                  padding: '10px 12px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text)',
+                  borderRadius: 8,
+                }}
               />
-              <div className="row">
-                <div className="field inline">
-                  <label htmlFor="np-role">Role</label>
-                  <select
-                    id="np-role"
-                    value={draft.role}
-                    onChange={(e) => setDraft((d) => ({ ...d, role: e.target.value }))}
-                  >
-                    {REPO_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field inline">
-                  <label htmlFor="np-profile">Profile</label>
-                  <select
-                    id="np-profile"
-                    value={draft.profile}
-                    onChange={(e) => setDraft((d) => ({ ...d, profile: e.target.value }))}
-                  >
-                    <option value="">Auto detect</option>
-                    {(profiles.data?.items ?? []).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label ?? p.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
               <button
                 type="button"
-                className="secondary"
-                disabled={!draft.path.startsWith('/')}
-                onClick={addRepo}
+                onClick={() => handleUsePath(typedPath)}
+                style={{
+                  fontSize: 14,
+                  padding: '10px 16px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text)',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                }}
               >
-                Add repository
+                Use this folder
               </button>
-            </fieldset>
-          </>
-        ) : null}
-
-        {/* Step 2: Detected setup per repo */}
-        {step === 1 ? (
-          <>
-            <h2>We looked at your repos</h2>
-            <p className="hint">Everything below was detected. Change only what is wrong.</p>
-            {detecting ? <p className="loading">Scanning repository profiles and commands…</p> : null}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
-              {repoSetups.map((setup, idx) => (
-                <div key={setup.path} className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong>{setup.path.split('/').pop() || setup.path}</strong>
-                    <span className="chip">{setup.profile}</span>
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`setup-test-${idx}`}>Test command</label>
-                    <input
-                      id={`setup-test-${idx}`}
-                      type="text"
-                      value={setup.test}
-                      style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.85rem' }}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setRepoSetups((s) => s.map((item, j) => (j === idx ? { ...item, test: val } : item)));
-                      }}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`setup-build-${idx}`}>Build command</label>
-                    <input
-                      id={`setup-build-${idx}`}
-                      type="text"
-                      value={setup.build}
-                      style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.85rem' }}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setRepoSetups((s) => s.map((item, j) => (j === idx ? { ...item, build: val } : item)));
-                      }}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`setup-lint-${idx}`}>Lint command</label>
-                    <input
-                      id={`setup-lint-${idx}`}
-                      type="text"
-                      value={setup.lint}
-                      placeholder="(none)"
-                      style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.85rem' }}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setRepoSetups((s) => s.map((item, j) => (j === idx ? { ...item, lint: val } : item)));
-                      }}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`setup-branches-${idx}`}>Branches the team merges to (knowledge tracks these)</label>
-                    <input
-                      id={`setup-branches-${idx}`}
-                      type="text"
-                      value={setup.trackedBranches}
-                      style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.85rem' }}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setRepoSetups((s) => s.map((item, j) => (j === idx ? { ...item, trackedBranches: val } : item)));
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
             </div>
-          </>
-        ) : null}
+          </div>
+        )}
 
-        {/* Step 3: Shared knowledge */}
-        {step === 2 ? (
-          <>
-            <h2>Shared team knowledge</h2>
-            <p className="hint">
-              A private git repo your team owns. Specs, rules, the regression suite and the knowledge base live there, so every teammate’s factory learns the same things.
-            </p>
-            <fieldset>
-              <legend className="field-label">Where</legend>
-              <label className="check" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input
-                  type="radio"
-                  name="np-mode"
-                  checked={mode === 'git'}
-                  onChange={() => setMode('git')}
-                />
-                <span>Shared through a git repository (team URL)</span>
-              </label>
-              <label className="check" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input
-                  type="radio"
-                  name="np-mode"
-                  checked={mode === 'local'}
-                  onChange={() => setMode('local')}
-                />
-                <span>Local only on this machine (try it out)</span>
-              </label>
-            </fieldset>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+          Opens your system&apos;s own folder picker. The project is named after the folder: <strong>{projectName || '—'}</strong>.
+        </div>
+      </section>
 
-            {mode === 'git' ? (
-              <div style={{ marginTop: '1rem' }}>
-                <div className="field">
-                  <label htmlFor="np-url">Git URL</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Step 2: Repos found in this folder */}
+      {folderPath ? (
+        <section style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, display: 'flex', flexDirection: 'column', gap: 14, color: 'var(--text)' }}>
+          <h2 style={{ margin: 0, fontSize: 17, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text)' }}>
+            <span style={{ display: 'inline-flex', width: 26, height: 26, borderRadius: '50%', background: 'var(--accent-soft)', color: 'var(--accent)', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600 }}>
+              2
+            </span>
+            Repos found in this folder
+          </h2>
+
+          {scanningRepos ? (
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>Scanning folder for repositories…</p>
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {detectedRepos.map((r) => (
+                <li key={r.path}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 14px',
+                      borderRadius: 10,
+                      border: '1px solid ' + (r.selected ? 'var(--accent)' : 'var(--border)'),
+                      background: r.selected ? 'var(--accent-soft)' : 'var(--surface)',
+                      color: 'var(--text)',
+                      cursor: r.isGit ? 'pointer' : 'default',
+                    }}
+                  >
                     <input
-                      id="np-url"
-                      type="text"
-                      value={url}
-                      autoComplete="off"
-                      placeholder="git@host:team/sentinel-shared.git"
-                      style={{ flex: '1 1 300px', fontFamily: 'var(--font-mono, monospace)' }}
-                      onChange={(e) => {
-                        setUrl(e.target.value);
-                        setTestResult(null);
-                      }}
-                      aria-invalid={urlErr ? true : undefined}
+                      type="checkbox"
+                      checked={r.selected}
+                      disabled={!r.isGit}
+                      onChange={() => handleToggleRepo(r.path)}
+                      style={{ width: 18, height: 18, accentColor: 'var(--accent)' }}
                     />
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={!url.trim() || testingAccess}
-                      onClick={() => void testSharedAccess()}
+                    <span style={{ fontWeight: 600, fontSize: 15, minWidth: 190, color: 'var(--text)' }}>{r.name}</span>
+                    <span style={{ fontSize: 14, color: 'var(--text-muted)', flex: '1 1 200px' }}>{r.stack}</span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: '4px 8px',
+                        borderRadius: 6,
+                        background: r.isGit ? 'var(--accent-soft)' : 'var(--warn-soft, #FDF0D9)',
+                        color: r.isGit ? 'var(--accent)' : 'var(--warn-text, #7A3D05)',
+                      }}
                     >
-                      {testingAccess ? 'Testing…' : 'Test access'}
-                    </button>
-                  </div>
-                  {urlErr ? <p className="field-error">{urlErr}</p> : null}
-                  {testResult ? (
-                    <div style={{ marginTop: '0.5rem' }}>
-                      {testResult.ok ? (
-                        <p style={{ color: 'var(--ok)', margin: 0, fontWeight: 500 }}>
-                          ✓ can read and {testResult.write === true ? 'push' : 'write (unknown)'}
-                        </p>
-                      ) : (
-                        <p style={{ color: 'var(--danger)', margin: 0 }}>
-                          ! {testResult.error || 'Access test failed'}
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="panel" style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <strong>Build knowledge from history</strong>
-              <p className="hint" style={{ margin: 0 }}>
-                Changes your team made without Sentinel become knowledge too. Last 3 months on develop and main: about 140 changes, up to 300 summary calls on your knowledge model.
-              </p>
-              <label className="check" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
-                <input
-                  type="checkbox"
-                  checked={runBackfill}
-                  onChange={(e) => setRunBackfill(e.target.checked)}
-                />
-                <span>Run the backfill in the background after setup</span>
-              </label>
-            </div>
-          </>
-        ) : null}
-
-        {/* Step 4: AI team */}
-        {step === 3 ? (
-          <>
-            <h2>Your AI team</h2>
-            <p className="hint">
-              Suggested: cheap fast models for sizing, scenarios and summaries; a strong model where code is written. Change any row.
-            </p>
-            <div className="table-wrap" style={{ marginTop: '1rem', maxHeight: '420px', overflowY: 'auto' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">Role</th>
-                    <th scope="col">Provider</th>
-                    <th scope="col">Model</th>
-                    <th scope="col">Why</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {roleRows.map((r, i) => (
-                    <tr key={r.role}>
-                      <th scope="row" style={{ textAlign: 'left', fontWeight: 600 }}>
-                        {r.role}
-                      </th>
-                      <td>
-                        <select
-                          aria-label={`Provider for ${r.role}`}
-                          value={r.runner}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setRoleRows((rows) => rows.map((row, j) => (j === i ? { ...row, runner: val } : row)));
-                          }}
-                        >
-                          {providerOptions.map((p) => (
-                            <option key={p} value={p}>
-                              {p}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          aria-label={`Model for ${r.role}`}
-                          type="text"
-                          value={r.model}
-                          placeholder="(default)"
-                          style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.85rem' }}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setRoleRows((rows) => rows.map((row, j) => (j === i ? { ...row, model: val } : row)));
-                          }}
-                        />
-                      </td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{r.why}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="hint" style={{ marginTop: '0.75rem' }}>
-              Every role must use a command-line provider: the factory starts agents itself.
-            </p>
-          </>
-        ) : null}
-
-        {/* Step 5: Checks and Create */}
-        {step === 4 ? (
-          <>
-            <h2>Ready to open the factory</h2>
-            <ul className="plain" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
-              <li className="panel" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: 'var(--ok)', fontWeight: 'bold' }}>✓</span>
-                <span>{repos.length} repositor{repos.length === 1 ? 'y' : 'ies'}, commands detected, baseline build passes</span>
-              </li>
-              <li className="panel" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: 'var(--ok)', fontWeight: 'bold' }}>✓</span>
-                <span>
-                  {mode === 'git' ? `Shared repo: ${url}` : 'Local only on this machine, knowledge folder ready'}
-                </span>
-              </li>
-              <li className="panel" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ color: 'var(--ok)', fontWeight: 'bold' }}>✓</span>
-                <span>{roleRows.length} roles routed; CLI providers configured</span>
-              </li>
-              {repoSetups.some((s) => !s.lint) ? (
-                <li className="panel" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderColor: 'var(--warn)' }}>
-                  <span style={{ color: 'var(--warn)', fontWeight: 'bold' }}>!</span>
-                  <span>
-                    {repoSetups.find((s) => !s.lint)?.path.split('/').pop()} has no lint command. Optional: add one later in Settings.
-                  </span>
+                      {r.isGit ? 'Ready' : 'Skipped: not a git folder'}
+                    </span>
+                  </label>
                 </li>
-              ) : null}
+              ))}
             </ul>
+          )}
+        </section>
+      ) : null}
 
-            <dl className="kv" data-testid="wizard-review" style={{ marginTop: '1.25rem' }}>
-              <dt>Name</dt>
-              <dd>{name}</dd>
-              <dt>Folder</dt>
-              <dd>
-                <code>{path}</code>
-              </dd>
-              <dt>Sharing</dt>
-              <dd>{mode === 'git' ? `Shared: ${url}` : 'Local only'}</dd>
-              <dt>Repositories</dt>
-              <dd>
-                <ul className="plain">
-                  {repos.map((r, i) => (
-                    <li key={i}>
-                      <code>{r.path}</code> ({r.role}, {r.profile ?? 'auto profile'})
-                    </li>
-                  ))}
-                </ul>
-              </dd>
-            </dl>
-            <p className="hint">
-              Sentinel writes sentinel.config.yaml in the project folder. You can still edit it by hand or with the CLI.
-            </p>
-            {failure ? <ErrorView error={failure} /> : null}
-          </>
-        ) : null}
-      </div>
+      {/* Step 3: AI team */}
+      {folderPath ? (
+        <section style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 24, display: 'flex', flexDirection: 'column', gap: 14, color: 'var(--text)' }}>
+          <h2 style={{ margin: 0, fontSize: 17, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text)' }}>
+            <span style={{ display: 'inline-flex', width: 26, height: 26, borderRadius: '50%', background: 'var(--accent-soft)', color: 'var(--accent)', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600 }}>
+              3
+            </span>
+            AI team
+          </h2>
 
-      <div className="row wizard-nav">
-        <button
-          type="button"
-          className="secondary"
-          disabled={step === 0 || create.pending}
-          onClick={() => setStep((s) => Math.max(0, s - 1))}
-        >
-          Back
-        </button>
-        {step < STEPS.length - 1 ? (
-          <button type="button" disabled={!canNext} onClick={() => void handleNext()}>
-            Next
-          </button>
-        ) : (
-          <button type="button" disabled={create.pending} onClick={submit}>
+          <div role="radiogroup" aria-label="AI team" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={teamChoice === 'mix'}
+              onClick={() => setTeamChoice('mix')}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 6,
+                textAlign: 'left',
+                padding: 16,
+                borderRadius: 12,
+                cursor: 'pointer',
+                font: 'inherit',
+                color: 'var(--text)',
+                background: teamChoice === 'mix' ? 'var(--accent-soft)' : 'var(--surface)',
+                border: teamChoice === 'mix' ? '2px solid var(--accent)' : '1px solid var(--border)',
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Recommended mix</span>
+              <span style={{ fontSize: 14, lineHeight: 1.45, color: 'var(--text-muted)' }}>
+                Claude writes specs and reviews; Antigravity writes code and tests. Cheapest for good quality.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              role="radio"
+              aria-checked={teamChoice === 'one'}
+              onClick={() => setTeamChoice('one')}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 6,
+                textAlign: 'left',
+                padding: 16,
+                borderRadius: 12,
+                cursor: 'pointer',
+                font: 'inherit',
+                color: 'var(--text)',
+                background: teamChoice === 'one' ? 'var(--accent-soft)' : 'var(--surface)',
+                border: teamChoice === 'one' ? '2px solid var(--accent)' : '1px solid var(--border)',
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 15 }}>One AI for everything</span>
+              <span style={{ fontSize: 14, lineHeight: 1.45, color: 'var(--text-muted)' }}>
+                Pick one tool and model. Every station uses it.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              role="radio"
+              aria-checked={teamChoice === 'custom'}
+              onClick={() => setTeamChoice('custom')}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 6,
+                textAlign: 'left',
+                padding: 16,
+                borderRadius: 12,
+                cursor: 'pointer',
+                font: 'inherit',
+                color: 'var(--text)',
+                background: teamChoice === 'custom' ? 'var(--accent-soft)' : 'var(--surface)',
+                border: teamChoice === 'custom' ? '2px solid var(--accent)' : '1px solid var(--border)',
+              }}
+            >
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Custom</span>
+              <span style={{ fontSize: 14, lineHeight: 1.45, color: 'var(--text-muted)' }}>
+                Choose per station later in Settings.
+              </span>
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 13, color: 'var(--accent)' }}>
+            {installedProviders.map((p) => (
+              <span key={p.id} style={{ background: 'var(--accent-soft)', padding: '6px 10px', borderRadius: 999, color: 'var(--text)' }}>
+                {p.label || p.id} installed
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Team knowledge repo (optional) */}
+      {folderPath ? (
+        <details style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '18px 24px', fontSize: 15, color: 'var(--text)' }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--text)' }}>
+            Team knowledge repo <span style={{ color: 'var(--text-muted)' }}>(optional, shares specs and rules between people)</span>
+          </summary>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              <label htmlFor="shared-git-url" style={{ position: 'absolute', left: -9999 }}>
+                Git URL
+              </label>
+              <input
+                id="shared-git-url"
+                aria-label="Git URL"
+                value={sharedUrl}
+                onChange={(e) => setSharedUrl(e.target.value)}
+                placeholder="git@github.com:your-team/sentinel-shared.git"
+                style={{ flex: '1 1 360px', fontSize: 14, padding: '10px 12px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', borderRadius: 8 }}
+              />
+              <button
+                type="button"
+                disabled={testingShared || !sharedUrl.trim()}
+                onClick={() => void handleTestShared()}
+                style={{ fontSize: 14, padding: '10px 14px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', borderRadius: 8, cursor: 'pointer' }}
+              >
+                {testingShared ? 'Testing…' : 'Test access'}
+              </button>
+            </div>
+            {sharedTestResult && (
+              <div style={{ fontSize: 13, color: sharedTestResult.ok ? 'var(--ok)' : 'var(--fail)' }}>
+                {sharedTestResult.ok ? '✓ Repository accessible.' : `✗ ${sharedTestResult.error || 'Access failed.'}`}
+              </div>
+            )}
+          </div>
+        </details>
+      ) : null}
+
+      {createError && (
+        <div style={{ color: 'var(--fail)', background: 'var(--surface-sunken)', border: '1px solid var(--fail)', padding: 12, borderRadius: 8, fontSize: 14 }}>
+          {createError}
+        </div>
+      )}
+
+      {/* Create project button row */}
+      {folderPath ? (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16 }}>
+          <button
+            type="button"
+            disabled={create.pending || selectedCount === 0}
+            onClick={() => void handleCreateProject()}
+            style={{
+              display: 'inline-block',
+              fontSize: 16,
+              fontWeight: 600,
+              padding: '14px 24px',
+              borderRadius: 10,
+              border: 'none',
+              background: '#0F766E',
+              color: '#FFFFFF',
+              cursor: 'pointer',
+            }}
+          >
             {create.pending ? 'Creating…' : 'Create project'}
           </button>
-        )}
-        <Link to="/projects">Cancel</Link>
-      </div>
-    </section>
+          <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+            {selectedCount} repo{selectedCount === 1 ? '' : 's'} · {teamLabel} · settings saved to sentinel.config.yaml
+          </span>
+        </div>
+      ) : null}
+    </div>
   );
 }

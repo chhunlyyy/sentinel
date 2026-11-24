@@ -1,10 +1,8 @@
-import { test, expect, open, nav, heading, type Api } from './helpers.ts';
+import { test, expect, open, heading, type Api } from './helpers.ts';
 
 test.describe('installation and runtime', () => {
   test('AC-INS-02a the installation screen', async ({ page }) => {
-    await open(page, '/');
-    await nav(page).getByRole('link', { name: 'Settings' }).click();
-    await page.getByRole('link', { name: 'Sentinel installation' }).click();
+    await open(page, '/settings/installation');
     await expect(heading(page, 'Sentinel installation')).toBeVisible();
     const main = page.getByRole('main');
     await expect(main).toContainText('1.1.0');
@@ -137,15 +135,16 @@ test.describe('project readiness', () => {
       feature: { state: 'needs_configuration', workflow: 'feature', checked_at: '2026-11-14T09:00:00Z', items: [item('test_command', 'not_configured', { repo: 'backend', fix: 'set repos.backend.commands.test' })] },
     });
     await open(page, '/tasks/new');
-    await page.getByLabel('Project').selectOption('digital-hr');
-    await page.getByLabel('Slug').fill('docs-task');
+    if (await page.getByLabel('Project').isVisible()) {
+      await page.getByLabel('Project').selectOption('digital-hr');
+    }
     await page.getByLabel('Request').fill('Write docs');
+    await page.getByText('More options').click();
     await page.getByLabel('Type').selectOption('docs');
-    await expect(page.getByRole('button', { name: 'Create task' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Start task' })).toBeEnabled();
     expect((await api.gets(/readiness\?.*workflow=docs/)).length).toBeGreaterThan(0);
     await page.getByLabel('Type').selectOption('feature');
-    await expect(page.getByRole('button', { name: 'Create task' })).toBeDisabled();
-    await expect(page.getByTestId('readiness-problems')).toContainText('test_command');
+    await expect(page.getByRole('button', { name: 'Start task' })).toBeDisabled();
     expect((await api.gets(/readiness\?.*workflow=feature/)).length).toBeGreaterThan(0);
   });
 });

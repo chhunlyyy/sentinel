@@ -9,7 +9,6 @@ from errors import SentinelError
 from paths import slug_problem
 
 import analytics
-import chat
 import factory
 import notifications
 import providers
@@ -415,53 +414,95 @@ def h_retry_now(ctx, slug):
         return 200, ctx.clean(project, {**res, **views.run_detail(eng, project, slug)})
 
 
-def h_chat(ctx, slug):
-    project = ctx.locate(slug)
-    config = ctx.projects.require(project)
-    runner, model = chat.orchestrator_target(config, ctx.api)
-    with ctx.projects.engine(project) as eng:
-        eng._open_run(slug)
-        items = chat.read_chat(eng.run_dir(slug))
-        return 200, ctx.clean(project, {"items": items, "orchestrator": {"runner": runner, "model": model}})
+def pick_folder_dialog():
+    """Try OS-native folder dialog. Returns str path, None if cancelled, or raises HttpError('E_UNAVAILABLE', ...)."""
+    import os
+    import shutil
+    import subprocess
+    import sys
+
+    if sys.platform.startswith("linux"):
+        if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+            raise HttpError("E_UNAVAILABLE", "no desktop session for a folder dialog", status=501)
+
+        if shutil.which("zenity"):
+            try:
+                res = subprocess.run(["zenity", "--file-selection", "--directory", "--title=Choose folder"],
+                                     capture_output=True, text=True, timeout=600)
+                if res.returncode == 0:
+                    p = res.stdout.strip()
+                    return p if p else None
+                elif res.returncode == 1:
+                    return None
+                raise HttpError("E_UNAVAILABLE", f"folder dialog exited with code {res.returncode}", status=501)
+            except HttpError:
+                raise
+            except Exception as e:
+                raise HttpError("E_UNAVAILABLE", f"folder dialog failed: {e}", status=501)
+        if shutil.which("kdialog"):
+            try:
+                res = subprocess.run(["kdialog", "--getexistingdirectory"],
+                                     capture_output=True, text=True, timeout=600)
+                if res.returncode == 0:
+                    p = res.stdout.strip()
+                    return p if p else None
+                elif res.returncode == 1:
+                    return None
+                raise HttpError("E_UNAVAILABLE", f"folder dialog exited with code {res.returncode}", status=501)
+            except HttpError:
+                raise
+            except Exception as e:
+                raise HttpError("E_UNAVAILABLE", f"folder dialog failed: {e}", status=501)
+        raise HttpError("E_UNAVAILABLE", "no folder dialog tool found (zenity or kdialog)", status=501)
+
+    elif sys.platform == "darwin":
+        if shutil.which("osascript"):
+            try:
+                script = 'POSIX path of (choose folder with prompt "Choose folder")'
+                res = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=600)
+                if res.returncode == 0:
+                    p = res.stdout.strip()
+                    if p.endswith("/") and len(p) > 1:
+                        p = p[:-1]
+                    return p if p else None
+                elif res.returncode == 1:
+                    return None
+                raise HttpError("E_UNAVAILABLE", f"folder dialog exited with code {res.returncode}", status=501)
+            except HttpError:
+                raise
+            except Exception as e:
+                raise HttpError("E_UNAVAILABLE", f"folder dialog failed: {e}", status=501)
+        raise HttpError("E_UNAVAILABLE", "osascript not available", status=501)
+
+    elif sys.platform in ("win32", "cygwin"):
+        ps = shutil.which("powershell.exe") or shutil.which("powershell") or shutil.which("pwsh")
+        if ps:
+            try:
+                ps_script = (
+                    "Add-Type -AssemblyName System.Windows.Forms; "
+                    "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                    "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }"
+                )
+                res = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                                     capture_output=True, text=True, timeout=600)
+                if res.returncode == 0:
+                    p = res.stdout.strip()
+                    return p if p else None
+                elif res.returncode == 1:
+                    return None
+                raise HttpError("E_UNAVAILABLE", f"folder dialog exited with code {res.returncode}", status=501)
+            except HttpError:
+                raise
+            except Exception as e:
+                raise HttpError("E_UNAVAILABLE", f"folder dialog failed: {e}", status=501)
+        raise HttpError("E_UNAVAILABLE", "powershell not available", status=501)
+
+    raise HttpError("E_UNAVAILABLE", f"platform {sys.platform} not supported for folder dialog", status=501)
 
 
-def h_chat_send(ctx, slug):
-    ops.check_fields(ctx.body, ("text",), ("text",))
-    text = ops.text_field(ctx.body, "text")
-    if not text or not text.strip():
-        raise SentinelError("E_VALIDATION", "a chat message needs text", {"field": "text"})
-    text = text.strip()
-    if len(text) > chat.USER_MAX:
-        raise SentinelError("E_VALIDATION", f"chat message text exceeds {chat.USER_MAX} characters", {"field": "text"})
-
-    project = ctx.locate(slug)
-    config = ctx.projects.require(project)
-    runner, model = chat.orchestrator_target(config, ctx.api)
-
-    with ctx.projects.engine(project, ctx.user, ops.CHANNEL) as eng:
-        eng._open_run(slug)
-        rdir = eng.run_dir(slug)
-        if chat.has_pending_reply(rdir):
-            raise SentinelError("E_PRECONDITION", "another orchestrator reply is already pending for this run")
-
-        user_id = f"u-{uuid.uuid4().hex[:12]}"
-        orch_id = f"o-{uuid.uuid4().hex[:12]}"
-        user_item = {"id": user_id, "role": "user", "text": text, "at": chat._now(), "status": "done"}
-        orch_item = {"id": orch_id, "role": "orchestrator", "text": "", "at": chat._now(), "status": "pending"}
-
-        chat.append_chat(rdir, user_item)
-        chat.append_chat(rdir, orch_item)
-        eng.audit(ctx.user, ops.CHANNEL, "chat", slug, reason=text[:64])
-
-    t = threading.Thread(
-        target=chat.reply_worker,
-        args=(ctx.projects, project, slug, orch_id, runner, model, ctx.api),
-        name=f"chat-worker-{slug}-{orch_id}",
-        daemon=True,
-    )
-    t.start()
-
-    return 202, ctx.clean(project, {"user": user_item, "orchestrator": orch_item, "items": [user_item, orch_item]})
+def h_pick_folder(ctx):
+    path = pick_folder_dialog()
+    return 200, {"path": path}
 
 
 
@@ -596,8 +637,7 @@ ROUTES = [
     Route("POST", "unpause", "tasks/{slug}/unpause", h_unpause, ("Engine.unpause_run",)),
     Route("POST", "note", "tasks/{slug}/note", h_note, ("Engine.add_note",)),
     Route("POST", "retry_now", "tasks/{slug}/retry-now", h_retry_now, ("Engine.retry_limited_now",)),
-    Route("GET", "chat", "runs/{slug}/chat", h_chat),
-    Route("POST", "chat_send", "runs/{slug}/chat", h_chat_send, ("chat.append_chat", "chat.reply_worker")),
+    Route("POST", "pick_folder", "pick-folder", h_pick_folder, ()),
     Route("GET", "factory", "projects/{pid}/factory", h_factory),
     Route("GET", "factory_state", "factory", h_factory_get),
     Route("POST", "factory_pause", "factory/pause", h_factory_pause, ("factory.set_paused",)),

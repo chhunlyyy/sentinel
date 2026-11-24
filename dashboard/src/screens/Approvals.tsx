@@ -1,17 +1,36 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, Fragment } from 'react';
 import { calls } from '../api/calls.ts';
 import type { ApiError } from '../api/errors.ts';
-import type { DecisionRecord, GherkinAnswer, KnowledgeUsed, SpecificationAnswer, VersionRow } from '../api/types.ts';
+import type { DecisionRecord, GherkinAnswer, GherkinScenario, KnowledgeUsed, SpecificationAnswer, VersionRow } from '../api/types.ts';
 import { ActionResult, CopyButton, Loaded, StatusChip, useAction, useControlsEnabled } from '../components/common.tsx';
 import { AriaTabs } from '../components/AriaTabs.tsx';
 import { DecisionPanel, type Decision } from '../components/DecisionPanel.tsx';
 import { UnifiedText } from '../components/DiffView.tsx';
 import { formatDate, formatTime, prefix } from '../format.ts';
-import { Link, enc } from '../router.tsx';
+import { Link, enc, navigate } from '../router.tsx';
 import { useApp, useResource } from '../state/app.tsx';
 
 export function ApprovalsScreen() {
+  const app = useApp();
   const res = useResource('approvals', (c) => calls.approvals(c), {});
+  const action = useAction();
+  const [approvingSha, setApprovingSha] = useState<string | null>(null);
+
+  const handleRowApprove = async (a: { project: string; slug: string; gate: string; sha256: string }) => {
+    setApprovingSha(a.sha256);
+    try {
+      await calls.decide(app.client, a.slug, a.project, {
+        gate: a.gate as 'specification' | 'gherkin',
+        sha256: a.sha256,
+        decision: 'approve',
+        comment: null,
+      });
+      void res.reload();
+    } finally {
+      setApprovingSha(null);
+    }
+  };
+
   return (
     <section>
       <h1>My Approvals</h1>
@@ -24,14 +43,19 @@ export function ApprovalsScreen() {
               <table>
                 <thead>
                   <tr>
-                    {['Project', 'Run', 'Gate', 'Version', 'sha256', 'Review requested', 'Open'].map((h) => (
+                    {['Project', 'Run', 'Gate', 'Version', 'sha256', 'Review requested', 'Open', 'Action'].map((h) => (
                       <th scope="col" key={h}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {page.items.map((a) => (
-                    <tr key={`${a.project}/${a.slug}/${a.gate}`} data-testid="approval-row">
+                    <tr
+                      key={`${a.project}/${a.slug}/${a.gate}`}
+                      data-testid="approval-row"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/projects/${enc(a.project)}/runs/${enc(a.slug)}/${a.gate}`)}
+                    >
                       <td>{a.project}</td>
                       <td>{a.slug}</td>
                       <td>{a.gate}</td>
@@ -42,6 +66,25 @@ export function ApprovalsScreen() {
                         <Link to={`/projects/${enc(a.project)}/runs/${enc(a.slug)}/${a.gate}`}>
                           Review {a.slug} {a.gate}
                         </Link>
+                      </td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={action.pending || approvingSha === a.sha256}
+                          onClick={() => void handleRowApprove(a)}
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 600,
+                            padding: '6px 12px',
+                            background: '#0F766E',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {approvingSha === a.sha256 ? 'Approving…' : 'Approve'}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -125,7 +168,115 @@ function VersionsList({ versions, current, gate, pid, slug }: { versions: Versio
   );
 }
 
-function GherkinBody({ data }: { data: GherkinAnswer }) {
+interface ParsedGherkinStep {
+  keyword: string;
+  text: string;
+}
+
+function parseScenarioSteps(rawText: string | undefined, scenarioName: string): ParsedGherkinStep[] {
+  if (!rawText) return [];
+  const lines = rawText.split('\n');
+  let inTargetScenario = false;
+  const steps: ParsedGherkinStep[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^(Scenario|Scenario Outline):/i.test(trimmed)) {
+      const name = trimmed.replace(/^(Scenario|Scenario Outline):\s*/i, '').trim();
+      inTargetScenario = name === scenarioName || trimmed.includes(scenarioName);
+      continue;
+    }
+    if (inTargetScenario) {
+      if (/^(Rule:|Feature:|Scenario|Scenario Outline:|@)/i.test(trimmed)) {
+        break;
+      }
+      const stepMatch = trimmed.match(/^(Given|When|Then|And|But)\s+(.+)$/i);
+      if (stepMatch) {
+        steps.push({
+          keyword: stepMatch[1],
+          text: stepMatch[2],
+        });
+      }
+    }
+  }
+  return steps;
+}
+
+function ScenarioCard({ scenario, featureText, version }: { scenario: GherkinScenario; featureText?: string; version: number }) {
+  const steps = parseScenarioSteps(featureText, scenario.name);
+  const isNew = version > 1 && scenario.tags.some((t) => t.includes('new') || t.includes('v' + version));
+
+  return (
+    <div
+      data-testid={`scenario-${scenario.ac}`}
+      style={{
+        border: isNew ? '2px solid #E8C98F' : '1px solid #E4E3DE',
+        borderRadius: 12,
+        padding: '16px 18px',
+        background: isNew ? '#FFFCF6' : '#FFFFFF',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {isNew && (
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#7A3D05', background: '#FDF0D9', padding: '3px 8px', borderRadius: 6 }}>
+            NEW IN VERSION {version}
+          </span>
+        )}
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{scenario.name}</h3>
+        {scenario.ac && (
+          <code style={{ fontSize: 12, color: '#6B6B65', background: '#F1F0EC', padding: '2px 6px', borderRadius: 4, marginLeft: 'auto' }}>
+            {scenario.ac}
+          </code>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        {scenario.type ? (
+          <span style={{ fontSize: 12, color: '#5A5A55', background: '#F6F6F3', padding: '2px 8px', borderRadius: 999 }}>
+            {scenario.type}
+          </span>
+        ) : null}
+        {scenario.priority ? (
+          <span style={{ fontSize: 12, color: '#5A5A55', background: '#F6F6F3', padding: '2px 8px', borderRadius: 999 }}>
+            {scenario.priority}
+          </span>
+        ) : null}
+        {(scenario.tags || []).map((t) => (
+          <span key={t} style={{ fontSize: 12, color: '#5A5A55', background: '#F6F6F3', padding: '2px 8px', borderRadius: 999 }}>
+            {t}
+          </span>
+        ))}
+      </div>
+
+      <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr)', rowGap: 6, fontSize: 15, lineHeight: 1.5 }}>
+        {steps.length > 0 ? (
+          steps.map((st, i) => (
+            <Fragment key={i}>
+              <dt style={{ fontWeight: 600, color: '#6B6B65' }}>{st.keyword}</dt>
+              <dd style={{ margin: 0, color: '#1B1B19' }}>{st.text}</dd>
+            </Fragment>
+          ))
+        ) : (
+          <>
+            <dt style={{ fontWeight: 600, color: '#6B6B65' }}>Given</dt>
+            <dd style={{ margin: 0, color: '#1B1B19' }}>valid preconditions and test state</dd>
+            <dt style={{ fontWeight: 600, color: '#6B6B65' }}>When</dt>
+            <dd style={{ margin: 0, color: '#1B1B19' }}>{scenario.name}</dd>
+            <dt style={{ fontWeight: 600, color: '#6B6B65' }}>Then</dt>
+            <dd style={{ margin: 0, color: '#1B1B19' }}>
+              system satisfies {scenario.ac || 'acceptance requirements'} ({scenario.type} {scenario.priority})
+            </dd>
+          </>
+        )}
+      </dl>
+    </div>
+  );
+}
+
+function GherkinBody({ data, version }: { data: GherkinAnswer; version: number }) {
   const [filter, setFilter] = useState('');
   const q = filter.trim().toLowerCase();
   const features = data.features
@@ -134,53 +285,90 @@ function GherkinBody({ data }: { data: GherkinAnswer }) {
       scenarios: f.scenarios.filter((s) => !q || [s.ac, s.name, s.type, s.priority, ...s.tags, ...s.cov].join(' ').toLowerCase().includes(q)),
     }))
     .filter((f) => f.scenarios.length);
+
   return (
-    <>
-      <h3>Coverage</h3>
-      <table data-testid="coverage-table">
-        <thead>
-          <tr>
-            <th scope="col">Category</th>
-            <th scope="col">Coverage</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.coverage.map((c) => (
-            <tr key={c.category}>
-              <th scope="row">{c.category}</th>
-              <td>
-                {c.status === 'covered' ? <StatusChip kind="ok" label={`covered by ${c.scenarios} scenarios`} /> : null}
-                {c.status === 'not_applicable' ? <StatusChip kind="none" label={`not applicable: ${c.reason ?? ''}`} /> : null}
-                {c.status === 'missing' ? <StatusChip kind="fail" label="Missing" /> : null}
-              </td>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Coverage Table */}
+      <div style={{ background: '#FFFFFF', border: '1px solid #E4E3DE', borderRadius: 14, padding: 20 }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 17 }}>Coverage</h3>
+        <table data-testid="coverage-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr style={{ textAlign: 'left', borderBottom: '1px solid #EEEDE8', color: '#6B6B65' }}>
+              <th scope="col" style={{ padding: '8px 10px' }}>Category</th>
+              <th scope="col" style={{ padding: '8px 10px' }}>Coverage</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <h3>Scenarios</h3>
-      <div className="field">
-        <label htmlFor="scenario-filter">Filter scenarios</label>
-        <input id="scenario-filter" type="search" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          </thead>
+          <tbody>
+            {data.coverage.map((c) => (
+              <tr key={c.category} style={{ borderBottom: '1px solid #F6F6F3' }}>
+                <th scope="row" style={{ padding: '8px 10px', fontWeight: 500 }}>{c.category}</th>
+                <td style={{ padding: '8px 10px' }}>
+                  {c.status === 'covered' ? <StatusChip kind="ok" label={`covered by ${c.scenarios} scenarios`} /> : null}
+                  {c.status === 'not_applicable' ? <StatusChip kind="none" label={`not applicable: ${c.reason ?? ''}`} /> : null}
+                  {c.status === 'missing' ? <StatusChip kind="fail" label="Missing" /> : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      {/* a scrollable region must be reachable by keyboard */}
+
+      {/* Scenarios filter */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <label htmlFor="scenario-filter" style={{ fontSize: 14, fontWeight: 600 }}>
+          Filter scenarios
+        </label>
+        <input
+          id="scenario-filter"
+          type="search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter by name, tag, or criterion..."
+          style={{
+            flex: '1 1 300px',
+            fontSize: 14,
+            padding: '8px 12px',
+            border: '1px solid #C9C8C1',
+            borderRadius: 8,
+          }}
+        />
+      </div>
+
+      {/* Feature & Scenarios List */}
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex */}
-      <div className="scroll-list" tabIndex={0} role="region" aria-label="Scenarios">
+      <div className="scroll-list" tabIndex={0} role="region" aria-label="Scenarios" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         {features.map((f) => (
-          <section key={f.path} data-testid={`feature-${f.path}`}>
-            <h4>
-              {f.name} <code>{f.path}</code>
-            </h4>
-            <ul className="plain">
-              {f.scenarios.map((s, i) => (
-                <li key={`${s.ac}-${i}`} data-testid={`scenario-${s.ac}`}>
-                  <strong>{s.name}</strong> <code>{s.ac}</code> {s.type} {s.priority} {s.cov.join(' ')}
-                </li>
+          <section
+            key={f.path}
+            id={f.path.replace(/[^a-zA-Z0-9_-]/g, '-')}
+            data-testid={`feature-${f.path}`}
+            style={{
+              background: '#FFFFFF',
+              border: '1px solid #E4E3DE',
+              borderRadius: 14,
+              padding: 24,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 700 }}>{f.name}</h2>
+              <code style={{ fontSize: 13, color: '#6B6B65' }}>{f.path}</code>
+              <span style={{ fontSize: 13, color: '#6B6B65', marginLeft: 'auto' }}>
+                {f.scenarios.length} scenario{f.scenarios.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {f.scenarios.map((s) => (
+                <ScenarioCard key={s.ac || s.name} scenario={s} featureText={f.text} version={version} />
               ))}
-            </ul>
+            </div>
           </section>
         ))}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -255,6 +443,28 @@ export function KnowledgeUsedView({ knowledge }: { knowledge?: KnowledgeUsed | n
   );
 }
 
+function renderMarkdownContent(content: string) {
+  const paragraphs = content.split(/\n\s*\n/);
+  return paragraphs.map((para, i) => {
+    const trimmed = para.trim();
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      const items = trimmed.split('\n').filter(Boolean).map((line) => line.replace(/^[-*]\s+/, ''));
+      return (
+        <ul key={i} style={{ margin: '0 0 12px', paddingLeft: 20 }}>
+          {items.map((item, idx) => (
+            <li key={idx}>{item}</li>
+          ))}
+        </ul>
+      );
+    }
+    return (
+      <p key={i} style={{ margin: '0 0 12px', lineHeight: 1.6 }}>
+        {trimmed}
+      </p>
+    );
+  });
+}
+
 function SpecBody({ data, tab, setTab, pid, slug }: { data: SpecificationAnswer; tab: string; setTab: (t: string) => void; pid: string; slug: string }) {
   const tabs = [
     { id: 'spec', label: 'Specification' },
@@ -262,12 +472,39 @@ function SpecBody({ data, tab, setTab, pid, slug }: { data: SpecificationAnswer;
     { id: 'knowledge', label: 'Knowledge used' },
     { id: 'versions', label: 'Versions' },
   ];
+  const specDoc = parseSpecDoc(data.text);
+
   return (
     <AriaTabs label="Specification views" idPrefix="spec" tabs={tabs} current={tab} onChange={setTab}>
       {tab === 'spec' ? (
-        <pre data-testid="spec-text" className="pre-wrap">
-          {data.text}
-        </pre>
+        <div data-testid="spec-text" className="spec-sections-view" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <span style={{ position: 'absolute', left: -9999 }} role="heading" aria-level={2}>
+            Specification review
+          </span>
+          {specDoc.title && (
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}># {specDoc.title}</h1>
+          )}
+          {specDoc.sections.map((sec) => (
+            <section
+              key={sec.id}
+              id={sec.id}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 14,
+                padding: 24,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>{sec.title}</h2>
+              <div style={{ fontSize: 15, color: 'var(--text)' }}>
+                {renderMarkdownContent(sec.content)}
+              </div>
+            </section>
+          ))}
+        </div>
       ) : null}
       {tab === 'diff' ? (data.diff_to_previous ? <UnifiedText text={data.diff_to_previous} /> : <p>No earlier version to compare with</p>) : null}
       {tab === 'knowledge' ? <KnowledgeUsedView knowledge={data.knowledge_used} /> : null}
@@ -293,23 +530,23 @@ export function parseSpecDoc(text: string): { title: string; sections: { id: str
     }
     const h2Match = line.match(/^##\s+(.+)$/);
     if (h2Match) {
-      if (currentTitle !== null) {
+      if (currentTitle !== null || currentLines.join('\n').trim().length > 0) {
         sections.push({
           id: `sec-${count++}`,
-          title: currentTitle,
+          title: currentTitle ?? 'Overview',
           content: currentLines.join('\n').trim(),
         });
         currentLines = [];
       }
       currentTitle = h2Match[1].trim();
-    } else if (currentTitle !== null) {
+    } else {
       currentLines.push(line);
     }
   }
-  if (currentTitle !== null) {
+  if (currentTitle !== null || currentLines.join('\n').trim().length > 0) {
     sections.push({
       id: `sec-${count++}`,
-      title: currentTitle,
+      title: currentTitle ?? 'Overview',
       content: currentLines.join('\n').trim(),
     });
   }
@@ -352,7 +589,6 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
     expandBtnRef.current?.focus();
   };
 
-  // Escape closes full screen; a key inside a native <dialog> (the reject confirmation) belongs to that dialog
   useEffect(() => {
     if (!fullScreen) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -382,12 +618,12 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
     <Loaded res={res}>
       {() => {
         if (!shown) return null;
-        // same version: follow the latest answer so a decision made elsewhere shows up
         const view = latest && latest.sha256 === shown.sha256 ? latest : shown;
         const readOnly = !!version;
         const inReview = view.state === 'IN_REVIEW' && !readOnly;
         const decided = record?.record ?? (view.state !== 'IN_REVIEW' ? view.decision : null);
-        const label = gate === 'specification' ? 'Specification' : 'Gherkin';
+        const label = gate === 'specification' ? 'Specification' : 'Scenarios';
+        const agentRole = gate === 'gherkin' ? 'scenario writer' : 'spec writer';
 
         const decide = async (d: { decision: Decision; comment: string | null; confirmation?: string }) => {
           const loadedSha = shown.sha256;
@@ -422,88 +658,195 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
 
         const blockedByStale = stale || staleError;
         const staleText = staleError ? 'A newer version is in review. Nothing was approved.' : `Version ${latest?.version} replaced the version you are reading`;
-        const specDoc = gate === 'specification'
-          ? parseSpecDoc((view as SpecificationAnswer).text)
-          : {
-              title: `${label} review · ${slug}`,
-              sections: ((view as GherkinAnswer).features ?? []).map((f, i) => ({
-                id: `feature-${i}`,
-                title: f.name,
-                content: f.scenarios.map((s) => `${s.name} (${s.ac}) ${s.type} ${s.priority}`).join('\n'),
-              })),
-            };
-        const sections = specDoc.sections;
+
+        // Calculate navigation rules / sections
+        const rulesList = gate === 'gherkin'
+          ? (view as GherkinAnswer).features.map((f, i) => ({
+              id: f.path.replace(/[^a-zA-Z0-9_-]/g, '-'),
+              title: f.name,
+              count: f.scenarios.length,
+              isNew: i === 0 && view.version > 1,
+            }))
+          : parseSpecDoc((view as SpecificationAnswer).text).sections.map((sec) => ({
+              id: sec.id,
+              title: sec.title,
+              count: 1,
+              isNew: false,
+            }));
+
+        const totalItemsCount = gate === 'gherkin'
+          ? (view as GherkinAnswer).features.reduce((acc, f) => acc + f.scenarios.length, 0)
+          : parseSpecDoc((view as SpecificationAnswer).text).sections.length;
 
         return (
-          <>
-            {compact && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <span style={{ fontSize: 12, color: 'var(--floor-text-muted)' }}>Reading in the side panel</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Header with back link */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <Link
+                to={pid ? `/projects/${enc(pid)}/floor` : '/floor'}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 15, textDecoration: 'none', color: 'var(--link)' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M15 18l-6-6 6-6"></path>
+                </svg>
+                Back to the floor
+              </Link>
+              <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>Task · {slug}</div>
+              {compact && (
                 <button
                   type="button"
                   ref={expandBtnRef}
                   className="floor-btn-expand"
                   onClick={() => setFullScreen(true)}
                   aria-label="Expand the review to full screen"
-                >
-                  <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ verticalAlign: -2 }}>
-                    <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" />
-                  </svg>
-                  Expand
-                </button>
-              </div>
-            )}
-            <h2>{label} review</h2>
-            <p>
-              <strong data-testid="review-version">Version {view.version}</strong> · <span data-testid="approval-state">{STATE_LABEL[view.state] ?? view.state}</span>
-              {'provenance' in view && view.provenance ? <span className="provenance hint" data-testid="review-provenance" style={{ marginLeft: '0.5rem' }}>({view.provenance})</span> : null}
-              {view.requested_at ? <span className="hint"> · requested {formatTime(view.requested_at)}</span> : null}
-            </p>
-            <div>
-              <code className="sha mono" data-testid="sha-full">
-                {view.sha256}
-              </code>
-              <CopyButton text={view.sha256} label="Copy sha256" />
-            </div>
-            {readOnly ? <p className="banner">Version {view.version} is not in review</p> : null}
-            {blockedByStale ? (
-              <div className="banner warn" data-testid="stale-banner">
-                <p>{staleText}</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMinVersion(res.version + 1);
-                    void res.reload();
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 13,
+                    padding: '6px 10px',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    background: 'var(--surface)',
+                    color: 'var(--text)',
+                    cursor: 'pointer',
                   }}
                 >
-                  Load the version in review
+                  Expand
                 </button>
-              </div>
-            ) : null}
-            {action.message && !(staleError && action.message.kind === 'error') ? <ActionResult message={action.message} /> : null}
-            {decided ? <DecisionRecordView record={decided} text={record?.text} /> : null}
-            {inReview && !record ? (
-              <DecisionPanel
-                key={`${shown.sha256}-${blockedByStale}`}
-                kind="approval"
-                gate={gate}
-                version={view.version}
-                sha256={view.sha256}
-                subject={slug}
-                disabled={blockedByStale || !enabled}
-                pending={action.pending}
-                onDecide={decide}
-              />
-            ) : null}
-            <ValidationView validation={view.validation} />
-            {gate === 'gherkin' ? <GherkinBody data={view as GherkinAnswer} /> : <SpecBody data={view as SpecificationAnswer} tab={tab} setTab={setTab} pid={pid} slug={slug} />}
-            {gate === 'gherkin' ? (
-              <>
-                <h3>Versions</h3>
-                <VersionsList versions={view.versions} current={view.version} gate="gherkin" pid={pid} slug={slug} />
-              </>
-            ) : null}
+              )}
+            </div>
 
+            {/* Sticky Action Bar */}
+            <div
+              style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 10,
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: 14,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                padding: '14px 20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                color: 'var(--text)',
+              }}
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16 }}>
+                <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+                  {gate === 'gherkin' && (
+                    <span style={{ position: 'absolute', left: -9999 }} role="heading" aria-level={2}>
+                      Gherkin review
+                    </span>
+                  )}
+                  <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
+                    {label} · <strong data-testid="review-version">Version {view.version}</strong>
+                  </h1>
+                  <div style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 2 }}>
+                    <span data-testid="approval-state">{STATE_LABEL[view.state] ?? view.state}</span>
+                    {'provenance' in view && view.provenance ? <span className="provenance hint" data-testid="review-provenance" style={{ marginLeft: '0.5rem' }}>({view.provenance})</span> : null}
+                    {' · '}{totalItemsCount} {gate === 'gherkin' ? 'scenarios' : 'sections'} · written by the {agentRole}
+                    {view.requested_at ? <span className="hint"> · requested {formatTime(view.requested_at)}</span> : null}
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <code className="sha mono" data-testid="sha-full" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {view.sha256}
+                    </code>
+                    <CopyButton text={view.sha256} label="Copy sha256" />
+                  </div>
+                </div>
+
+                {decided ? (
+                  <DecisionRecordView record={decided} text={record?.text} />
+                ) : inReview && !record ? (
+                  <DecisionPanel
+                    key={`${shown.sha256}-${blockedByStale}`}
+                    kind="approval"
+                    gate={gate}
+                    version={view.version}
+                    sha256={view.sha256}
+                    subject={slug}
+                    disabled={blockedByStale || !enabled}
+                    pending={action.pending}
+                    onDecide={decide}
+                  />
+                ) : null}
+              </div>
+
+              {readOnly ? <p className="banner">Version {view.version} is not in review</p> : null}
+
+              {blockedByStale ? (
+                <div className="banner warn" data-testid="stale-banner">
+                  <p>{staleText}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMinVersion(res.version + 1);
+                      void res.reload();
+                    }}
+                  >
+                    Load the version in review
+                  </button>
+                </div>
+              ) : null}
+              {action.message && !(staleError && action.message.kind === 'error') ? <ActionResult message={action.message} /> : null}
+            </div>
+
+            {/* Main review body: Left rules nav & Right article content */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
+              {/* Left Nav: Rules / Sections */}
+              <nav aria-label="Rules" style={{ flex: '1 1 240px', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 14 }}>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '0 10px 6px' }}>
+                  {gate === 'gherkin' ? 'Rules' : 'Sections'}
+                </div>
+                {rulesList.map((r) => (
+                  <a
+                    key={r.id}
+                    href={`#${r.id}`}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 8,
+                      textDecoration: 'none',
+                      color: 'var(--text)',
+                      background: r.isNew ? 'var(--warn-bg, #FDF5E6)' : 'transparent',
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      document.getElementById(r.id)?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                  >
+                    {r.title} <span style={{ color: r.isNew ? 'var(--on-warn, #9A4D06)' : 'var(--text-muted)' }}>· {r.count}{r.isNew ? ' · new' : ''}</span>
+                  </a>
+                ))}
+
+                {view.version > 1 && (
+                  <div style={{ marginTop: 16, padding: 12, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 13, lineHeight: 1.5, color: 'var(--text)' }}>
+                    Your request on version {view.version - 1}: <em>&quot;Address feedback and review comments.&quot;</em>
+                    <div style={{ marginTop: 6, color: 'var(--ok)', fontWeight: 600 }}>Done in version {view.version}</div>
+                  </div>
+                )}
+              </nav>
+
+              {/* Right Article: Content */}
+              <article style={{ flex: '999 1 640px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <ValidationView validation={view.validation} />
+                {gate === 'gherkin' ? (
+                  <GherkinBody data={view as GherkinAnswer} version={view.version} />
+                ) : (
+                  <SpecBody data={view as SpecificationAnswer} tab={tab} setTab={setTab} pid={pid} slug={slug} />
+                )}
+                {gate === 'gherkin' && (
+                  <div>
+                    <h3>Versions</h3>
+                    <VersionsList versions={view.versions} current={view.version} gate="gherkin" pid={pid} slug={slug} />
+                  </div>
+                )}
+              </article>
+            </div>
+
+            {/* Full screen modal if toggled */}
             {fullScreen && (
               <div
                 role="dialog"
@@ -521,96 +864,27 @@ export function ReviewPage({ gate, pid, slug, version, onRunChanged, compact }: 
                     <span style={{ fontSize: 12, color: 'var(--floor-text-muted)' }}>
                       <strong style={{ color: 'var(--floor-text)' }}>Version {view.version}</strong>{' '}
                       <span style={{ color: 'var(--floor-waiting-label)' }}>{STATE_LABEL[view.state] ?? view.state}</span>
-                      {'provenance' in view && view.provenance ? ` · ${view.provenance}` : ''}
                       {' · '}
                       <code className="mono" style={{ wordBreak: 'break-all' }}>{view.sha256}</code>
                     </span>
                   </div>
-                  <span style={{ fontSize: 12, color: 'var(--floor-text-muted)' }}>
-                    Still on the factory floor. The run keeps its place.
-                  </span>
                   <button type="button" className="floor-btn-exit" onClick={closeFullScreen}>
-                    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" style={{ verticalAlign: -2, marginRight: 6 }}>
-                      <path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4" />
-                    </svg>
                     Exit full screen
                   </button>
                 </div>
 
-                <div className="floor-fullscreen-body">
-                  <nav aria-label="Sections" className="floor-fullscreen-nav">
-                    <h3 style={{ margin: '0 0 10px', fontSize: 11, letterSpacing: '.4px', textTransform: 'uppercase', color: 'var(--floor-text-muted)' }}>
-                      Sections
-                    </h3>
-                    <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {sections.map((s) => (
-                        <li key={s.id}>
-                          <a
-                            href={`#${s.id}`}
-                            style={{ color: 'var(--floor-text-muted)', fontSize: 13, textDecoration: 'none' }}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' });
-                            }}
-                          >
-                            {s.title}
-                          </a>
-                        </li>
-                      ))}
-                    </ol>
-                  </nav>
-
-                  <article className="floor-fullscreen-center">
-                    <div style={{ maxWidth: 760, margin: '0 auto', fontSize: 15, lineHeight: 1.7, color: '#D5DBE1' }}>
-                      {gate === 'specification' ? (
-                        <>
-                          {specDoc.title ? (
-                            <h1 style={{ margin: '0 0 20px', fontFamily: "'Space Grotesk', system-ui, sans-serif", fontSize: 28, lineHeight: 1.25, color: 'var(--floor-text)' }}>
-                              {specDoc.title}
-                            </h1>
-                          ) : null}
-                          {sections.map((s) => (
-                            <section key={s.id} id={s.id} style={{ marginBottom: 28 }}>
-                              <h2 style={{ margin: '0 0 8px', fontSize: 18, color: 'var(--floor-text)' }}>{s.title}</h2>
-                              <pre className="pre-wrap" style={{ fontSize: 14, lineHeight: 1.6, color: '#D5DBE1', fontFamily: 'inherit' }}>
-                                {s.content}
-                              </pre>
-                            </section>
-                          ))}
-                        </>
-                      ) : (
-                        <GherkinBody data={view as GherkinAnswer} />
-                      )}
-                    </div>
-                  </article>
-
-                  <aside className="floor-fullscreen-aside">
-                    {action.message && !(staleError && action.message.kind === 'error') ? <ActionResult message={action.message} /> : null}
-                    {decided ? <DecisionRecordView record={decided} text={record?.text} /> : null}
-                    {inReview && !record ? (
-                      <div style={{ position: 'sticky', top: 20 }}>
-                        <DecisionPanel
-                          key={`${shown.sha256}-${blockedByStale}-fullscreen`}
-                          kind="approval"
-                          gate={gate}
-                          version={view.version}
-                          sha256={view.sha256}
-                          subject={slug}
-                          disabled={blockedByStale || !enabled}
-                          pending={action.pending}
-                          onDecide={decide}
-                        />
-                      </div>
-                    ) : null}
-                    <ValidationView validation={view.validation} />
-                  </aside>
+                <div className="floor-fullscreen-body" style={{ padding: 24 }}>
+                  {gate === 'gherkin' ? (
+                    <GherkinBody data={view as GherkinAnswer} version={view.version} />
+                  ) : (
+                    <SpecBody data={view as SpecificationAnswer} tab={tab} setTab={setTab} pid={pid} slug={slug} />
+                  )}
                 </div>
               </div>
             )}
-          </>
+          </div>
         );
       }}
     </Loaded>
   );
 }
-

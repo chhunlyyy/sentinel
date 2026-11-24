@@ -5,22 +5,15 @@ test.describe('app shell: navigation', () => {
   test('AC-DSH-01a the main navigation', async ({ page }) => {
     await open(page, '/');
     const n = nav(page);
-    for (const name of ['Factory floor', 'New task', 'Approvals', 'Projects', 'Runs', 'Knowledge', 'Reports', 'Settings']) {
+    for (const name of ['Floor', 'New task', 'Projects', 'Settings']) {
       await expect(n.getByRole('link', { name: new RegExp(`^${name}`) })).toBeVisible();
     }
-    const moreBtn = n.getByRole('button', { name: /More/ });
-    await expect(moreBtn).toBeVisible();
-    await expect(moreBtn).toHaveAttribute('aria-expanded', 'false');
-    await moreBtn.click();
-    await expect(moreBtn).toHaveAttribute('aria-expanded', 'true');
-    for (const name of ['Overview', 'Tasks', 'Quality']) {
-      await expect(n.getByRole('link', { name: new RegExp(`^${name}`) })).toBeVisible();
+    // Phase 1 navigation: exactly 4 items, no More menu, old routes not in nav
+    await expect(n.getByRole('button', { name: /More/ })).toHaveCount(0);
+    for (const name of ['Approvals', 'Runs', 'Knowledge', 'Reports', 'Overview', 'Tasks', 'Quality', 'Notifications', 'Agents', 'Providers', 'Users and Permissions']) {
+      await expect(n.getByRole('link', { name: new RegExp(`^${name}`) })).toHaveCount(0);
     }
-    // Phase H: Reports is a menu entry; the notification bell is a button, not a menu entry
-    for (const name of ['Notifications', 'Agents', 'Providers', 'Users and Permissions']) {
-      await expect(n.getByRole('link', { name })).toHaveCount(0);
-    }
-    await expect(n.getByRole('link', { name: 'Factory floor', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(n.getByRole('link', { name: 'Floor', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 
   const routes: [string, string][] = [
@@ -113,7 +106,7 @@ test.describe('app shell: navigation', () => {
 
     await menuBtn.click();
     await expect(menuBtn).toHaveAttribute('aria-expanded', 'true');
-    await expect(nav(page).getByRole('link', { name: 'Factory floor' })).toBeVisible();
+    await expect(nav(page).getByRole('link', { name: /^(Floor|Factory floor)/ })).toBeVisible();
 
     const overAfterOpen = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overAfterOpen).toBeLessThanOrEqual(0);
@@ -123,7 +116,7 @@ test.describe('app shell: navigation', () => {
 test.describe('app shell: session and CSRF', () => {
   test('AC-SEC-01y the app reads the CSRF value once and sends it only on mutating calls', async ({ page, api }) => {
     await createTask(page, { slug: 'csrf-check' });
-    await page.getByRole('button', { name: 'Create task' }).click();
+    await page.getByRole('button', { name: /^(Start task|Create task)/ }).click();
     await expect(heading(page, 'csrf-check')).toBeVisible();
     await open(page, '/projects/digital-hr/runs/leave-balance');
     await control(page, 'Cancel run');
@@ -196,7 +189,7 @@ test.describe('app shell: no success before the API confirms', () => {
     {
       name: 'create task "leave-report"', request: /\/projects\/digital-hr\/tasks$/, shown: 'leave-report created: CREATED',
       pre: (page) => createTask(page, { slug: 'leave-report' }),
-      act: (page) => page.getByRole('button', { name: 'Create task' }).click(),
+      act: (page) => page.getByRole('button', { name: /^(Start task|Create task)/ }).click(),
     },
     {
       name: 'cancel run', request: /\/tasks\/leave-balance\/control$/, shown: 'Run state CANCELLED',
@@ -230,7 +223,7 @@ test.describe('app shell: no success before the API confirms', () => {
       await api.rule({ method: 'POST', path: `re:${row.request.source}`, delayMs: 2000, times: 1, passthrough: true });
       await row.pre!(page);
       await row.act(page);
-      const sending = page.getByRole('button', { name: 'Sending' });
+      const sending = page.getByRole('button', { name: /^Sending/ });
       await expect(sending).toBeVisible();
       await expect(sending).toBeDisabled();
       await expect(page.getByText(row.shown)).toHaveCount(0);
@@ -268,7 +261,7 @@ test.describe('app shell: no success before the API confirms', () => {
   test('AC-DSH-04e double clicks send one request', async ({ page, api }) => {
     await api.rule({ method: 'POST', path: 're:/projects/digital-hr/tasks$', delayMs: 500, passthrough: true });
     await createTask(page, { slug: 'double-click' });
-    await page.getByRole('button', { name: 'Create task' }).dblclick();
+    await page.getByRole('button', { name: /^(Start task|Create task)/ }).dblclick();
     await expect(heading(page, 'double-click')).toBeVisible();
     expect(await api.posts(/\/projects\/digital-hr\/tasks$/)).toHaveLength(1);
   });
@@ -288,7 +281,7 @@ test.describe('own origin only', () => {
     await decide(page, 'Approve', '3f9a0c12', 'Approve version 2');
     await expect(page.getByText('Specification approved')).toBeVisible();
     await createTask(page, { slug: 'origin-check' });
-    await page.getByRole('button', { name: 'Create task' }).click();
+    await page.getByRole('button', { name: /^(Start task|Create task)/ }).click();
     await expect(heading(page, 'origin-check')).toBeVisible();
     await open(page, '/projects/digital-hr/runs/leave-balance');
     await control(page, 'Cancel run');

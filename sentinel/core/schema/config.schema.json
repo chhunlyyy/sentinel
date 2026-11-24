@@ -438,6 +438,10 @@
             "string",
             "null"
           ]
+        },
+        "answer_from_spec": {
+          "type": "boolean",
+          "description": "Whether the orchestrator answers questions settled by the approved specification directly"
         }
       }
     },

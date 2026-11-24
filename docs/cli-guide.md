@@ -52,6 +52,7 @@ sentinel approve leave-export spec     # type the hash prefix to approve
 sentinel review leave-export gherkin
 sentinel approve leave-export gherkin
 sentinel report leave-export           # after the engine verified the build
+sentinel attach leave-export           # attach interactive orchestrator runner (or --print for context only)
 sentinel accept leave-export
 ```
 
