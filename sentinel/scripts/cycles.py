@@ -50,6 +50,7 @@ OPEN_CYCLE = ("PLANNED", "RED_RUNNING", "RED_VERIFIED", "GREEN_RUNNING", "GREEN_
 BASELINE_OK = ("pass", "assertion")
 TEST_TIMEOUT = 1800
 INVALIDATED = "approval invalidated"
+SENT_BACK = "sent back to Red by a human: "
 LINE_CAP = 500
 
 
@@ -292,9 +293,34 @@ class CycleOps:
             run = self._get_v2(slug)
             for c in todo:
                 cyc = self._cycle(c["id"])
-                made.append(self._phase_task(run, cyc, "red", brief=self.cycle_finding_brief(run, cyc))["id"])
+                made.append(self._phase_task(run, cyc, "red", brief=self._red_brief(run, cyc))["id"])
         self._finish_up(slug, run)
         return made
+
+    def _red_brief(self, run, cycle):
+        """Review findings routed to the behavior, and the human's note when the cycle it replaces was sent back to Red."""
+        parts = [self.cycle_finding_brief(run, cycle)]
+        prev = self._cycle(cycle["retry_of"]) if cycle["retry_of"] else None
+        if prev and (prev["reason"] or "").startswith(SENT_BACK):
+            tests = ", ".join(t["path"] for t in json_list(prev["approved_tests"])) or "none recorded"
+            parts.append("A human sent this behavior back to Red. Change the tests as asked:\n"
+                         + prev["reason"][len(SENT_BACK):] + "\n"
+                         + f"The tests of the previous Red are still in place ({tests}); edit them rather than starting over.\n")
+        text = "\n".join(p for p in parts if p)
+        return text or None
+
+    def _send_back_to_red_in_tx(self, run, task, comment):
+        if run["state"] != "NEEDS_HUMAN":
+            raise SentinelError("E_TRANSITION", f"only a parked (NEEDS_HUMAN) run sends a cycle back to Red, run is {run['state']}",
+                                {"state": run["state"]})
+        if task["role"] not in TDD_ROLES or not task["cycle_id"]:
+            raise SentinelError("E_PRECONDITION", f"task {task['id']} is not a cycle task", {"task": task["id"]})
+        if self._cycle(task["cycle_id"])["state"] not in OPEN_CYCLE:
+            raise SentinelError("E_PRECONDITION", "the cycle is no longer open", {"cycle": task["cycle_id"]})
+        for t in self.reg.rows("tasks", run_id=run["id"], cycle_id=task["cycle_id"]):
+            if t["state"] in OPEN_STATES or t["state"] == "BLOCKED":
+                self._cancel_in_tx(run, t, machines.HUMAN, "cycle sent back to Red", cascade=False)
+        self._move_cycle(run, self._cycle(task["cycle_id"]), "REJECTED", reason=SENT_BACK + comment)
 
     def _cycle_task_started(self, run, task):
         """Inside start_task's transaction: the cycle enters its running state when its phase task starts."""

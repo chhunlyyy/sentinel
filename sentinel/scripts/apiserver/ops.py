@@ -201,7 +201,7 @@ def accept(eng, slug, body, user, git_name):
 
 
 # ---- controls
-CONTROL_ACTIONS = ("cancel", "resume", "retry")
+CONTROL_ACTIONS = ("cancel", "resume", "retry", "back_to_red")
 
 
 def parse_control(body):
@@ -214,8 +214,10 @@ def parse_control(body):
     comment = comment.strip() if comment and comment.strip() else None
     if action == "resume" and not comment:
         raise bad("resuming needs a comment", "comment")
-    if action == "retry" and not task_id:
-        raise bad("retry needs a task_id", "task_id")
+    if action in ("retry", "back_to_red") and not task_id:
+        raise bad(f"{action} needs a task_id", "task_id")
+    if action == "back_to_red" and not comment:
+        raise bad("say what the tests must change", "comment")
     if action == "resume" and task_id:
         raise bad("resume applies to the run, not to a task", "task_id")
     return action, task_id, comment
@@ -230,6 +232,8 @@ def control(eng, slug, body, user):
         return eng.cancel_run(slug, comment, user=user, channel=CHANNEL)
     if action == "resume":
         return eng.resume_run(slug, comment, user=user, channel=CHANNEL)
+    if action == "back_to_red":
+        return eng.back_to_red(slug, task_id, comment, user=user, channel=CHANNEL)
     return eng.retry_task(slug, task_id, user=user, channel=CHANNEL)
 
 

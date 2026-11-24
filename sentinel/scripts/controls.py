@@ -94,6 +94,23 @@ class ControlOps:
             self.reg.add_audit(user, channel, "retry", f"{slug}/{task_id}")
         return self._finish_up(slug, run_before)
 
+    def back_to_red(self, slug, task_id, comment, *, user, channel="dashboard"):
+        """A human sends the cycle of `task_id` back to Red with what its tests must change (a Green that asked about a
+        wrong test cannot edit tests): the cycle's open or blocked tasks are cancelled, the cycle is REJECTED with the
+        comment, and the parked run is resumed (R20), which replans the behavior as a new cycle whose Red brief carries
+        the comment. Refused unless the run is NEEDS_HUMAN and the cycle is still open."""
+        self._as_human(user, channel)
+        if not (comment or "").strip():
+            raise SentinelError("E_PRECONDITION", "say what the tests must change", {"field": "comment"})
+        self._sync(slug)
+        run_before, _ = self._task_of(slug, task_id)
+        with self.reg.transaction():
+            run, task = self._task_of(slug, task_id)
+            self._send_back_to_red_in_tx(run, task, comment.strip())
+            self.reg.add_audit(user, channel, "back_to_red", f"{slug}/{task_id}", reason=comment[:AUDIT_NOTE])
+        self._finish_up(slug, run_before)
+        return self.request_state(slug, run["previous_state"], machines.HUMAN, reason=comment.strip())
+
     # ---- factory controls: pause, unpause, note (a run-level flag and a message; neither moves the run state)
     def _open_run(self, slug):
         run = self._get_v2(slug)

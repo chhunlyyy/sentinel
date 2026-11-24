@@ -590,7 +590,7 @@ ROUTES = [
     Route("POST", "approvals", "tasks/{slug}/approvals", h_approvals, ("Engine.decide",)),
     Route("POST", "acceptance", "tasks/{slug}/acceptance", h_acceptance, ("Engine.accept",)),
     Route("POST", "control", "tasks/{slug}/control", h_control,
-          ("Engine.cancel_run", "Engine.resume_run", "Engine.cancel_task_control", "Engine.retry_task")),
+          ("Engine.cancel_run", "Engine.resume_run", "Engine.cancel_task_control", "Engine.retry_task", "Engine.back_to_red")),
     Route("POST", "pause", "tasks/{slug}/pause", h_pause, ("Engine.pause_run",)),
     Route("POST", "unpause", "tasks/{slug}/unpause", h_unpause, ("Engine.unpause_run",)),
     Route("POST", "note", "tasks/{slug}/note", h_note, ("Engine.add_note",)),

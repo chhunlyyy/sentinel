@@ -106,7 +106,8 @@ class Mapping(SV):
         self.assertEqual(table["approvals"].calls, ("Engine.decide",))
         self.assertEqual(table["acceptance"].calls, ("Engine.accept",))
         self.assertEqual(set(table["control"].calls),
-                         {"Engine.cancel_run", "Engine.resume_run", "Engine.cancel_task_control", "Engine.retry_task"})
+                         {"Engine.cancel_run", "Engine.resume_run", "Engine.cancel_task_control", "Engine.retry_task",
+                          "Engine.back_to_red"})
         self.assertEqual(table["create_run"].calls, ("Engine.create_run",))
         self.assertEqual((table["pause"].calls, table["unpause"].calls, table["note"].calls),
                          (("Engine.pause_run",), ("Engine.unpause_run",), ("Engine.add_note",)))

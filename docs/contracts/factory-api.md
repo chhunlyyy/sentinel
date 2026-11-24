@@ -118,7 +118,7 @@ The switch lives in `~/.config/sentinel/factory.json` (`{"paused": true, "paused
 | `POST /tasks/{slug}/retry-now` | body `{}`; retries limit-waiting tasks at once |
 | `GET /factory`, `POST /factory/pause`, `/factory/resume` | whole-factory pause, body `{comment?}` |
 | `POST /tasks/{slug}/note` | body `{text}` |
-| `POST /tasks/{slug}/control` | cancel, resume, retry (unchanged) |
+| `POST /tasks/{slug}/control` | cancel, resume, retry; `back_to_red` (task_id + comment) sends a parked cycle back to Red with what its tests must change and resumes the run |
 | `GET /tasks/{slug}` | run detail with `driver` and `paused` |
 
 ## Drivers and the state machine

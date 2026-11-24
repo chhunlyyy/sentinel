@@ -93,6 +93,29 @@ class Flow(PDX):
         self.assertIn("A human answered:\nRemoved test X myself; keep going.", brief)
 
 
+    def test_a_human_sends_a_cycle_back_to_red_with_what_its_tests_must_change(self):
+        """MEF-HR 2026-11-24: Green asked about tests that looked wrong; the owner decided the tests must change, which Green
+        may not do. back_to_red rejects the cycle with the comment, resumes the run, and the replanned cycle's Red brief
+        carries the comment and the paths of the previous tests."""
+        self.to_red_verified()
+        self.agent_exec("tdd_green", "write_result('blocked', questions=['Test Y expects 503 but cannot reach it'])")
+        asked = self.tid("tdd_green")
+        self.eng.run_task(asked)
+        old = self.cycle("Remaining")
+        with self.assertRaises(SentinelError):
+            self.eng.back_to_red(SLUG, asked, "  ", user="owner")
+        self.eng.back_to_red(SLUG, asked, "Test Y: assert the rollback only, no 503.", user="owner")
+        self.assertEqual(self.state(), "EXECUTING")
+        self.assertEqual(self.task(asked)["state"], "CANCELLED")
+        rows = [c for c in self.cycles() if "Remaining" in c["behavior"]]
+        self.assertEqual([(c["state"], c["retry_of"]) for c in rows], [("REJECTED", None), ("PLANNED", old["id"])])
+        self.eng.ensure_cycle_tasks(SLUG)
+        red = self.tdd_tasks("tdd_red", "Remaining")[-1]
+        brief = (self.eng.task_dir(SLUG, red["id"]) / "brief.md").read_text()
+        self.assertIn("Change the tests as asked:\nTest Y: assert the rollback only, no 503.", brief)
+        self.assertIn(json.loads(old["approved_tests"])[0]["path"], brief)
+
+
 class R13(PDX):
     def setup_cycles(self, states, tier=3):
         self.boot_x(repos=TWO_REPOS, tier=tier)
