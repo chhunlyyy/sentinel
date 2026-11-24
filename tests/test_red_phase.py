@@ -164,6 +164,28 @@ class RedVerification(RedBase):
         self.assertGreaterEqual(_time.time() - began, 1.4)
         self.assertEqual(self.cstate("Remaining"), "RED_VERIFIED")
 
+    def test_bookkeeping_does_not_verify_a_task_its_own_process_is_verifying(self):
+        """The task's process verifies it as it finishes while the service's bookkeeping sees a COMPLETED task with no
+        evidence yet. Both ran the tests at once in one build folder and Gradle crashed (EOFException, MEF-HR 2026-11-24):
+        only the first verifies, the other finds the task locked and leaves it alone."""
+        tid = self.red({"exit": 1, "report": NEW_FAIL + [LEGACY]})
+        real = self.eng._run_tests
+        seen = []
+
+        def tests_running(cfg, repo, command, tools, tests=(), info=None):
+            if tests and not seen:
+                seen.append(self.eng.resume_verification(SLUG))  # bookkeeping ticks while the tests run
+            return real(cfg, repo, command, tools, tests, info)
+        self.eng._run_tests = tests_running
+        try:
+            self.eng.run_task(tid)
+        finally:
+            self.eng._run_tests = real
+        self.assertEqual(seen, [[]])
+        self.assertEqual(self.cstate("Remaining"), "RED_VERIFIED")
+        self.assertEqual([x["mode"] for x in self.tool_log()].count("targeted"), 1)
+        self.assertEqual([e["verdict"] for e in self.evidence("red")], ["accepted"])
+
     def test_a_compile_error_is_not_run_again(self):
         tid = self.red({"exit": 1, "stdout": "error: cannot find symbol"})
         self.eng.run_task(tid)

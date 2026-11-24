@@ -12,6 +12,7 @@ result files never do (VER-02). A phase works the same way for Red, Green and Re
 
 Source: plan/v1.1/phaseD/README.md, docs/contracts/state-transitions.md section 4.
 """
+import fcntl
 import hashlib
 import json
 import os
@@ -463,11 +464,51 @@ class CycleOps:
         verify = getattr(self, f"_verify_{phase}", None)
         if verify is None or cycle["state"] != STATES[phase][1] or run["state"] != "EXECUTING":
             return None
-        if cycle["red_method"] == Q.QA:
-            return self._verify_qa_locked(task_id, verify)
-        if any(e["verdict"] != "needs_human" for e in self.reg.rows("evidence", task_id=task_id)):
-            return None  # verified already; only a run a human resumed after "could not be classified" is verified again
-        return verify(run, task, cycle)
+        try:
+            return self._verify_locked(task_id, verify)
+        except SentinelError as err:
+            if err.code != "E_LOCKED":
+                raise
+            return None  # another thread or process is verifying this task now; it records the outcome
+
+    def _verify_locked(self, task_id, verify):
+        """One verification of a phase task at a time, across threads and processes: the task's own process verifies it
+        when it finishes while the service's bookkeeping verifies a COMPLETED task that has no evidence yet, and two test
+        runs in one build folder crash each other (Gradle: EOFException, no report). A second caller is refused (E_LOCKED).
+        A needs_human row does not count as done: a human resume verifies the same task again. The lock file is removed
+        when done."""
+        tmp = self.state_dir / "tmp"
+        tmp.mkdir(parents=True, exist_ok=True)
+        path = tmp / f"verify-{task_id}.lock"
+        while True:
+            fd = os.open(str(path), os.O_CREAT | os.O_RDWR, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(fd)
+                raise SentinelError("E_LOCKED", f"task {task_id} is being verified by another process", {"task": task_id})
+            try:
+                if os.fstat(fd).st_ino == os.stat(path).st_ino:
+                    break
+            except OSError:
+                pass
+            os.close(fd)  # the file was removed by the previous holder between open and lock: take the new one
+        try:
+            task = self._task_row(task_id)
+            run = self.reg.get_run_by_id(task["run_id"])
+            cycle = self._cycle(task["cycle_id"])
+            phase = PHASE[task["role"]]
+            if cycle["state"] != STATES[phase][1] or run["state"] != "EXECUTING" or task["state"] != "COMPLETED":
+                return None
+            if [e for e in self.reg.rows("evidence", task_id=task_id) if e["verdict"] != "needs_human"]:
+                return None
+            return verify(run, task, cycle)
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            os.close(fd)
 
     def resume_verification(self, slug):
         """A COMPLETED phase task whose cycle is still running is verified now when it has no evidence row (the process died

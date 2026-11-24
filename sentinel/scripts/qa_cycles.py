@@ -6,10 +6,8 @@ accepted and checked again at dispatch, at Green and Refactor verification, at a
 
 Source: plan/v1.1/phaseJ/README.md.
 """
-import fcntl
 import hashlib
 import json
-import os
 
 import boundary
 import machines
@@ -132,42 +130,6 @@ class QaCycleOps:
         return {"verdict": "needs_human", "reason": msg, "classification": None, "cycle": task["cycle_id"], "evidence": None, "retry": None}
 
     # ---- verification
-    def _verify_qa_locked(self, task_id, verify):
-        """One verification of a QA task at a time: a second caller is refused (E_LOCKED). A needs_human row does not count
-        as done: a human resume verifies the same task again. The lock file is removed when done."""
-        tmp = self.state_dir / "tmp"
-        tmp.mkdir(parents=True, exist_ok=True)
-        path = tmp / f"verify-{task_id}.lock"
-        while True:
-            fd = os.open(str(path), os.O_CREAT | os.O_RDWR, 0o600)
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                os.close(fd)
-                raise SentinelError("E_LOCKED", f"task {task_id} is being verified by another process", {"task": task_id})
-            try:
-                if os.fstat(fd).st_ino == os.stat(path).st_ino:
-                    break
-            except OSError:
-                pass
-            os.close(fd)  # the file was removed by the previous holder between open and lock: take the new one
-        try:
-            task = self._task_row(task_id)
-            run = self.reg.get_run_by_id(task["run_id"])
-            cycle = self._cycle(task["cycle_id"])
-            phase = PHASE[task["role"]]
-            if cycle["state"] != STATES[phase][1] or run["state"] != "EXECUTING" or task["state"] != "COMPLETED":
-                return None
-            if [e for e in self.reg.rows("evidence", task_id=task_id) if e["verdict"] != "needs_human"]:
-                return None
-            return verify(run, task, cycle)
-        finally:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-            os.close(fd)
-
     # ---- QA scenarios as Red evidence (TDD-09)
     def _qa_gaps(self, cycle, phase, e):
         gaps = []

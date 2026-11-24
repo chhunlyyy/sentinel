@@ -313,8 +313,11 @@ class Concurrency(PJ):
         first = self.verifier(tid)
         time.sleep(0.6)
         second = self.verifier(tid)
-        outs = [first.communicate(timeout=60)[0], second.communicate(timeout=60)[0]]
-        self.assertIn("error E_LOCKED", outs[1], outs)
+        second_out = second.communicate(timeout=60)[0]
+        overlapped = first.poll() is None  # the second call came back while the first was still verifying
+        outs = [first.communicate(timeout=60)[0], second_out]
+        self.assertTrue(overlapped, outs)
+        self.assertIn("verdict None", outs[1], outs)  # a task another process is verifying is left to it
         self.assertIn("verdict accepted", outs[0], outs)
         self.assertEqual(len([e for e in self.evidence("red", label=self.FORM) if e["task_id"] == tid]), 1)
 
