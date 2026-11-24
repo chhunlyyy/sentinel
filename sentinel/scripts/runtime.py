@@ -573,14 +573,16 @@ class RuntimeOps:
     def _monitor(self, run, t, adapter, handle, tdir):
         import sys
         task_id = t["id"]
-        started = time.time()
+        # monotonic: on Linux it stops while the machine is suspended, so a laptop sleeping overnight does not count as
+        # task time and kill the agent the moment it wakes
+        started = time.monotonic()
         timeout = t["timeout_seconds"] or DEFAULT_TIMEOUT
         beat = self.heartbeat()
         next_beat = started + beat
         name = f"{t['repo_id']}-{t['role']}"
         timed_out = cancelled = False
         while not adapter.wait(handle, TICK):
-            now = time.time()
+            now = time.monotonic()
             if self.reg.get_row("tasks", task_id)["state"] == "CANCELLED":
                 cancelled = True
                 adapter.cancel(handle)
@@ -597,7 +599,7 @@ class RuntimeOps:
                 print(f"[{name}] running {elapsed // 60}m{elapsed % 60:02d}s, {size} bytes of output",
                       file=sys.stderr, flush=True)
         exit_code = adapter.reap(handle)
-        seconds = round(time.time() - started, 3)
+        seconds = round(time.monotonic() - started, 3)
         if not cancelled:
             # before the log pumps are joined: from here on a recovery in another process finds the exit, not a lost task
             self._write_exit(tdir, {"exit_code": exit_code, "timed_out": timed_out, "seconds": seconds, "session_id": None,
