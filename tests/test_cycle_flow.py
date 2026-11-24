@@ -73,6 +73,26 @@ class Flow(PDX):
         self.assertEqual(len([c for c in self.cycles() if "Carry" in c["behavior"]]), 1)
 
 
+    def test_a_green_task_that_asks_a_question_gets_a_new_attempt_with_the_answer_on_resume(self):
+        """MEF-HR 2026-11-24: Green reported `blocked` with a question, the run parked, a human fixed it and resumed, and
+        nothing ever ran again (BLOCKED has no way out). Now R20 closes the blocked task and queues a new attempt whose
+        brief carries the question and the human's answer; answering does not use up a retry."""
+        self.to_red_verified(tdd={"green_retries": 1})
+        self.agent_exec("tdd_green", "write_result('blocked', questions=['Old test X uses the removed method: drop it?'])")
+        asked = self.tid("tdd_green")
+        self.eng.run_task(asked)
+        self.assertEqual((self.task(asked)["state"], self.state()), ("BLOCKED", "NEEDS_HUMAN"))
+        self.eng.request_state(SLUG, "EXECUTING", "human", reason="Removed test X myself; keep going.")
+        self.assertEqual(self.state(), "EXECUTING")
+        self.assertEqual(self.task(asked)["state"], "CANCELLED")
+        greens = self.tdd_tasks("tdd_green", "Remaining")
+        self.assertEqual([t["state"] for t in greens], ["CANCELLED", "QUEUED"])
+        self.assertEqual(self.cycle("Remaining")["green_task"], greens[-1]["id"])
+        brief = (self.eng.task_dir(SLUG, greens[-1]["id"]) / "brief.md").read_text()
+        self.assertIn("stopped to ask: Old test X uses the removed method: drop it?", brief)
+        self.assertIn("A human answered:\nRemoved test X myself; keep going.", brief)
+
+
 class R13(PDX):
     def setup_cycles(self, states, tier=3):
         self.boot_x(repos=TWO_REPOS, tier=tier)

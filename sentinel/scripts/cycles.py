@@ -1053,12 +1053,15 @@ class CycleOps:
         self._finish_up(run0["slug"], run0)
         return self._task_row(retry)
 
-    def _retry_cycle_task_in_tx(self, run, task, actor):
+    def _retry_cycle_task_in_tx(self, run, task, actor, answer=None):
+        """`answer`: what the human wrote when resuming a run parked by a BLOCKED task (the agent asked a question). The
+        blocked task is closed and the new attempt gets the question and the answer in its brief."""
         refuse = lambda msg, **d: SentinelError("E_PRECONDITION", msg, {"task": task["id"], **d})  # noqa: E731
         if task["role"] not in TDD_ROLES or not task["cycle_id"]:
             raise refuse(f"task {task['id']} is not a cycle task")
-        if task["state"] not in ("FAILED", "CANCELLED"):
-            raise refuse(f"task {task['id']} is {task['state']}; only a failed or cancelled cycle task is retried")
+        asked = task["state"] == "BLOCKED"
+        if task["state"] not in ("FAILED", "CANCELLED", "BLOCKED"):
+            raise refuse(f"task {task['id']} is {task['state']}; only a failed, cancelled or blocked cycle task is retried")
         if run["state"] in machines.RUN_FINAL:
             raise refuse(f"run is {run['state']}")
         phase = PHASE[task["role"]]
@@ -1070,27 +1073,32 @@ class CycleOps:
             raise refuse(f"task {task['id']} is not the latest {phase} task of the cycle")
         cap = task["max_retries"] if _int(task["max_retries"]) else retry_cap(self._run_config(run), task["role"])
         attempt = task["attempt"] or 1
-        if attempt > cap:
+        if attempt > cap and not asked:  # a question answered is not a failed attempt
             raise refuse(f"the {phase} retry cap ({cap}) is used", cap=cap)
         left = self._unreverted(run, task)
         if left:
             raise refuse("revert these paths of the earlier scope violation first: " + ", ".join(left), paths=left)
-        v = {"code": task["error_code"] or "E_CANCELLED", "message": task["reason"] or "cancelled", "details": {}}
-        retry = self._make_retry(run, task, v, attempt)
+        if asked:
+            self._cancel_in_tx(run, task, actor, "answered by a human" + (f": {answer}" if answer else ""), cascade=False)
+            v = {"code": "BLOCKED", "message": task["reason"] or "the agent asked a question", "details": {}}
+        else:
+            v = {"code": task["error_code"] or "E_CANCELLED", "message": task["reason"] or "cancelled", "details": {}}
+        retry = self._make_retry(run, task, v, attempt, answer=answer if asked else None)
         self._after_retry_created(run, task, retry)
         self.reg.add_audit(actor, "engine", "cycle_task_retried", f"{run['slug']}/{task['id']}", reason=f"retry {retry['id']}")
         return retry["id"]
 
-    def _retry_stalled_cycles(self, run):
+    def _retry_stalled_cycles(self, run, answer=None):
         """Inside a transaction, on R20: a cycle still in its running state whose newest phase task failed (a scope violation
-        parks the run and leaves it so) gets a retry task. A refusal parks the run again with the reason."""
+        parks the run and leaves it so) or asked a question (BLOCKED) gets a retry task; `answer` is the human's resume
+        comment, passed to a blocked task's retry. A refusal parks the run again with the reason."""
         for c in self.live_cycles(run):
             for phase, (_, running) in STATES.items():
                 tid = c[f"{phase}_task"]
                 task = self.reg.get_row("tasks", tid) if tid else None
-                if c["state"] == running and task and task["state"] == "FAILED":
+                if c["state"] == running and task and task["state"] in ("FAILED", "BLOCKED"):
                     try:
-                        self._retry_cycle_task_in_tx(run, task, machines.ENGINE)
+                        self._retry_cycle_task_in_tx(run, task, machines.ENGINE, answer=answer)
                     except SentinelError as err:
                         self._park_run(self.reg.get_run_by_id(run["id"]), f"cycle {c['behavior']}: {err.message}")
                         return

@@ -959,7 +959,7 @@ class TaskOps:
             self._move(run, "NEEDS_HUMAN", machines.ENGINE, reason=why)
         return None
 
-    def _make_retry(self, run, task, v, attempt):
+    def _make_retry(self, run, task, v, attempt, answer=None):
         tdir = self.task_dir(run["slug"], task["id"])
         sealed = self._sealed_doc(task, strict=True)
         perm, cons = sealed["permissions"], sealed["constraints"]
@@ -967,7 +967,12 @@ class TaskOps:
 
         def clean(text):
             return adapters.redact_text(cfg, str(text))[:STDERR_LINE_CAP]
-        lines = [f"Previous attempt {task['id']} (attempt {attempt}) failed with {v['code']}: {clean(v['message'])}"]
+        if v["code"] == "BLOCKED":
+            lines = [f"Previous attempt {task['id']} (attempt {attempt}) stopped to ask: {clean(v['message'])}"]
+        else:
+            lines = [f"Previous attempt {task['id']} (attempt {attempt}) failed with {v['code']}: {clean(v['message'])}"]
+        if answer:
+            lines += ["", "A human answered:", adapters.redact_text(cfg, str(answer))[:4000]]
         lines += [f"- {clean(p)}" for p in (v["details"] or {}).get("problems") or []]
         try:
             tail = (tdir / "stderr.log").read_text(encoding="utf-8", errors="replace").strip().splitlines()[-STDERR_LINES:]

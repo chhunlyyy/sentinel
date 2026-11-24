@@ -341,7 +341,7 @@ class Engine(CycleOps, QaCycleOps, VerifyOps, ReviewOps, AcceptOps, BundleOps, R
                         deferred = self._park_if_unapproved(run)
                     if rule == "R20" and self.reg.get_run(slug)["state"] == "EXECUTING" and run["type"] != "docs":
                         self._replan_rejected(self.reg.get_run(slug))
-                        self._retry_stalled_cycles(self.reg.get_run(slug))
+                        self._retry_stalled_cycles(self.reg.get_run(slug), answer=reason)
         result = self._finish_up(slug, run)
         if deferred:
             raise deferred
