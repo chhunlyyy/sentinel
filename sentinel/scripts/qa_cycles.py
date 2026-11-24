@@ -83,16 +83,21 @@ class QaCycleOps:
     def _qa_tree_violations(self, run, task, was, now):
         """[(kind, path)] for what a task changed in the QA script tree. A qa_red task may write only its own cycle's folder; a file
         of an accepted cycle is approved_test_changed. Green and Refactor write nothing there: a change in an accepted cycle's
-        folder is left to their verification (E_INTEGRITY, AC-TDD-09w), a change elsewhere is outside_write_scope."""
+        folder is left to their verification (E_INTEGRITY, AC-TDD-09w), a change elsewhere is outside_write_scope. The
+        end-to-end qa task writes its checks into the same slug folder (its stage says so): it may write anywhere there
+        except inside a cycle's folder."""
         base = self._scripts_rel(run)
         approved = {c["id"] for c in self.live_cycles(run) if c["red_method"] == Q.QA and c.get("approved_scripts")}
+        cycles = {c["id"] for c in self.cycle_rows(run)}
         out = []
         for n in sorted(k for k in set(was) | set(now) if was.get(k) != now.get(k)):
             top = n.split("/", 1)[0]
             full = f"{base}/{n}"
             if top in approved:
-                if task["role"] == "qa_red":
+                if task["role"] in ("qa_red", "qa"):
                     out.append(("approved_test_changed", full))
+            elif task["role"] == "qa" and top not in cycles:
+                continue
             elif task["role"] != "qa_red" or top != task["cycle_id"]:
                 out.append(("outside_write_scope", full))
         return out
